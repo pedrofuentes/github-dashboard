@@ -88,6 +88,10 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
         setStatus('idle');
       }
     });
+
+    return () => {
+      generationRef.current += 1;
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

@@ -202,4 +202,33 @@ describe('AuthProvider', () => {
     expect(getToken()).toBe('ghp_new');
     expect(localStorage.getItem('github-dashboard.pat')).toBe('ghp_new');
   });
+
+  it('does not call forgetToken when unmounted before mount revalidation resolves', async () => {
+    setToken('ghp_stored', 'local');
+
+    let resolveStored!: (value: ValidateTokenResult) => void;
+    const storedPending = new Promise<ValidateTokenResult>((r) => {
+      resolveStored = r;
+    });
+    mockValidate.mockReturnValue(storedPending);
+
+    const forgetTokenSpy = vi.spyOn(await import('../lib/token-storage'), 'forgetToken');
+
+    const { unmount } = renderHook(() => useAuth(), { wrapper });
+
+    expect(mockValidate).toHaveBeenCalledWith('ghp_stored');
+
+    unmount();
+
+    await act(async () => {
+      resolveStored({ ok: false, error: 'Invalid or expired token' });
+      await storedPending;
+    });
+
+    expect(forgetTokenSpy).not.toHaveBeenCalled();
+    expect(getToken()).toBe('ghp_stored');
+    expect(localStorage.getItem('github-dashboard.pat')).toBe('ghp_stored');
+
+    forgetTokenSpy.mockRestore();
+  });
 });
