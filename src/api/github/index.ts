@@ -15,3 +15,5 @@ export * from './issues-releases';
 export * from './workflows';
 export * from './security-branches';
 export * from './datasources';
+export * from './etag-cache';
+export * from './rate-limit';
