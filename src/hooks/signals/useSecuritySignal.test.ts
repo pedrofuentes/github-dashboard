@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GitHubApiError,
   GitHubErrorCode,
+  fetchCodeScanningAlerts,
   fetchDependabotAlerts,
-  fetchWithETag,
   type SecurityAlertSummary,
 } from '../../api/github';
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
@@ -17,36 +17,40 @@ vi.mock('../../api/github', async (importActual) => {
   return {
     ...actual,
     fetchDependabotAlerts: vi.fn(),
-    fetchWithETag: vi.fn(),
+    fetchCodeScanningAlerts: vi.fn(),
   };
 });
 
 const mockDependabot = vi.mocked(fetchDependabotAlerts);
-const mockCodeScanning = vi.mocked(fetchWithETag);
+const mockCodeScanning = vi.mocked(fetchCodeScanningAlerts);
 
 const REPO: Repo = { nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false };
 const REPOS: Repo[] = [REPO];
 
-/** Builds N distinct repos to exercise the per-repo concurrency limiter. */
+/** A fresh, equal-by-value repo (distinct array/object identity each call). */
+function repoLike(nameWithOwner: string): Repo {
+  const [owner, name] = nameWithOwner.split('/');
+  return { nameWithOwner, owner, name, isPrivate: false };
+}
+
+/** Builds N distinct repos to exercise the per-(repo,feed) concurrency limiter. */
 function manyRepos(count: number): Repo[] {
-  return Array.from({ length: count }, (_, i) => ({
-    nameWithOwner: `octo/r${i}`,
-    owner: 'octo',
-    name: `r${i}`,
-    isPrivate: false,
-  }));
+  return Array.from({ length: count }, (_, i) => repoLike(`octo/r${i}`));
 }
 
 /** Flush all pending microtasks via a macrotask boundary. */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-function dependabot(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
+/** Builds a severity summary (the shape both alert fetchers now return). */
+function summaryOf(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
   return { critical: 0, high: 0, medium: 0, low: 0, total: 0, ...partial };
 }
 
-/** Resolve the code-scanning fetch with raw alert objects (schema is internal). */
-function codeScanning(alerts: unknown[]): void {
-  mockCodeScanning.mockResolvedValue(alerts as never);
+const dependabot = summaryOf;
+
+/** Resolve the code-scanning fetch with a severity summary. */
+function codeScanning(partial: Partial<SecurityAlertSummary>): void {
+  mockCodeScanning.mockResolvedValue(summaryOf(partial));
 }
 
 function apiError(status: number, code: GitHubErrorCode): GitHubApiError {
@@ -76,9 +80,22 @@ describe('useSecuritySignal', () => {
     expect(mockDependabot).not.toHaveBeenCalled();
   });
 
+  it('returns a stable empty map across re-renders with no repos (no rebuild, no loop)', () => {
+    const { result, rerender } = renderHook(({ repos }) => useSecuritySignal(repos, 'ghp_token'), {
+      initialProps: { repos: [] as Repo[] },
+    });
+    const first = result.current;
+    expect(first.size).toBe(0);
+
+    // A fresh (but still empty) array must not churn the result's identity.
+    rerender({ repos: [] });
+    expect(result.current).toBe(first);
+    expect(mockDependabot).not.toHaveBeenCalled();
+  });
+
   it('exposes a loading slice for each repo before the fetches resolve', () => {
     mockDependabot.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
-    mockCodeScanning.mockReturnValue(new Promise(() => {}) as never);
+    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     expect(result.current.get('octo/a')).toEqual({ status: 'loading' });
@@ -86,11 +103,7 @@ describe('useSecuritySignal', () => {
 
   it('merges Dependabot and code-scanning alerts into counts, score and grade', async () => {
     mockDependabot.mockResolvedValue(dependabot({ critical: 1, medium: 2 }));
-    // high (level) + medium (warning) from code scanning
-    codeScanning([
-      { rule: { security_severity_level: 'high' } },
-      { rule: { severity: 'warning' } },
-    ]);
+    codeScanning({ high: 1, medium: 1 });
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
 
@@ -105,37 +118,9 @@ describe('useSecuritySignal', () => {
     });
   });
 
-  it('maps every code-scanning severity source (level + rule.severity, ignoring unknowns)', async () => {
-    mockDependabot.mockResolvedValue(dependabot({}));
-    codeScanning([
-      { rule: { security_severity_level: 'critical' } },
-      { rule: { security_severity_level: 'high' } },
-      { rule: { security_severity_level: 'medium' } },
-      { rule: { security_severity_level: 'low' } },
-      { rule: { severity: 'error' } }, // -> high
-      { rule: { severity: 'warning' } }, // -> medium
-      { rule: { severity: 'note' } }, // -> low
-      { rule: { severity: 'unknown' } }, // ignored
-      { rule: null }, // ignored
-      {}, // ignored
-    ]);
-
-    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
-
-    await waitFor(() => {
-      expect(result.current.get('octo/a')?.status).toBe('ready');
-    });
-    expect(result.current.get('octo/a')?.counts).toEqual({
-      critical: 1,
-      high: 2,
-      medium: 2,
-      low: 2,
-    });
-  });
-
   it('treats a 403 on one source as "no data from that source", using the other', async () => {
     mockDependabot.mockRejectedValue(apiError(403, GitHubErrorCode.ACCESS_DENIED));
-    codeScanning([{ rule: { security_severity_level: 'medium' } }]);
+    codeScanning({ medium: 1 });
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
 
@@ -152,7 +137,7 @@ describe('useSecuritySignal', () => {
 
   it('reports "no data available" (ready, no counts) when both feeds 403/404', async () => {
     mockDependabot.mockRejectedValue(apiError(403, GitHubErrorCode.ACCESS_DENIED));
-    mockCodeScanning.mockRejectedValue(apiError(404, GitHubErrorCode.NOT_FOUND) as never);
+    mockCodeScanning.mockRejectedValue(apiError(404, GitHubErrorCode.NOT_FOUND));
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
 
@@ -168,7 +153,7 @@ describe('useSecuritySignal', () => {
 
   it('surfaces an error slice when a feed fails for a non-access reason', async () => {
     mockDependabot.mockRejectedValue(new Error('network down'));
-    codeScanning([]);
+    codeScanning({});
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
 
@@ -180,7 +165,7 @@ describe('useSecuritySignal', () => {
 
   it('treats a rate-limit 403 as an error, not as missing access', async () => {
     mockDependabot.mockRejectedValue(apiError(403, GitHubErrorCode.RATE_LIMITED));
-    codeScanning([]);
+    codeScanning({});
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
 
@@ -190,20 +175,19 @@ describe('useSecuritySignal', () => {
   });
 
   it('ignores a stale resolution after the token changes (race guard)', async () => {
-    // The stale generation's BOTH feeds are deferred so its `Promise.all`
-    // (useSecuritySignal.ts) only settles when we release it — *after* the
-    // fresh generation has already won. Releasing just one half would leave the
-    // stale `Promise.all` pending and the `.then` generation guard unexercised.
+    // The stale generation's BOTH feeds are deferred so neither per-feed task
+    // settles until we release them — *after* the fresh generation has already
+    // won. Each task's generation guard must discard the late write.
     let resolveStaleDependabot: ((value: SecurityAlertSummary) => void) | undefined;
-    let resolveStaleCodeScanning: ((value: unknown[]) => void) | undefined;
+    let resolveStaleCodeScanning: ((value: SecurityAlertSummary) => void) | undefined;
     const staleDependabot = new Promise<SecurityAlertSummary>((resolve) => {
       resolveStaleDependabot = resolve;
     });
-    const staleCodeScanning = new Promise<unknown[]>((resolve) => {
+    const staleCodeScanning = new Promise<SecurityAlertSummary>((resolve) => {
       resolveStaleCodeScanning = resolve;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
-    mockCodeScanning.mockReturnValueOnce(staleCodeScanning as never);
+    mockCodeScanning.mockReturnValueOnce(staleCodeScanning);
 
     const { result, rerender } = renderHook(({ token }) => useSecuritySignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -212,7 +196,7 @@ describe('useSecuritySignal', () => {
 
     // Second token: both feeds resolve cleanly to a healthy 'B'.
     mockDependabot.mockResolvedValue(dependabot({ low: 1 }));
-    codeScanning([]);
+    codeScanning({});
     rerender({ token: 'ghp_two' });
 
     await waitFor(() => {
@@ -224,11 +208,10 @@ describe('useSecuritySignal', () => {
       });
     });
 
-    // The first token's slow feeds NOW both settle, so its `Promise.all`
-    // resolves and the `.then` actually runs — with a critical count that would
+    // The first token's slow feeds NOW settle, with a critical count that would
     // crash the grade to 'F'. The generation guard must discard this write.
     resolveStaleDependabot?.(dependabot({ critical: 9 }));
-    resolveStaleCodeScanning?.([]);
+    resolveStaleCodeScanning?.(summaryOf({}));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(result.current.get('octo/a')).toEqual({
@@ -245,7 +228,7 @@ describe('useSecuritySignal', () => {
       rejectStale = reject;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
-    mockCodeScanning.mockReturnValue(new Promise(() => {}) as never);
+    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
 
     const { result, rerender } = renderHook(({ token }) => useSecuritySignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -253,7 +236,7 @@ describe('useSecuritySignal', () => {
     expect(result.current.get('octo/a')?.status).toBe('loading');
 
     mockDependabot.mockResolvedValue(dependabot({}));
-    codeScanning([]);
+    codeScanning({});
     rerender({ token: 'ghp_two' });
 
     await waitFor(() => {
@@ -266,7 +249,58 @@ describe('useSecuritySignal', () => {
     expect(result.current.get('octo/a')?.status).toBe('ready');
   });
 
-  it('never exceeds SIGNAL_FETCH_CONCURRENCY in-flight requests (bounded fan-out)', async () => {
+  it('does not rebuild slices when re-rendered with an equal repo set (stable identity)', async () => {
+    mockDependabot.mockResolvedValue(dependabot({}));
+    codeScanning({});
+
+    const { result, rerender } = renderHook(({ repos }) => useSecuritySignal(repos, 'ghp_token'), {
+      initialProps: { repos: [repoLike('octo/a'), repoLike('octo/b')] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+      expect(result.current.get('octo/b')?.status).toBe('ready');
+    });
+
+    const settled = result.current;
+    const callsBefore = mockDependabot.mock.calls.length;
+
+    // A brand-new array describing the *same* repo set must not rebuild the map
+    // (a fresh loading Map here would re-render and, if the caller passes a new
+    // array each render, loop forever) and must not refetch.
+    rerender({ repos: [repoLike('octo/a'), repoLike('octo/b')] });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current).toBe(settled);
+    expect(mockDependabot.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('rebuilds slices when the repo set actually changes', async () => {
+    mockDependabot.mockResolvedValue(dependabot({}));
+    codeScanning({});
+
+    const { result, rerender } = renderHook(({ repos }) => useSecuritySignal(repos, 'ghp_token'), {
+      initialProps: { repos: [repoLike('octo/a')] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    const settled = result.current;
+
+    // A genuinely different repo set rebuilds: the new repo appears as loading.
+    rerender({ repos: [repoLike('octo/c')] });
+    expect(result.current).not.toBe(settled);
+    expect(result.current.get('octo/c')).toEqual({ status: 'loading' });
+
+    await waitFor(() => {
+      expect(result.current.get('octo/c')?.status).toBe('ready');
+    });
+  });
+
+  it('never exceeds SIGNAL_FETCH_CONCURRENCY for a single feed (bounded fan-out)', async () => {
     const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
     let inFlight = 0;
     let peak = 0;
@@ -281,16 +315,55 @@ describe('useSecuritySignal', () => {
         });
       });
     });
-    codeScanning([]);
+    codeScanning({});
 
     const { unmount } = renderHook(() => useSecuritySignal(repos, 'ghp_token'));
     await act(async () => {
       await flush();
     });
 
-    // The limiter caps cold-start fan-out; without it every repo fetches at once.
     expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
-    expect(mockDependabot).toHaveBeenCalledTimes(SIGNAL_FETCH_CONCURRENCY);
+
+    await act(async () => {
+      while (release.length > 0) {
+        release.shift()?.();
+        await flush();
+        expect(inFlight).toBeLessThanOrEqual(SIGNAL_FETCH_CONCURRENCY);
+      }
+    });
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    unmount();
+  });
+
+  it('caps TOTAL in-flight requests across BOTH feeds at the concurrency limit', async () => {
+    // Each repo issues two feed requests. If the limiter mapped per-repo while
+    // each repo fired both feeds via Promise.all, the real ceiling would be
+    // 2×cap. Counting every (repo,feed) request through the limiter keeps the
+    // true in-flight peak at exactly the documented cap.
+    const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
+    let inFlight = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    const track = (): Promise<SecurityAlertSummary> => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise<SecurityAlertSummary>((resolve) => {
+        release.push(() => {
+          inFlight -= 1;
+          resolve(summaryOf({}));
+        });
+      });
+    };
+    mockDependabot.mockImplementation(track);
+    mockCodeScanning.mockImplementation(track);
+
+    const { unmount } = renderHook(() => useSecuritySignal(repos, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    // Without honest per-feed accounting this peaks at 2×SIGNAL_FETCH_CONCURRENCY.
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
 
     await act(async () => {
       while (release.length > 0) {
@@ -312,7 +385,7 @@ describe('useSecuritySignal', () => {
           rejectFetch = reject;
         }),
     );
-    mockCodeScanning.mockReturnValue(new Promise(() => {}) as never);
+    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
 
     const { unmount, result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     const captured = mockDependabot.mock.calls[0]?.[3] as AbortSignal | undefined;
@@ -336,7 +409,7 @@ describe('useSecuritySignal', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const failure = new Error('boom');
     mockDependabot.mockRejectedValue(failure);
-    codeScanning([]);
+    codeScanning({});
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
@@ -351,7 +424,7 @@ describe('useSecuritySignal', () => {
   it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockDependabot.mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
-    codeScanning([]);
+    codeScanning({});
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     await act(async () => {
