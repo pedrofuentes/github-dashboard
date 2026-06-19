@@ -64,6 +64,14 @@ describe('FleetGrid structure & accessibility', () => {
     render(<FleetGrid repos={REPOS} columns={columns} />);
     expect(screen.getByRole('columnheader', { name: /^Plain$/i })).not.toHaveAttribute('aria-sort');
   });
+
+  it('groups the name filter in a labelled search landmark', () => {
+    render(<FleetGrid repos={REPOS} />);
+
+    const search = screen.getByRole('search');
+    expect(search).toHaveAccessibleName(/filter repositories/i);
+    expect(within(search).getByRole('searchbox')).toBeInTheDocument();
+  });
 });
 
 describe('FleetGrid sorting', () => {
