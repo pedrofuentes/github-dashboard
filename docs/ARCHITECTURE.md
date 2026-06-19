@@ -258,10 +258,15 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
 - Vite **`base: '/github-dashboard/'`** so assets resolve under the project path.
 - **SPA fallback:** copy `index.html` → `404.html` so deep links resolve
   client-side.
-- Pages is **enabled** with a **custom domain `pedrofuent.es`**; live URL
-  **`http://pedrofuent.es/github-dashboard/`** (HTTPS cert approved;
-  `https_enforced` currently `false`). Pipeline authoring is pre-authorized;
-  production go-live is the cofounder's toggle (already flipped).
+- Pages is **enabled** on the **custom domain `pedrofuent.es`** with
+  **`https_enforced: true`** (HTTPS certificate approved); live URL
+  **`https://pedrofuent.es/github-dashboard/`**. The PAT-entry app MUST be
+  served **only over HTTPS** so the page and its strict CSP cannot be tampered
+  with in transit — otherwise an on-path attacker could rewrite the HTML/JS or
+  CSP and exfiltrate the pasted read-only token (ADR-004; `PRD.md` risk R5).
+- Pipeline authoring is pre-authorized; the deploy **workflow is authored in
+  issue #7** and the **live URL is verified in the release / DoD phase (#25)** —
+  production go-live is **not "done"** until that secure deploy is verified.
 
 ## 13. Code patterns
 
