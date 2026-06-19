@@ -240,6 +240,13 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
   `innerHTML`.
 - **Verified** by an automated **Playwright network-interception test** asserting
   **0** requests to non-GitHub origins (`ROADMAP.md` M5, a DoD item).
+- **Hosting-layer follow-ups (GitHub Pages serves no custom response headers):**
+  a `<meta>` CSP ignores `frame-ancestors`, and an `X-Frame-Options: DENY` header
+  cannot be set from a static Pages site — so header-delivered clickjacking
+  defence, and path-scoping `connect-src` to `github.com/login/*` (vs. the
+  current origin-wide `https://github.com`), are deferred to a future
+  header-capable host or reverse proxy rather than weakening the shipped policy
+  (#81, #36, #44).
 
 ## 11. State management  — ADR-005
 
@@ -318,6 +325,14 @@ export async function fetchWithETag<T>(url: string, schema: ZodType<T>, token: s
 }
 ```
 
+> The shipped cache (`src/api/github/etag-cache.ts`) extends this sketch: it is a
+> **bounded LRU** (oldest-entry eviction past a size cap) rather than the
+> unbounded `Map` above, captures a rate-limit snapshot per entry, and defers
+> non-essential conditional fetches while the budget is critically low or a
+> secondary-rate-limit pause is in effect. List endpoints (security alerts, the
+> review-requested search) follow `Link: rel="next"` pagination so results past
+> the first 100 aren't dropped (#47, #62, #63).
+
 **Coordinators behind a `useRef` hook** (ADR-005) — instantiate once, subscribe,
 stop on hidden tab:
 
@@ -350,8 +365,10 @@ export function forgetToken() {
 ```
 
 **Accessibility:** every status is conveyed by icon **and** text (`sr-only`),
-never color alone; the grid follows the ARIA Data Grid pattern; sortable headers
-expose `aria-sort` (`PRD.md` §6).
+never color alone; the fleet grid ships as a **semantic `<table>`** with
+row-scoped headers whose sortable columns are header `<button>`s exposing
+`aria-sort` — a valid WCAG 2.1 AA pattern, not the APG `role="grid"`
+composite-widget pattern (`PRD.md` §6).
 
 ## 14. Key files
 
