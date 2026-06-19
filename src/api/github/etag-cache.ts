@@ -28,6 +28,7 @@ import {
   parseRetryAfter,
   type RateLimitInfo,
 } from './core';
+import { rateLimitStore } from './rate-limit-store';
 
 /** A single cache entry: the validated data plus the ETag that produced it. */
 export interface ETagCacheEntry<T = unknown> {
@@ -42,20 +43,55 @@ export interface ETagCacheEntry<T = unknown> {
 }
 
 /**
+ * Default LRU cap for the in-memory ETag cache.
+ *
+ * Comfortably exceeds a large fleet's working set (dozens of repos × a handful
+ * of endpoints, plus pagination) so steady-state polling never evicts useful
+ * entries, while still bounding worst-case memory for a churning, long-lived tab.
+ */
+export const DEFAULT_ETAG_CACHE_MAX_SIZE = 500;
+
+/**
  * In-memory ETag cache keyed by absolute request URL.
  *
  * Deliberately process-local: nothing is persisted, so no validated GitHub data
  * ever lands in `localStorage`/`sessionStorage`.
+ *
+ * Bounded by a least-recently-used policy so a long-lived session polling a
+ * large, churning fleet cannot grow the cache without limit: `set` evicts the
+ * oldest entries past {@link maxSize}, and both `get` and `set` mark an entry as
+ * most-recently-used (a `Map` preserves insertion order, so re-inserting moves a
+ * key to the "newest" end and the first key is always the LRU victim).
  */
 export class ETagCache {
   private readonly store = new Map<string, ETagCacheEntry>();
+  /** Maximum number of entries retained before LRU eviction kicks in. */
+  readonly maxSize: number;
+
+  constructor(maxSize: number = DEFAULT_ETAG_CACHE_MAX_SIZE) {
+    this.maxSize = Math.max(1, Math.floor(maxSize));
+  }
 
   get<T = unknown>(url: string): ETagCacheEntry<T> | undefined {
-    return this.store.get(url) as ETagCacheEntry<T> | undefined;
+    const entry = this.store.get(url);
+    if (entry === undefined) return undefined;
+    // LRU touch: re-insert so this key becomes most-recently-used.
+    this.store.delete(url);
+    this.store.set(url, entry);
+    return entry as ETagCacheEntry<T>;
   }
 
   set<T = unknown>(url: string, entry: ETagCacheEntry<T>): void {
+    // Delete first so a re-set moves the key to the most-recently-used position
+    // (and overwrites) rather than updating in place at its old recency.
+    this.store.delete(url);
     this.store.set(url, entry);
+    // Evict least-recently-used entries until within the cap.
+    while (this.store.size > this.maxSize) {
+      const oldest = this.store.keys().next().value;
+      if (oldest === undefined) break;
+      this.store.delete(oldest);
+    }
   }
 
   has(url: string): boolean {
@@ -88,6 +124,13 @@ export interface FetchWithETagOptions {
   cache?: ETagCache;
   /** Optional signal to cancel the request (aborts the underlying fetch). */
   signal?: AbortSignal;
+  /**
+   * Whether this request is essential (default `true`). Non-essential requests
+   * (`false`) are deferred — they reject with a `RATE_LIMITED` error before
+   * touching the network — while {@link rateLimitStore} reports a paused budget,
+   * so background polls back off when the primary limit is critically low.
+   */
+  essential?: boolean;
 }
 
 /** Result of a conditional fetch, including cache-hit and budget metadata. */
@@ -208,11 +251,17 @@ function throwForStatus(
  * instead of calling `fetchWithRetry` + `schema.parse` directly — signatures
  * are unchanged and every response is still Zod-validated.
  *
+ * Each non-304 response's `x-ratelimit-*` budget (and any `Retry-After`) is
+ * recorded into {@link rateLimitStore}. A non-essential request
+ * (`options.essential === false`) is deferred — rejected before any network I/O
+ * — while that store reports a paused budget, so background polling backs off
+ * when the primary limit is critically low.
+ *
  * @param url - Absolute GitHub API URL (must be on the GitHub API origin)
  * @param schema - Zod schema validating the `200` response body
- * @param options - Token, context label, and/or cache instance
+ * @param options - Token, context label, cache, signal, and/or `essential` flag
  * @returns The validated data and `{ notModified, status, rateLimit }`
- * @throws {GitHubApiError} on API errors (401/403/404/429/5xx)
+ * @throws {GitHubApiError} on API errors (401/403/404/429/5xx) or a deferral
  * @throws {Error} when the URL is invalid or off-origin
  */
 export async function fetchWithETagResult<T>(
@@ -221,6 +270,20 @@ export async function fetchWithETagResult<T>(
   options: FetchWithETagOptions = {},
 ): Promise<ETagFetchResult<T>> {
   assertGitHubApiOrigin(url);
+
+  // Defensive backoff: when the primary budget is critically low (or a
+  // secondary-limit Retry-After is in effect), defer non-essential polls until
+  // the window resets instead of hammering the API. Essential requests proceed.
+  if (options.essential === false && rateLimitStore.isPaused()) {
+    const waitSec = Math.ceil(rateLimitStore.pauseRemainingMs() / 1000);
+    throw new GitHubApiError(
+      `Deferred non-essential request: GitHub rate-limit budget is low (retry in ~${waitSec}s)`,
+      429,
+      rateLimitStore.getState().info,
+      waitSec > 0 ? waitSec : undefined,
+      GitHubErrorCode.RATE_LIMITED,
+    );
+  }
 
   const cache = options.cache ?? globalETagCache;
   const cached = cache.get<T>(url);
@@ -258,9 +321,14 @@ export async function fetchWithETagResult<T>(
   }
 
   const rateLimit = parseRateLimitHeaders(response.headers);
+  const retryAfterSeconds = parseRetryAfter(response.headers);
+
+  // Surface the freshly observed budget (and any secondary-limit Retry-After)
+  // to the live store so hooks/UI and the deferral guard above stay current.
+  rateLimitStore.record(rateLimit, { retryAfterSeconds });
 
   if (!response.ok) {
-    throwForStatus(response.status, rateLimit, parseRetryAfter(response.headers));
+    throwForStatus(response.status, rateLimit, retryAfterSeconds);
   }
 
   const data = schema.parse(await response.json());

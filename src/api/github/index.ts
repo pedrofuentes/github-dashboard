@@ -17,3 +17,4 @@ export * from './security-branches';
 export * from './datasources';
 export * from './etag-cache';
 export * from './rate-limit';
+export * from './rate-limit-store';

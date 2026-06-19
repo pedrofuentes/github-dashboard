@@ -1,5 +1,5 @@
-import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CiSignalSlice,
@@ -55,13 +55,37 @@ const signalHooks = [
   useStaleSignal,
 ];
 
+let hiddenValue = false;
+
+function defineHidden(): void {
+  Object.defineProperty(document, 'hidden', {
+    configurable: true,
+    get: () => hiddenValue,
+  });
+}
+
+/** Simulate a Page Visibility transition and notify listeners. */
+function setHidden(value: boolean): void {
+  hiddenValue = value;
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
 beforeEach(() => {
+  hiddenValue = false;
+  defineHidden();
   vi.mocked(useCiSignal).mockReturnValue(new Map([[REPO.nameWithOwner, ci]]));
   vi.mocked(useSecuritySignal).mockReturnValue(new Map([[REPO.nameWithOwner, security]]));
   vi.mocked(useReviewsSignal).mockReturnValue(new Map([[REPO.nameWithOwner, reviews]]));
   vi.mocked(usePullRequestsSignal).mockReturnValue(new Map([[REPO.nameWithOwner, pullRequests]]));
   vi.mocked(useIssuesSignal).mockReturnValue(new Map([[REPO.nameWithOwner, issues]]));
   vi.mocked(useStaleSignal).mockReturnValue(new Map([[REPO.nameWithOwner, stale]]));
+});
+
+afterEach(() => {
+  hiddenValue = false;
+  vi.clearAllMocks();
 });
 
 describe('useRepoSignals', () => {
@@ -106,5 +130,20 @@ describe('useRepoSignals', () => {
     rerender();
 
     expect(result.current.getRowData).toBe(first);
+  });
+
+  it('revalidates the signal hooks when the tab returns to visible', () => {
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    const before = vi.mocked(useCiSignal).mock.calls.length;
+
+    // Backgrounding the tab must not revalidate…
+    setHidden(true);
+    expect(vi.mocked(useCiSignal).mock.calls.length).toBe(before);
+
+    // …but foregrounding it triggers a fresh (conditional) revalidation pass
+    // that re-invokes every signal hook with the same repos.
+    setHidden(false);
+    expect(vi.mocked(useCiSignal).mock.calls.length).toBeGreaterThan(before);
+    expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(REPOS, 'ghp_token');
   });
 });
