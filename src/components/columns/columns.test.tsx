@@ -76,25 +76,22 @@ describe('repo column', () => {
 });
 
 describe('stub signal columns', () => {
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo');
+  // A column is a stub until its signal feature (#12-18) ships a sort model;
+  // filtering on `!sortable` keeps this suite correct as each real column lands.
+  // `ci`, `reviews` & `pullRequests` (from main) and `stale` (this branch, #17)
+  // have shipped sortable descriptors — each covered by its own *Column/*Cell
+  // test file — so the filter excludes them and only the genuine stubs remain.
+  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && !c.sortable);
 
-  it('cover CI, Security, Reviews, PRs, Issues, and Stale', () => {
-    expect(stubs.map((c) => c.id)).toEqual([
-      'ci',
-      'security',
-      'reviews',
-      'pullRequests',
-      'issues',
-      'stale',
-    ]);
+  it('cover the signals still awaiting their feature (ci, reviews, PRs & stale have shipped)', () => {
+    expect(stubs.map((c) => c.id)).toEqual(['security', 'issues']);
   });
 
-  it('stay non-sortable until their signal feature lands (sorting is contributed by features #12-18)', () => {
-    // `stale` (#17) now contributes sorting; its descriptor is covered in
-    // StaleColumn.test.tsx. Every still-pending stub stays non-sortable.
-    const pending = stubs.filter((column) => !column.sortable);
-    expect(pending.length).toBeGreaterThan(0);
-    for (const column of pending) {
+  it('stay non-sortable until their signal feature lands (sorting lands per #12-18)', () => {
+    // Each remaining stub gains `sortable` + `getSortValue` only once its own
+    // signal feature ships; until then it stays non-sortable with no sort value.
+    for (const column of stubs) {
+      expect(column.sortable).toBeFalsy();
       expect(column.getSortValue).toBeUndefined();
     }
   });

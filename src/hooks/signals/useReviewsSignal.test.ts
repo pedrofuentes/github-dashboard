@@ -1,27 +1,261 @@
-import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { fetchWithETag } from '../../api/github';
 import type { Repo } from '../../types/fleet';
-import { useReviewsSignal } from './useReviewsSignal';
+import {
+  REVIEW_SCORE_WEIGHT,
+  distributeReviewCounts,
+  repoFullNameFromUrl,
+  reviewRequestedSearchUrl,
+  useReviewsSignal,
+} from './useReviewsSignal';
 
-const REPOS: Repo[] = [{ nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false }];
+vi.mock('../../api/github', () => ({
+  GITHUB_API_BASE: 'https://api.github.com',
+  fetchWithETag: vi.fn(),
+}));
 
-describe('useReviewsSignal (stub)', () => {
-  it('returns an empty map until issue #14 implements the reviews signal', () => {
-    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
-    expect(result.current).toBeInstanceOf(Map);
-    expect(result.current.size).toBe(0);
+const mockFetchWithETag = vi.mocked(fetchWithETag);
+
+/** Minimal shape the hook reads back from the Search API response. */
+interface SearchPayload {
+  total_count: number;
+  items: { repository_url: string }[];
+}
+
+function search(...fullNames: string[]): SearchPayload {
+  return {
+    total_count: fullNames.length,
+    items: fullNames.map((name) => ({
+      repository_url: `https://api.github.com/repos/${name}`,
+    })),
+  };
+}
+
+function resolveOnce(payload: SearchPayload): void {
+  mockFetchWithETag.mockResolvedValueOnce(payload as never);
+}
+
+function repo(nameWithOwner: string): Repo {
+  const slash = nameWithOwner.indexOf('/');
+  return {
+    nameWithOwner,
+    owner: nameWithOwner.slice(0, slash),
+    name: nameWithOwner.slice(slash + 1),
+    isPrivate: false,
+  };
+}
+
+const REPOS: Repo[] = [repo('octo/a'), repo('octo/b'), repo('octo/c')];
+
+beforeEach(() => {
+  mockFetchWithETag.mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('repoFullNameFromUrl', () => {
+  it('extracts owner/repo from a repository_url', () => {
+    expect(repoFullNameFromUrl('https://api.github.com/repos/octo/hello-world')).toBe(
+      'octo/hello-world',
+    );
   });
 
-  it('keeps a stable map identity across re-renders', () => {
-    const { result, rerender } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
-    const first = result.current;
-    rerender();
-    expect(result.current).toBe(first);
+  it('returns null when the marker is absent', () => {
+    expect(repoFullNameFromUrl('https://api.github.com/octo/hello')).toBeNull();
   });
 
-  it('returns an empty map without a token (anonymous / SSR safe)', () => {
+  it('returns null when the full name is empty', () => {
+    expect(repoFullNameFromUrl('https://api.github.com/repos/')).toBeNull();
+  });
+});
+
+describe('reviewRequestedSearchUrl', () => {
+  it('targets the search/issues endpoint with the review-requested query', () => {
+    const url = reviewRequestedSearchUrl();
+    expect(url.startsWith('https://api.github.com/search/issues?q=')).toBe(true);
+    const query = new URL(url).searchParams.get('q');
+    expect(query).toBe('is:open is:pr review-requested:@me');
+  });
+
+  it('requests a page large enough to cover the fleet in one call', () => {
+    const perPage = new URL(reviewRequestedSearchUrl()).searchParams.get('per_page');
+    expect(Number(perPage)).toBeGreaterThanOrEqual(100);
+  });
+});
+
+describe('distributeReviewCounts', () => {
+  it('counts requested reviews per repo and zero-fills the rest', () => {
+    const result = distributeReviewCounts(
+      ['octo/a', 'octo/b', 'octo/c'],
+      [
+        { repository_url: 'https://api.github.com/repos/octo/a' },
+        { repository_url: 'https://api.github.com/repos/octo/a' },
+        { repository_url: 'https://api.github.com/repos/octo/c' },
+      ],
+    );
+
+    expect(result.get('octo/a')).toEqual({
+      status: 'ready',
+      requestedCount: 2,
+      score: 2 * REVIEW_SCORE_WEIGHT,
+    });
+    expect(result.get('octo/b')).toEqual({ status: 'ready', requestedCount: 0, score: 0 });
+    expect(result.get('octo/c')).toEqual({
+      status: 'ready',
+      requestedCount: 1,
+      score: REVIEW_SCORE_WEIGHT,
+    });
+  });
+
+  it('ignores requested reviews for repos outside the fleet', () => {
+    const result = distributeReviewCounts(
+      ['octo/a'],
+      [
+        { repository_url: 'https://api.github.com/repos/other/zzz' },
+        { repository_url: 'https://api.github.com/repos/octo/a' },
+      ],
+    );
+
+    expect(result.size).toBe(1);
+    expect(result.get('octo/a')?.requestedCount).toBe(1);
+  });
+
+  it('skips items whose repository_url cannot be parsed', () => {
+    const result = distributeReviewCounts(
+      ['octo/a'],
+      [
+        { repository_url: 'not-a-repos-url' },
+        { repository_url: 'https://api.github.com/repos/octo/a' },
+      ],
+    );
+
+    expect(result.get('octo/a')?.requestedCount).toBe(1);
+  });
+});
+
+describe('useReviewsSignal', () => {
+  it('returns an empty map and does not fetch without a token', async () => {
     const { result } = renderHook(() => useReviewsSignal(REPOS, null));
+
+    await waitFor(() => {
+      expect(result.current).toBeInstanceOf(Map);
+    });
     expect(result.current.size).toBe(0);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty map and does not fetch when there are no repos', async () => {
+    const { result } = renderHook(() => useReviewsSignal([], 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current).toBeInstanceOf(Map);
+    });
+    expect(result.current.size).toBe(0);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
+  });
+
+  it('makes a single cross-repo Search call for the whole fleet', async () => {
+    resolveOnce(search());
+
+    renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    });
+    const [url, , options] = mockFetchWithETag.mock.calls[0];
+    expect(url).toBe(reviewRequestedSearchUrl());
+    expect(options).toMatchObject({ token: 'ghp_token' });
+  });
+
+  it('reports loading first, then ready slices with distributed counts', async () => {
+    resolveOnce(search('octo/a', 'octo/a', 'octo/c'));
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    expect(result.current.get('octo/a')?.status).toBe('loading');
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    expect(result.current.get('octo/a')).toEqual({
+      status: 'ready',
+      requestedCount: 2,
+      score: 2 * REVIEW_SCORE_WEIGHT,
+    });
+    expect(result.current.get('octo/b')).toEqual({ status: 'ready', requestedCount: 0, score: 0 });
+    expect(result.current.get('octo/c')?.requestedCount).toBe(1);
+  });
+
+  it('marks every repo as error when the Search call fails', async () => {
+    mockFetchWithETag.mockRejectedValueOnce(new Error('rate limited'));
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('error');
+    });
+    for (const r of REPOS) {
+      expect(result.current.get(r.nameWithOwner)?.status).toBe('error');
+    }
+  });
+
+  it('ignores a stale response after the token changes mid-flight', async () => {
+    let resolveStale: ((payload: SearchPayload) => void) | undefined;
+    const stalePromise = new Promise<SearchPayload>((resolve) => {
+      resolveStale = resolve;
+    });
+    mockFetchWithETag.mockReturnValueOnce(stalePromise as never);
+    resolveOnce(search('octo/b'));
+
+    const { result, rerender } = renderHook(({ token }) => useReviewsSignal(REPOS, token), {
+      initialProps: { token: 'ghp_one' },
+    });
+
+    rerender({ token: 'ghp_two' });
+
+    await waitFor(() => {
+      expect(result.current.get('octo/b')?.requestedCount).toBe(1);
+    });
+
+    act(() => {
+      resolveStale?.(search('octo/a', 'octo/a', 'octo/a'));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // The superseded token-one response must not overwrite token-two's data.
+    expect(result.current.get('octo/a')?.requestedCount).toBe(0);
+    expect(result.current.get('octo/b')?.requestedCount).toBe(1);
+  });
+
+  it('ignores a stale rejection after the token changes mid-flight', async () => {
+    let rejectStale: ((reason: unknown) => void) | undefined;
+    const stalePromise = new Promise<SearchPayload>((_, reject) => {
+      rejectStale = reject;
+    });
+    mockFetchWithETag.mockReturnValueOnce(stalePromise as never);
+    resolveOnce(search('octo/b'));
+
+    const { result, rerender } = renderHook(({ token }) => useReviewsSignal(REPOS, token), {
+      initialProps: { token: 'ghp_one' },
+    });
+
+    rerender({ token: 'ghp_two' });
+
+    await waitFor(() => {
+      expect(result.current.get('octo/b')?.requestedCount).toBe(1);
+    });
+
+    act(() => {
+      rejectStale?.(new Error('stale failure'));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // The superseded token-one rejection must not flip token-two's ready data to error.
+    expect(result.current.get('octo/b')?.status).toBe('ready');
+    expect(result.current.get('octo/b')?.requestedCount).toBe(1);
   });
 });

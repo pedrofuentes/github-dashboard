@@ -1,14 +1,17 @@
 import type { FleetColumn } from '../../types/fleet';
-import { StubCell } from './StubCell';
+import { ReviewsCell } from './ReviewsCell';
 
 /**
- * Reviews signal — STUB. Replaced by issue #14 (review requests assigned to the
- * viewer). Populate `render` from `data.reviews` and add sorting on
- * `data.reviews.score`. See `columns/index.ts`.
+ * Reviews column (issue #15) — open PRs awaiting the viewer's review. Sorts by
+ * the slice `score` (weighted count), descending so the repos demanding your
+ * attention surface first; repos with no slice or score sort last (`-1`).
  */
 export const reviewsColumn: FleetColumn = {
   id: 'reviews',
   header: 'Reviews',
   align: 'center',
-  render: () => <StubCell srLabel="Review queue not available yet" />,
+  sortable: true,
+  defaultSortDirection: 'desc',
+  getSortValue: (_, data) => data.reviews?.score ?? -1,
+  render: (_, data) => <ReviewsCell slice={data.reviews} />,
 };
