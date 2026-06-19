@@ -80,7 +80,14 @@ describe('fetchCodeScanningAlerts', () => {
     const summary = await fetchCodeScanningAlerts('octo', 'a', 'tok');
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(summary).toEqual({ critical: 1, high: 2, medium: 0, low: 0, total: 3 });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 2,
+      medium: 0,
+      low: 0,
+      total: 3,
+      truncated: false,
+    });
   });
 
   it('follows Link rel="next" and counts alerts across every page (>100)', async () => {
@@ -99,6 +106,8 @@ describe('fetchCodeScanningAlerts', () => {
     expect(summary.high).toBe(100);
     expect(summary.critical).toBe(30);
     expect(summary.total).toBe(130);
+    // The feed was exhausted within the cap, so the tally is complete (#77).
+    expect(summary.truncated).toBe(false);
   });
 
   it('buckets every severity source (level + rule.severity), ignoring unknowns', async () => {
@@ -119,7 +128,7 @@ describe('fetchCodeScanningAlerts', () => {
 
     const summary = await fetchCodeScanningAlerts('octo', 'a', 'tok');
 
-    expect(summary).toEqual({ critical: 1, high: 2, medium: 2, low: 2, total: 7 });
+    expect(summary).toEqual({ critical: 1, high: 2, medium: 2, low: 2, total: 7, truncated: false });
   });
 
   it('stops after a single request when there is no Link next header', async () => {
@@ -166,6 +175,9 @@ describe('fetchCodeScanningAlerts', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(MAX_ALERT_PAGES);
     expect(summary.low).toBe(MAX_ALERT_PAGES);
+    // The same-origin `Link` chain was still advertising another page when the
+    // cap stopped the loop, so the tally is partial, not complete (issue #77).
+    expect(summary.truncated).toBe(true);
   });
 
   it('throws an access-denied GitHubApiError on 403 (surfaces as "no access")', async () => {
@@ -206,7 +218,7 @@ describe('fetchDependabotAlerts', () => {
     const summary = await fetchDependabotAlerts('octo', 'a', 'tok');
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(summary).toEqual({ critical: 1, high: 0, medium: 1, low: 0, total: 2 });
+    expect(summary).toEqual({ critical: 1, high: 0, medium: 1, low: 0, total: 2, truncated: false });
   });
 
   it('follows Link rel="next" and counts alerts across every page (>100)', async () => {
@@ -238,5 +250,6 @@ describe('fetchDependabotAlerts', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(MAX_ALERT_PAGES);
     expect(summary.total).toBe(MAX_ALERT_PAGES);
+    expect(summary.truncated).toBe(true);
   });
 });

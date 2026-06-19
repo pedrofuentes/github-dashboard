@@ -107,4 +107,42 @@ describe('SecurityCell', () => {
 
     expect(screen.getByText('C1')).toHaveAttribute('aria-hidden', 'true');
   });
+
+  it('flags a truncated (partial) count with text + icon + an accessible note (#77)', () => {
+    render(
+      <SecurityCell
+        slice={ready({
+          score: 221,
+          grade: 'F',
+          counts: { critical: 2, high: 1, medium: 0, low: 0 },
+          truncated: true,
+        })}
+      />,
+    );
+
+    // The accessible label must say the count is partial / a lower bound — not
+    // colour alone — so a screen-reader user learns the grade is understated.
+    expect(
+      screen.getByLabelText(/at least 2 critical, 1 high.*partial/i),
+    ).toBeInTheDocument();
+    // A visible, decorative "partial" marker accompanies it (text, not colour).
+    const marker = screen.getByText('partial');
+    expect(marker).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('shows no partial marker when the count is complete (#77)', () => {
+    render(
+      <SecurityCell
+        slice={ready({
+          score: 221,
+          grade: 'F',
+          counts: { critical: 2, high: 1, medium: 0, low: 0 },
+          truncated: false,
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/partial/i)).toBeNull();
+    expect(screen.getByText('Security grade F: 2 critical, 1 high')).toBeInTheDocument();
+  });
 });

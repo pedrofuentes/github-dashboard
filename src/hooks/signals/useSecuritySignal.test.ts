@@ -43,7 +43,7 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 
 /** Builds a severity summary (the shape both alert fetchers now return). */
 function summaryOf(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
-  return { critical: 0, high: 0, medium: 0, low: 0, total: 0, ...partial };
+  return { critical: 0, high: 0, medium: 0, low: 0, total: 0, truncated: false, ...partial };
 }
 
 const dependabot = summaryOf;
@@ -116,6 +116,32 @@ describe('useSecuritySignal', () => {
       score: 1 * 100 + 1 * 20 + 3 * 5 + 0,
       grade: 'F',
     });
+  });
+
+  it('flags the slice as truncated when a contributing feed hit the page cap (#77)', async () => {
+    mockDependabot.mockResolvedValue(dependabot({ critical: 1, truncated: true }));
+    codeScanning({ high: 1 });
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    // A partial feed must surface up to the slice so the cell can warn the
+    // grade is a lower bound — losing this drops the truncation indicator.
+    expect(result.current.get('octo/a')?.truncated).toBe(true);
+  });
+
+  it('leaves the slice un-truncated when every feed was fully counted (#77)', async () => {
+    mockDependabot.mockResolvedValue(dependabot({ critical: 1, truncated: false }));
+    codeScanning({ high: 1, truncated: false });
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    expect(result.current.get('octo/a')?.truncated).toBeUndefined();
   });
 
   it('treats a 403 on one source as "no data from that source", using the other', async () => {
