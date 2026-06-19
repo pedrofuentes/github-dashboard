@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
+import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { isAbortError } from '../../lib/abort';
 import type { Repo, StaleSignalSlice } from '../../types/fleet';
 
 /**
@@ -109,6 +111,10 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts every
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     const cutoffDate = staleCutoffDate(new Date());
 
     setSlices(
@@ -120,12 +126,16 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
       ),
     );
 
-    for (const repo of currentRepos) {
-      fetchWithETag(staleSearchUrl(repo.owner, repo.name, cutoffDate), StaleCountSchema, {
-        token,
-        context: 'useStaleSignal',
-      })
-        .then((data) => {
+    void mapWithConcurrency(
+      currentRepos,
+      SIGNAL_FETCH_CONCURRENCY,
+      async (repo, signal) => {
+        try {
+          const data = await fetchWithETag(
+            staleSearchUrl(repo.owner, repo.name, cutoffDate),
+            StaleCountSchema,
+            { token, context: 'useStaleSignal', signal },
+          );
           if (generation !== generationRef.current) {
             return;
           }
@@ -134,8 +144,13 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
             next.set(repo.nameWithOwner, readyStaleSlice(data.total_count));
             return next;
           });
-        })
-        .catch(() => {
+        } catch (err) {
+          // A cancelled request is not a failure: stay quiet (no log, no error).
+          if (signal?.aborted || isAbortError(err)) return;
+          console.error(
+            `useStaleSignal: failed to fetch stale count for ${repo.nameWithOwner}`,
+            err,
+          );
           if (generation !== generationRef.current) {
             return;
           }
@@ -144,8 +159,12 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
             next.set(repo.nameWithOwner, { status: 'error' });
             return next;
           });
-        });
-    }
+        }
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [repoSignature, token]);
 
   return slices;

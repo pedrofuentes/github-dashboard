@@ -69,6 +69,7 @@ export interface RepoStats {
  * @param owner - Repository owner (user or organization)
  * @param repo - Repository name
  * @param token - Optional GitHub personal access token for authenticated requests
+ * @param signal - Optional signal to cancel the in-flight request
  * @returns Repository statistics
  * @throws {GitHubApiError} on API errors (401, 403, 404, rate limit, etc.)
  */
@@ -76,11 +77,12 @@ export async function fetchRepoStats(
   owner: string,
   repo: string,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<RepoStats> {
   const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers }, 'fetchRepoStats');
+  const response = await fetchWithRetry(url, { headers, signal }, 'fetchRepoStats');
   const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
   if (!response.ok) {

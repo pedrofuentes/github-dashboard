@@ -62,6 +62,7 @@ export async function fetchOpenPullRequestCount(
  * @param repo - Repository name
  * @param token - GitHub personal access token
  * @param state - PR state filter: "open", "closed", or "all"
+ * @param signal - Optional signal to cancel the in-flight request
  * @returns Number of pull requests matching the filter
  * @throws {GitHubApiError} on API errors
  */
@@ -70,13 +71,14 @@ export async function fetchPullRequestCount(
   repo: string,
   token?: string,
   state: 'open' | 'closed' | 'all' = 'open',
+  signal?: AbortSignal,
 ): Promise<number> {
   const stateQualifier = state === 'all' ? '' : ` is:${state}`;
   const query = `repo:${owner}/${repo} type:pr${stateQualifier}`;
   const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers }, 'fetchPullRequestCount');
+  const response = await fetchWithRetry(url, { headers, signal }, 'fetchPullRequestCount');
   const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
   if (!response.ok) {

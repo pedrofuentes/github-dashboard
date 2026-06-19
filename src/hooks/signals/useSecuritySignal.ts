@@ -21,6 +21,8 @@ import {
   fetchDependabotAlerts,
   fetchWithETag,
 } from '../../api/github';
+import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
+import { isAbortError } from '../../lib/abort';
 import type { Repo, SecuritySignalSlice } from '../../types/fleet';
 import { computeGrade, computeSecurityScore, type SecurityCounts } from './securityGrade';
 
@@ -62,9 +64,13 @@ function isNoAccessError(error: unknown): boolean {
   );
 }
 
-async function loadDependabot(repo: Repo, token: string): Promise<FeedResult> {
+async function loadDependabot(
+  repo: Repo,
+  token: string,
+  signal?: AbortSignal,
+): Promise<FeedResult> {
   try {
-    const summary = await fetchDependabotAlerts(repo.owner, repo.name, token);
+    const summary = await fetchDependabotAlerts(repo.owner, repo.name, token, signal);
     return {
       critical: summary.critical,
       high: summary.high,
@@ -95,7 +101,11 @@ function codeScanningSeverity(alert: CodeScanningAlert): Severity | null {
   }
 }
 
-async function loadCodeScanning(repo: Repo, token: string): Promise<FeedResult> {
+async function loadCodeScanning(
+  repo: Repo,
+  token: string,
+  signal?: AbortSignal,
+): Promise<FeedResult> {
   const url =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(repo.owner)}/` +
     `${encodeURIComponent(repo.name)}/code-scanning/alerts?state=open&per_page=100`;
@@ -103,6 +113,7 @@ async function loadCodeScanning(repo: Repo, token: string): Promise<FeedResult> 
     const alerts = await fetchWithETag(url, CodeScanningAlertsSchema, {
       token,
       context: 'fetchCodeScanningAlerts',
+      signal,
     });
     const counts = emptyCounts();
     for (const alert of alerts) {
@@ -116,8 +127,15 @@ async function loadCodeScanning(repo: Repo, token: string): Promise<FeedResult> 
   }
 }
 
-async function loadSecuritySlice(repo: Repo, token: string): Promise<SecuritySignalSlice> {
-  const feeds = await Promise.all([loadDependabot(repo, token), loadCodeScanning(repo, token)]);
+async function loadSecuritySlice(
+  repo: Repo,
+  token: string,
+  signal?: AbortSignal,
+): Promise<SecuritySignalSlice> {
+  const feeds = await Promise.all([
+    loadDependabot(repo, token, signal),
+    loadCodeScanning(repo, token, signal),
+  ]);
 
   if (feeds.every((feed) => feed === NO_ACCESS)) {
     // Neither feed is available — surface "no data", not an error.
@@ -164,6 +182,10 @@ export function useSecuritySignal(
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts every
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     setSlices(
       new Map(
         repos.map((repo): [string, SecuritySignalSlice] => [
@@ -173,17 +195,29 @@ export function useSecuritySignal(
       ),
     );
 
-    for (const repo of repos) {
-      loadSecuritySlice(repo, token)
-        .then((slice) => {
+    void mapWithConcurrency(
+      repos,
+      SIGNAL_FETCH_CONCURRENCY,
+      async (repo, signal) => {
+        try {
+          const slice = await loadSecuritySlice(repo, token, signal);
           if (generation !== generationRef.current) return;
           setSlices((prev) => new Map(prev).set(repo.nameWithOwner, slice));
-        })
-        .catch(() => {
+        } catch (err) {
+          // A cancelled request is not a failure: stay quiet (no log, no error).
+          if (signal?.aborted || isAbortError(err)) return;
+          console.error(
+            `useSecuritySignal: failed to fetch security alerts for ${repo.nameWithOwner}`,
+            err,
+          );
           if (generation !== generationRef.current) return;
           setSlices((prev) => new Map(prev).set(repo.nameWithOwner, { status: 'error' }));
-        });
-    }
+        }
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [repos, token]);
 
   return slices;

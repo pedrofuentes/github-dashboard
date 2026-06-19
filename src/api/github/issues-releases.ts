@@ -40,6 +40,7 @@ export interface ReleaseInfo {
  * @param repo - Repository name
  * @param token - GitHub personal access token
  * @param state - Issue state filter: "open", "closed", or "all"
+ * @param signal - Optional signal to cancel the in-flight request(s)
  * @returns Number of issues (excluding PRs) matching the filter
  * @throws {GitHubApiError} on API errors
  */
@@ -48,13 +49,14 @@ export async function fetchIssueCount(
   repo: string,
   token?: string,
   state: 'open' | 'closed' | 'all' = 'open',
+  signal?: AbortSignal,
 ): Promise<number> {
   // For "open" state, use the repo's open_issues_count and subtract open PRs
   // This is more accurate and saves an API call
   if (state === 'open') {
     const [stats, prCount] = await Promise.all([
-      fetchRepoStats(owner, repo, token),
-      fetchPullRequestCount(owner, repo, token, 'open'),
+      fetchRepoStats(owner, repo, token, signal),
+      fetchPullRequestCount(owner, repo, token, 'open', signal),
     ]);
     // GitHub's open_issues_count includes PRs, so subtract open PR count
     return Math.max(stats.open_issues_count - prCount, 0);
@@ -68,7 +70,7 @@ export async function fetchIssueCount(
   const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers }, 'fetchIssueCount');
+  const response = await fetchWithRetry(url, { headers, signal }, 'fetchIssueCount');
   const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
   if (!response.ok) {

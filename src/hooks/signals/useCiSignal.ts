@@ -18,7 +18,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
+import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { isAbortError } from '../../lib/abort';
 import type { CiSignalSlice, Repo } from '../../types/fleet';
 
 /** The subset of a workflow run we read from `GET /actions/runs`. */
@@ -121,6 +123,10 @@ export function useCiSignal(repos: Repo[], token: string | null): Map<string, Ci
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts every
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     // Seed every row as loading so the column shows progress immediately.
     setSignals(
       new Map<string, CiSignalSlice>(
@@ -139,14 +145,28 @@ export function useCiSignal(repos: Repo[], token: string | null): Map<string, Ci
       });
     };
 
-    for (const repo of repos) {
-      fetchWithETag(runsUrl(repo), CiRunsResponseSchema, {
-        token,
-        context: `useCiSignal ${repo.nameWithOwner}`,
-      })
-        .then((data) => update(repo.nameWithOwner, summarize(data)))
-        .catch(() => update(repo.nameWithOwner, { status: 'error' }));
-    }
+    void mapWithConcurrency(
+      repos,
+      SIGNAL_FETCH_CONCURRENCY,
+      async (repo, signal) => {
+        try {
+          const data = await fetchWithETag(runsUrl(repo), CiRunsResponseSchema, {
+            token,
+            context: `useCiSignal ${repo.nameWithOwner}`,
+            signal,
+          });
+          update(repo.nameWithOwner, summarize(data));
+        } catch (err) {
+          // A cancelled request is not a failure: stay quiet (no log, no error).
+          if (signal?.aborted || isAbortError(err)) return;
+          console.error(`useCiSignal: failed to fetch CI status for ${repo.nameWithOwner}`, err);
+          update(repo.nameWithOwner, { status: 'error' });
+        }
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [repos, token]);
 
   return signals;

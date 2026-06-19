@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { isAbortError } from '../../lib/abort';
 import type { Repo, ReviewsSignalSlice } from '../../types/fleet';
 
 /**
@@ -130,11 +131,16 @@ export function useReviewsSignal(
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts the
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     setSlices(uniformSlices(repoNames, 'loading'));
 
     fetchWithETag(reviewRequestedSearchUrl(), ReviewRequestedSearchSchema, {
       token,
       context: 'useReviewsSignal',
+      signal: controller.signal,
     })
       .then((data) => {
         if (generation !== generationRef.current) {
@@ -142,12 +148,20 @@ export function useReviewsSignal(
         }
         setSlices(distributeReviewCounts(repoNames, data.items));
       })
-      .catch(() => {
+      .catch((err) => {
+        // A cancelled request is not a failure: stay quiet (no log, no error).
+        if (controller.signal.aborted || isAbortError(err)) return;
+        console.error(
+          `useReviewsSignal: failed to fetch review requests for ${repoNames.join(', ')}`,
+          err,
+        );
         if (generation !== generationRef.current) {
           return;
         }
         setSlices(uniformSlices(repoNames, 'error'));
       });
+
+    return () => controller.abort();
   }, [token, reposKey]);
 
   return slices;
