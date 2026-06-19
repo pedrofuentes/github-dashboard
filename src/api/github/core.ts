@@ -164,13 +164,12 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
       return;
     }
 
-    let timer: ReturnType<typeof setTimeout>;
     const onAbort = (): void => {
       clearTimeout(timer);
       reject(new DOMException('The operation was aborted', 'AbortError'));
     };
 
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort);
       resolve();
     }, ms);

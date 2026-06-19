@@ -45,8 +45,13 @@ export function useRepoSignals(repos: Repo[], token: string | null): UseRepoSign
 
   // A fresh array reference per revalidation (but stable across unrelated
   // re-renders) so each signal hook's `[repos, token]` effect re-runs only when
-  // `repos` actually changes or the tab returns to visible.
-  const revalidatedRepos = useMemo(() => repos.slice(), [repos, revalidateNonce]);
+  // `repos` actually changes or the tab returns to visible. `revalidateNonce` is
+  // an intentional trigger (bumped on foreground), not read inside the factory.
+  const revalidatedRepos = useMemo(
+    () => repos.slice(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- revalidateNonce is an intentional trigger
+    [repos, revalidateNonce],
+  );
 
   const ci = useCiSignal(revalidatedRepos, token);
   const security = useSecuritySignal(revalidatedRepos, token);
