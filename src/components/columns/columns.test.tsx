@@ -80,13 +80,7 @@ describe('stub signal columns', () => {
   const stubs = fleetColumns.filter((c) => c.id !== 'repo' && c.id !== 'issues');
 
   it('cover CI, Security, Reviews, PRs, and Stale', () => {
-    expect(stubs.map((c) => c.id)).toEqual([
-      'ci',
-      'security',
-      'reviews',
-      'pullRequests',
-      'stale',
-    ]);
+    expect(stubs.map((c) => c.id)).toEqual(['ci', 'security', 'reviews', 'pullRequests', 'stale']);
   });
 
   it('are not sortable yet (sorting is contributed by features #12-18)', () => {
