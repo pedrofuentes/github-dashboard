@@ -71,6 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Removed the inert `frame-ancestors 'none'` directive from the app shell's
+  `<meta>` Content-Security-Policy. Browsers ignore `frame-ancestors` delivered
+  via a `<meta>` element — it has effect only as an HTTP response header, which
+  GitHub Pages (static hosting) cannot send — so it provided no clickjacking
+  protection and logged an error-level message in the console on every load.
+  Dropping it clears the only console error on the live site without weakening
+  any other directive; header-delivered frame protection remains tracked as a
+  hosting-layer follow-up (#104).
 - Abort-aware retry backoff: cancelling a request during the retry backoff now
   aborts promptly instead of waiting out the full delay, and never issues an
   extra network request; genuine timeouts remain retryable (#70).

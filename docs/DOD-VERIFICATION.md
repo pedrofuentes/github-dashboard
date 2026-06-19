@@ -19,7 +19,7 @@
 | 1 | A **live GitHub Pages URL** serves the SPA and loads without errors | ✅ | §1 |
 | 2 | Fine-grained **PAT** path works end-to-end against real GitHub data; **device flow** implemented *or* deferred with rationale + cofounder sign-off | ✅ | §2 |
 | 3 | **Privacy invariant** verified by the automated network test (GitHub-owned origins only) | ✅ | §3 |
-| 4 | **Rate-limit safe**: conditional requests (+ batched GraphQL); degrades gracefully near 5,000 req/hr | ✅ | §4 |
+| 4 | **Rate-limit safe**: conditional requests (+ batched GraphQL); degrades gracefully near 5,000 req/hr | ✅ (GraphQL batching evaluated & deferred — ADR-007) | §4 |
 | 5 | **README** with screenshots/GIF + a one-click "use it now" link | ✅ | §6 |
 
 Plus the seven MVP features (§5), the full quality gate (§7), and process integrity (§8).
@@ -166,7 +166,7 @@ All files          |   98.01 |    94.82 |     100 |   98.01
 
 ## 8. Process integrity — every merge carried a Sentinel verdict
 
-- [x] **34** merge commits on `main` carry an explicit Sentinel verdict line
+- [x] **34** commits (squash-merged PR landings) on `main` carry an explicit Sentinel verdict line
   (`Sentinel: APPROVED | CONDITIONAL — Report ID … reviewed SHA …`), verified by:
 
   ```console

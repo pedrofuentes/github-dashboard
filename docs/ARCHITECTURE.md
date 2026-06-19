@@ -234,7 +234,7 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
   flow), `*.githubusercontent.com`.
 - **Strict CSP** with `connect-src` limited to GitHub-owned origins plus
   `'self'`. The shipped policy (`index.html`) is `default-src 'self'; base-uri
-  'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self'
+  'self'; object-src 'none'; img-src 'self'
   https://*.githubusercontent.com data:; script-src 'self'; style-src 'self';
   font-src 'self'; connect-src 'self' https://api.github.com https://github.com
   https://*.githubusercontent.com; form-action 'self'` — `*.githubusercontent.com`

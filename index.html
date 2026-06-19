@@ -2,9 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      `frame-ancestors` and `X-Frame-Options` are intentionally omitted: both
+      take effect only when delivered as HTTP response headers, which a static
+      GitHub Pages site cannot set. In a <meta> element `frame-ancestors` is
+      ignored by browsers (and logs a console error), so it provided zero
+      clickjacking protection here. Header-delivered frame protection is tracked
+      as a hosting-layer follow-up (#81).
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' https://*.githubusercontent.com data:; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://api.github.com https://github.com https://*.githubusercontent.com; form-action 'self'"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' https://*.githubusercontent.com data:; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://api.github.com https://github.com https://*.githubusercontent.com; form-action 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>github-dashboard</title>
