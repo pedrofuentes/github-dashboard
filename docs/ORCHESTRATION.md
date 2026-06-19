@@ -43,4 +43,4 @@ How the autonomous build is organized as a small "company" of sub-agents operati
 
 ## Handling gates without stalling the fleet
 
-When an increment hits an **ASK-FIRST** (not pre-authorized in `MISSION.md` §9) or **HUMAN-REQUIRED** action: open a clearly-described, labeled issue, @-mention the cofounder, move that card to a **Blocked** column — **and immediately pick up the next unblocked board item.** The fleet never goes fully idle because of a single gate. The watchdog (`CONTINUOUS-OPERATION.md`) periodically re-checks whether blocked items have been unblocked.
+When an increment hits an **ASK-FIRST** (not pre-authorized in `MISSION.md` §9) or **HUMAN-REQUIRED** action: raise it on the board via the **Decision protocol** (`CONTINUOUS-OPERATION.md` Tier 3) — a `DECISION:` issue labeled `needs:decision`, the card moved to **Blocked**, the cofounder @-mentioned — **and immediately pick up the next unblocked board item.** The fleet never goes fully idle because of a single gate. The watchdog re-checks blocked cards each tick and resumes them the moment you answer.

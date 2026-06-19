@@ -70,7 +70,7 @@ You are **PRE-AUTHORIZED**, without pausing, to do the items the cofounder agree
 
 You must get **explicit cofounder sign-off FIRST** (file the issue early, keep other work moving) before *implementing* anything in `MISSION.md` §9's "require sign-off" list **or** any harness **HUMAN-REQUIRED** action — notably: **auth/crypto/credential or privacy-data design**; **enabling a production deploy / registry publish** (a settings toggle — you author the pipeline, the cofounder flips the switch); adding any **backend/server/proxy or new external runtime origin**; sending user data anywhere the brief doesn't allow; or adding **heavy/unusual dependencies** beyond §3.
 
-When you hit such a gate: open a clearly-described, labeled GitHub issue, move the card to **Blocked**, @-mention the cofounder — **and keep making progress on other unblocked board items in parallel.** Never let one gate idle the whole fleet.
+When you hit such a gate, raise it on the board using the **Decision protocol** (`CONTINUOUS-OPERATION.md` Tier 3): open a `DECISION:` issue labeled `needs:decision` with context + options + your recommendation, move the card to **Blocked**, @-mention the cofounder — **and keep making progress on other unblocked board items in parallel.** Never let one gate idle the whole fleet.
 
 ## Continuous-operation directive (non-stop)
 
