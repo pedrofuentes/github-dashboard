@@ -151,17 +151,29 @@ interface AlertFeedFresh<T> {
  * more than 100 open alerts, so every page is enumerated before grading (issues
  * #63, #77).
  *
- * Conditional caching (issue #78): page 1 carries an `If-None-Match` built from
- * the previously stored `ETag`. A `304 Not Modified` means the feed's first page
- * is byte-identical to last time; because GitHub returns alerts newest-first
- * (`created` descending), an unchanged page 1 implies **no new alerts**, so the
- * cached summary is reused verbatim and pages 2..N are not re-fetched — restoring
- * the 304 rate-limit savings that #76 lost when code-scanning moved off the ETag
- * path to read `Link` headers. The accepted, safe-direction tradeoff: an older
- * alert resolved on page ≥2 (leaving page 1 unchanged) yields a transient
- * **over**-count until page 1 next changes — the grade errs toward "needs
- * attention" and never hides a problem. Truncated reads are never cached, so a
- * lower-bound tally can never be served as an "unchanged" 304.
+ * Conditional caching (issue #78): the feed is requested
+ * `sort=updated&direction=desc` and page 1 carries an `If-None-Match` built from
+ * the previously stored `ETag`. Sorting by `updated` is what makes the page-1
+ * short-circuit sound: ANY change to the open set — a brand-new alert or a
+ * **reopened/un-dismissed** one — bumps that alert's `updated_at` to now (GitHub
+ * preserves the original `created_at` on reopen) and floats it to the head of
+ * page 1, changing page 1's bytes/`ETag` so the server returns `200` and every
+ * page is re-counted. A `304 Not Modified` therefore means page 1 is
+ * byte-identical AND, because the newest `updated_at` has not advanced, nothing
+ * entered the open set since last time — so the cached summary is reused
+ * verbatim and pages 2..N are not re-fetched, restoring the 304 rate-limit
+ * savings that #76 lost when code-scanning moved off the ETag path to read
+ * `Link` headers.
+ *
+ * Why `updated` and not `created` (the API default): a reopened alert keeps its
+ * old `created_at`, so under `created` it re-enters on page ≥2 and leaves a
+ * multi-page feed's page 1 unchanged → `304` → its (possibly **critical**) count
+ * is silently dropped — an UNDER-report in the unsafe direction. Under `updated`
+ * the only remaining 304 case is an alert dismissed/fixed off page ≥2 that
+ * leaves page 1's 100 items unchanged: that yields a transient **over**-count
+ * until page 1 next changes — the grade errs toward "needs attention" and never
+ * hides a problem. Truncated reads are never cached, so a lower-bound tally can
+ * never be served as an "unchanged" 304.
  *
  * Every page URL — including attacker-influenceable `Link` targets — is passed
  * through {@link assertGitHubApiOrigin} before the PAT/ETag is attached (issue
@@ -265,9 +277,11 @@ export async function fetchDependabotAlerts(
   signal?: AbortSignal,
   cache: ETagCache = defaultAlertCache,
 ): Promise<SecurityAlertSummary> {
+  // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
+  // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
-    `/dependabot/alerts?state=open&per_page=100`;
+    `/dependabot/alerts?state=open&per_page=100&sort=updated&direction=desc`;
   const read = await readAlertFeed(
     initialUrl,
     z.array(DependabotAlertSchema),
@@ -369,9 +383,11 @@ export async function fetchCodeScanningAlerts(
   signal?: AbortSignal,
   cache: ETagCache = defaultAlertCache,
 ): Promise<SecurityAlertSummary> {
+  // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
+  // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
-    `/code-scanning/alerts?state=open&per_page=100`;
+    `/code-scanning/alerts?state=open&per_page=100&sort=updated&direction=desc`;
   const read = await readAlertFeed(
     initialUrl,
     z.array(CodeScanningAlertSchema),
