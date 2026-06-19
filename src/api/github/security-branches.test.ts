@@ -136,7 +136,14 @@ describe('fetchCodeScanningAlerts', () => {
 
     const summary = await fetchCodeScanningAlerts('octo', 'a', 'tok');
 
-    expect(summary).toEqual({ critical: 1, high: 2, medium: 2, low: 2, total: 7, truncated: false });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 2,
+      medium: 2,
+      low: 2,
+      total: 7,
+      truncated: false,
+    });
   });
 
   it('stops after a single request when there is no Link next header', async () => {
@@ -226,7 +233,14 @@ describe('fetchDependabotAlerts', () => {
     const summary = await fetchDependabotAlerts('octo', 'a', 'tok');
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(summary).toEqual({ critical: 1, high: 0, medium: 1, low: 0, total: 2, truncated: false });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 0,
+      medium: 1,
+      low: 0,
+      total: 2,
+      truncated: false,
+    });
   });
 
   it('follows Link rel="next" and counts alerts across every page (>100)', async () => {
@@ -286,9 +300,18 @@ describe('alert feeds — page-1 conditional caching (#78)', () => {
 
     const summary = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
 
-    expect(summary).toEqual({ critical: 0, high: 1, medium: 0, low: 0, total: 1, truncated: false });
-    const headers = (vi.mocked(globalThis.fetch).mock.calls[0][1] as RequestInit)
-      .headers as Record<string, string>;
+    expect(summary).toEqual({
+      critical: 0,
+      high: 1,
+      medium: 0,
+      low: 0,
+      total: 1,
+      truncated: false,
+    });
+    const headers = (vi.mocked(globalThis.fetch).mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
     expect(headers['If-None-Match']).toBeUndefined();
   });
 
