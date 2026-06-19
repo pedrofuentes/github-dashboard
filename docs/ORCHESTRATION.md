@@ -1,19 +1,19 @@
 # Orchestration — Running the Sub-Agent Fleet
 
-How the autonomous build is organized as a small "company" of sub-agents operating under the `agents-template` + Sentinel rules. The **Delivery Lead** (the top-level agent that received the kickoff prompt) owns the board, spawns the fleet, invokes Sentinel, and merges. Everyone else is a sub-agent.
+How the autonomous build is organized as a small "company" of sub-agents operating under the `agents-template` + Sentinel rules. The **Delivery Lead** (the top-level agent that received the kickoff prompt) owns the board, spawns the fleet, invokes Sentinel, and merges. Everyone else is a sub-agent. *(The cofounder handle for @-mentions is in `MISSION.md` §1.)*
 
 ## The org
 
 | Role | Who | Responsibility | Harness mapping |
 |------|-----|----------------|-----------------|
 | **Delivery Lead** (you) | top-level orchestrator | Owns the GitHub Project board; spawns/coordinates sub-agents; invokes Sentinel; runs the Pre-Merge Checklist; merges; arms the watchdog | Never reviews own code; invokes Sentinel from *outside* every implementation chain |
-| **Research guild** | `research` / `explore` sub-agents | Maintainer UX research, competitive scan, best practices — with citations | Delegated research (>5 sources); output feeds the PRD |
+| **Research guild** | `research` / `explore` sub-agents | User/domain research, competitive & prior-art scan, best practices — with citations | Delegated research (>5 sources); output feeds the PRD |
 | **Product (PM)** | `general-purpose` sub-agent | Turns research into `PRD.md`, prioritizes, creates board issues with acceptance criteria | Decomposes into 1-PR-sized increments |
-| **Architecture** | `general-purpose` sub-agent | ADRs in `DECISIONS.md`, API layer design (ported from the plugin), auth design, data model, Pages deploy | Architecture decisions are ASK-FIRST unless pre-authorized by the kickoff spec |
+| **Architecture** | `general-purpose` sub-agent | ADRs in `DECISIONS.md`, core/integration layer design, auth/security design, data model, deploy/distribution | Architecture decisions are ASK-FIRST unless pre-authorized by `MISSION.md` §9 |
 | **Engineering guild** | `general-purpose` sub-agents (1 per increment) | Implement one issue each, TDD, in an isolated worktree; open a PR; **stop & report** | **Delegated implementer** — never self-reviews, never merges |
-| **Test / QA** | `general-purpose` / `task` sub-agents | Test data, e2e (Playwright), accessibility + performance audits | Tests are first-class; coverage ratchets up |
+| **Test / QA** | `general-purpose` / `task` sub-agents | Test data, e2e, accessibility + performance/security audits | Tests are first-class; coverage ratchets up |
 | **Sentinel** | full-capability sub-agent w/ `docs/SENTINEL.md` as system prompt | Independent merge gate; APPROVED / CONDITIONAL / REJECTED | **Coder ≠ reviewer, always.** Must be able to spawn its own dimension sub-agents |
-| **DevOps** | `general-purpose` sub-agent | CI workflows, Sentinel-in-CI (Method B), Pages deploy, branch protection | CI/CD changes are pre-authorized per the kickoff spec |
+| **DevOps** | `general-purpose` sub-agent | CI workflows, Sentinel-in-CI (Method B), deploy/distribution, branch protection | CI/CD changes are pre-authorized per `MISSION.md` §9 |
 
 ## Non-negotiable harness rules the fleet must honor
 
@@ -26,7 +26,7 @@ How the autonomous build is organized as a small "company" of sub-agents operati
 
 - Independent features → **parallel worktrees + parallel engineer sub-agents**. Keep each increment to one logical unit (one PR).
 - **Serialize merges through Sentinel.** After each merge to `main`, **rebase the other in-flight worktrees** on the new `main` (`git fetch origin main && git rebase origin/main`) and re-run their suites before their own Sentinel review.
-- Choose parallel tracks that don't touch the same files (e.g., "API layer", "fleet grid UI", "auth/token store", "CI/Pages") to minimize rebase conflicts.
+- Choose parallel tracks that don't touch the same files (e.g., "core layer", "primary UI/surface", "auth/security", "CI/deploy") to minimize rebase conflicts.
 
 ## Per-increment merge protocol
 
@@ -37,10 +37,10 @@ How the autonomous build is organized as a small "company" of sub-agents operati
 
 ## Coordination & memory
 
-- **GitHub Project board + issues = the source of truth and the work queue.** Keep it current; it's how @pedrofuentes watches progress.
+- **GitHub Project board + issues = the source of truth and the work queue.** Keep it current; it's how the cofounder watches progress.
 - `LEARNINGS.md` — log every Sentinel rejection pattern + correction; re-read before each PR to self-check.
 - `DECISIONS.md` — ADRs. `CHANGELOG.md` — user-facing changes.
 
 ## Handling gates without stalling the fleet
 
-When an increment hits an **ASK-FIRST** (not pre-authorized) or **HUMAN-REQUIRED** action: open a clearly-described, labeled issue, @-mention @pedrofuentes, move that card to a **Blocked** column — **and immediately pick up the next unblocked board item.** The fleet never goes fully idle because of a single gate. The watchdog (`docs/CONTINUOUS-OPERATION.md`) periodically re-checks whether blocked items have been unblocked.
+When an increment hits an **ASK-FIRST** (not pre-authorized in `MISSION.md` §9) or **HUMAN-REQUIRED** action: open a clearly-described, labeled issue, @-mention the cofounder, move that card to a **Blocked** column — **and immediately pick up the next unblocked board item.** The fleet never goes fully idle because of a single gate. The watchdog (`CONTINUOUS-OPERATION.md`) periodically re-checks whether blocked items have been unblocked.
