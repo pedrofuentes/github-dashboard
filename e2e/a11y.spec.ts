@@ -14,6 +14,11 @@ function parseRgb(color: string): [number, number, number] {
   if (channels === null || channels.length < 3) {
     throw new Error(`Unparseable color: ${color}`);
   }
+  // A fully transparent color (alpha 0) has no visible boundary, so treating it
+  // as opaque would let a non-text-contrast assertion pass vacuously. Reject it.
+  if (channels.length >= 4 && Number(channels[3]) === 0) {
+    throw new Error(`Fully transparent color has no visible border: ${color}`);
+  }
   return [Number(channels[0]), Number(channels[1]), Number(channels[2])];
 }
 
