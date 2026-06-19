@@ -165,4 +165,41 @@ describe('AuthProvider', () => {
     expect(getToken()).toBeNull();
     expect(localStorage.length).toBe(0);
   });
+
+  it('ignores a slow mount revalidation that resolves after a newer signIn', async () => {
+    setToken('ghp_stored', 'local');
+
+    let resolveStored!: (value: ValidateTokenResult) => void;
+    const storedPending = new Promise<ValidateTokenResult>((r) => {
+      resolveStored = r;
+    });
+    mockValidate.mockImplementation((candidate: string) =>
+      candidate === 'ghp_stored'
+        ? storedPending
+        : Promise.resolve<ValidateTokenResult>({ ...VALID, login: 'newuser' }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.signIn('ghp_new', 'local');
+    });
+
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.user?.login).toBe('newuser');
+    expect(result.current.token).toBe('ghp_new');
+    expect(getToken()).toBe('ghp_new');
+
+    await act(async () => {
+      resolveStored({ ok: false, error: 'Invalid or expired token' });
+      await storedPending;
+    });
+
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.user?.login).toBe('newuser');
+    expect(result.current.token).toBe('ghp_new');
+    expect(result.current.error).toBeNull();
+    expect(getToken()).toBe('ghp_new');
+    expect(localStorage.getItem('github-dashboard.pat')).toBe('ghp_new');
+  });
 });

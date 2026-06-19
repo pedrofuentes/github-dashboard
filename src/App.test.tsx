@@ -59,4 +59,16 @@ describe('App', () => {
     expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /forget token/i })).toBeInTheDocument();
   });
+
+  it('renders a neutral placeholder without an external image when the avatar is dropped', async () => {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+  });
 });

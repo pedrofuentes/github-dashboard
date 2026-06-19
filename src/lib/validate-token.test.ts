@@ -129,4 +129,61 @@ describe('validateToken', () => {
       }
     }
   });
+
+  describe('avatar URL host-allowlist (ADR-004)', () => {
+    it('accepts a valid https *.githubusercontent.com avatar', async () => {
+      stubFetch(async () =>
+        jsonResponse({
+          login: 'octocat',
+          avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4',
+        }),
+      );
+
+      const result = await validateToken('ghp_x');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.login).toBe('octocat');
+        expect(result.avatarUrl).toBe('https://avatars.githubusercontent.com/u/1?v=4');
+      }
+    });
+
+    it('accepts the apex githubusercontent.com host (case-insensitively)', async () => {
+      stubFetch(async () =>
+        jsonResponse({ login: 'octocat', avatar_url: 'https://GitHubUserContent.com/u/1' }),
+      );
+
+      const result = await validateToken('ghp_x');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.avatarUrl).toBe('https://GitHubUserContent.com/u/1');
+      }
+    });
+
+    it.each([
+      ['a non-https scheme', 'http://avatars.githubusercontent.com/u/1'],
+      ['a non-GitHub host', 'https://evil.com/u/1'],
+      ['a suffix-confusion host', 'https://githubusercontent.com.evil.com/u/1'],
+      ['a lookalike host', 'https://evilgithubusercontent.com/u/1'],
+      ['embedded userinfo', 'https://user@githubusercontent.com/u/1'],
+      ['userinfo with a password', 'https://user:pass@githubusercontent.com/u/1'],
+      ['a protocol-relative URL', '//evil.com/u/1'],
+      ['a data: URL', 'data:image/svg+xml,<svg/>'],
+      ['a blob: URL', 'blob:https://avatars.githubusercontent.com/abc'],
+      ['a javascript: URL', 'javascript:alert(1)'],
+      ['a trailing-dot host', 'https://githubusercontent.com./u/1'],
+      ['a non-URL string', 'not a url'],
+    ])('drops the avatar but keeps login for %s', async (_label, avatar) => {
+      stubFetch(async () => jsonResponse({ login: 'octocat', avatar_url: avatar }));
+
+      const result = await validateToken('ghp_x');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.login).toBe('octocat');
+        expect(result.avatarUrl).toBeUndefined();
+      }
+    });
+  });
 });
