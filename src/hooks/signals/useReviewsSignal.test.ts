@@ -1,9 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchWithETag } from '../../api/github';
+import { fetchReviewRequestedPage } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import {
+  MAX_REVIEW_PAGES,
   REVIEW_SCORE_WEIGHT,
   distributeReviewCounts,
   repoFullNameFromUrl,
@@ -13,28 +14,35 @@ import {
 
 vi.mock('../../api/github', () => ({
   GITHUB_API_BASE: 'https://api.github.com',
-  fetchWithETag: vi.fn(),
+  fetchReviewRequestedPage: vi.fn(),
 }));
 
-const mockFetchWithETag = vi.mocked(fetchWithETag);
+const mockFetchPage = vi.mocked(fetchReviewRequestedPage);
 
-/** Minimal shape the hook reads back from the Search API response. */
-interface SearchPayload {
-  total_count: number;
+/** One page of the review-requested search, as the fetcher returns it. */
+interface PagePayload {
   items: { repository_url: string }[];
+  totalCount: number;
+  nextPageUrl: string | null;
 }
 
-function search(...fullNames: string[]): SearchPayload {
+/** Builds a page payload from repo full names, defaulting to a single page. */
+function page(
+  fullNames: string[],
+  nextPageUrl: string | null = null,
+  totalCount: number = fullNames.length,
+): PagePayload {
   return {
-    total_count: fullNames.length,
     items: fullNames.map((name) => ({
       repository_url: `https://api.github.com/repos/${name}`,
     })),
+    totalCount,
+    nextPageUrl,
   };
 }
 
-function resolveOnce(payload: SearchPayload): void {
-  mockFetchWithETag.mockResolvedValueOnce(payload as never);
+function resolveOnce(payload: PagePayload): void {
+  mockFetchPage.mockResolvedValueOnce(payload as never);
 }
 
 function repo(nameWithOwner: string): Repo {
@@ -53,7 +61,7 @@ const REPOS: Repo[] = [repo('octo/a'), repo('octo/b'), repo('octo/c')];
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
-  mockFetchWithETag.mockReset();
+  mockFetchPage.mockReset();
 });
 
 afterEach(() => {
@@ -148,7 +156,7 @@ describe('useReviewsSignal', () => {
       expect(result.current).toBeInstanceOf(Map);
     });
     expect(result.current.size).toBe(0);
-    expect(mockFetchWithETag).not.toHaveBeenCalled();
+    expect(mockFetchPage).not.toHaveBeenCalled();
   });
 
   it('returns an empty map and does not fetch when there are no repos', async () => {
@@ -158,24 +166,75 @@ describe('useReviewsSignal', () => {
       expect(result.current).toBeInstanceOf(Map);
     });
     expect(result.current.size).toBe(0);
-    expect(mockFetchWithETag).not.toHaveBeenCalled();
+    expect(mockFetchPage).not.toHaveBeenCalled();
   });
 
   it('makes a single cross-repo Search call for the whole fleet', async () => {
-    resolveOnce(search());
+    resolveOnce(page([]));
 
     renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
 
     await waitFor(() => {
-      expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+      expect(mockFetchPage).toHaveBeenCalledTimes(1);
     });
-    const [url, , options] = mockFetchWithETag.mock.calls[0];
+    const [url, options] = mockFetchPage.mock.calls[0];
     expect(url).toBe(reviewRequestedSearchUrl());
     expect(options).toMatchObject({ token: 'ghp_token' });
+    expect((options as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('follows Link pagination so counts include PRs beyond the first page', async () => {
+    const nextUrl = `${reviewRequestedSearchUrl()}&page=2`;
+    // Page 1 fills a whole page (100) for octo/a and advertises a next page;
+    // page 2 holds the remaining 50. The fleet total is 150 — all for octo/a.
+    resolveOnce(
+      page(
+        Array.from({ length: 100 }, () => 'octo/a'),
+        nextUrl,
+        150,
+      ),
+    );
+    resolveOnce(
+      page(
+        Array.from({ length: 50 }, () => 'octo/a'),
+        null,
+        150,
+      ),
+    );
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+
+    expect(mockFetchPage).toHaveBeenCalledTimes(2);
+    // The second request must target the next-page URL reported by page 1.
+    expect(mockFetchPage.mock.calls[1][0]).toBe(nextUrl);
+    expect(result.current.get('octo/a')).toEqual({
+      status: 'ready',
+      requestedCount: 150,
+      score: 150 * REVIEW_SCORE_WEIGHT,
+    });
+  });
+
+  it('stops following pagination at the max page cap', async () => {
+    const selfNext = `${reviewRequestedSearchUrl()}&page=loop`;
+    // Every page advertises a next page — a pathological loop the cap must break.
+    mockFetchPage.mockResolvedValue(page(['octo/a'], selfNext, 9999) as never);
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+
+    expect(mockFetchPage).toHaveBeenCalledTimes(MAX_REVIEW_PAGES);
+    expect(result.current.get('octo/a')?.requestedCount).toBe(MAX_REVIEW_PAGES);
   });
 
   it('reports loading first, then ready slices with distributed counts', async () => {
-    resolveOnce(search('octo/a', 'octo/a', 'octo/c'));
+    resolveOnce(page(['octo/a', 'octo/a', 'octo/c']));
 
     const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
 
@@ -194,7 +253,7 @@ describe('useReviewsSignal', () => {
   });
 
   it('marks every repo as error when the Search call fails', async () => {
-    mockFetchWithETag.mockRejectedValueOnce(new Error('rate limited'));
+    mockFetchPage.mockRejectedValueOnce(new Error('rate limited'));
 
     const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
 
@@ -207,12 +266,12 @@ describe('useReviewsSignal', () => {
   });
 
   it('ignores a stale response after the token changes mid-flight', async () => {
-    let resolveStale: ((payload: SearchPayload) => void) | undefined;
-    const stalePromise = new Promise<SearchPayload>((resolve) => {
+    let resolveStale: ((payload: PagePayload) => void) | undefined;
+    const stalePromise = new Promise<PagePayload>((resolve) => {
       resolveStale = resolve;
     });
-    mockFetchWithETag.mockReturnValueOnce(stalePromise as never);
-    resolveOnce(search('octo/b'));
+    mockFetchPage.mockReturnValueOnce(stalePromise as never);
+    resolveOnce(page(['octo/b']));
 
     const { result, rerender } = renderHook(({ token }) => useReviewsSignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -225,7 +284,7 @@ describe('useReviewsSignal', () => {
     });
 
     act(() => {
-      resolveStale?.(search('octo/a', 'octo/a', 'octo/a'));
+      resolveStale?.(page(['octo/a', 'octo/a', 'octo/a']));
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -236,11 +295,11 @@ describe('useReviewsSignal', () => {
 
   it('ignores a stale rejection after the token changes mid-flight', async () => {
     let rejectStale: ((reason: unknown) => void) | undefined;
-    const stalePromise = new Promise<SearchPayload>((_, reject) => {
+    const stalePromise = new Promise<PagePayload>((_, reject) => {
       rejectStale = reject;
     });
-    mockFetchWithETag.mockReturnValueOnce(stalePromise as never);
-    resolveOnce(search('octo/b'));
+    mockFetchPage.mockReturnValueOnce(stalePromise as never);
+    resolveOnce(page(['octo/b']));
 
     const { result, rerender } = renderHook(({ token }) => useReviewsSignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -265,7 +324,7 @@ describe('useReviewsSignal', () => {
   it('aborts the in-flight request on unmount without logging or error slices', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     let rejectFetch!: (reason: unknown) => void;
-    mockFetchWithETag.mockImplementation(
+    mockFetchPage.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectFetch = reject;
@@ -273,7 +332,7 @@ describe('useReviewsSignal', () => {
     );
 
     const { unmount, result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
-    const captured = (mockFetchWithETag.mock.calls[0]?.[2] as { signal?: AbortSignal } | undefined)
+    const captured = (mockFetchPage.mock.calls[0]?.[1] as { signal?: AbortSignal } | undefined)
       ?.signal;
     expect(captured).toBeInstanceOf(AbortSignal);
     expect(captured?.aborted).toBe(false);
@@ -294,7 +353,7 @@ describe('useReviewsSignal', () => {
   it('logs non-abort failures with repo context and sets error slices', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const failure = new Error('boom');
-    mockFetchWithETag.mockRejectedValue(failure as never);
+    mockFetchPage.mockRejectedValue(failure as never);
 
     const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
     await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
@@ -308,7 +367,7 @@ describe('useReviewsSignal', () => {
 
   it('stays quiet (no log, no error slice) when the request rejects with AbortError', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockFetchWithETag.mockRejectedValue(
+    mockFetchPage.mockRejectedValue(
       new DOMException('The operation was aborted', 'AbortError') as never,
     );
 

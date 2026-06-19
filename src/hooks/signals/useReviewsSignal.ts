@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
 
-import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { GITHUB_API_BASE, fetchReviewRequestedPage } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
 import type { Repo, ReviewsSignalSlice } from '../../types/fleet';
 
@@ -12,9 +11,15 @@ import type { Repo, ReviewsSignalSlice } from '../../types/fleet';
  * whole fleet — far cheaper than one request per repo and well inside the
  * 30 req/min Search bucket — then the results are distributed into one
  * {@link ReviewsSignalSlice} per repo. Repos with no awaiting review zero-fill
- * to `requestedCount: 0`. The fetch is race-guarded so a superseded token's
- * response can never overwrite the current one, and goes through
- * {@link fetchWithETag} so a `304` serves cached data at zero rate-limit cost.
+ * to `requestedCount: 0`.
+ *
+ * A reviewer can have more than one page of requested reviews, so the search is
+ * paginated: each page's `Link: rel="next"` URL is followed (up to
+ * {@link MAX_REVIEW_PAGES}) and every page's items are counted, so a user with
+ * over {@link SEARCH_PAGE_SIZE} review requests is no longer undercounted
+ * (issue #62). The fetch is race-guarded so a superseded token's response can
+ * never overwrite the current one, and threads an {@link AbortSignal} so a
+ * repos/token change or unmount cancels the in-flight pages.
  *
  * This replaces the stub and edits nothing shared — `useRepoSignals` composes it
  * exactly as before.
@@ -26,23 +31,19 @@ export const REVIEW_SCORE_WEIGHT = 10;
 /** Cross-repo Search query for open PRs requesting the viewer's review. */
 const REVIEW_REQUESTED_QUERY = 'is:open is:pr review-requested:@me';
 
-/** One Search page comfortably covers a personal fleet in a single call. */
+/** One Search page covers most fleets; further pages are followed via `Link`. */
 const SEARCH_PAGE_SIZE = 100;
+
+/**
+ * Cap on pages followed via `Link: rel="next"`. At {@link SEARCH_PAGE_SIZE}
+ * results per page this counts up to 1,000 review requests — far beyond any
+ * realistic review queue — while guaranteeing pagination can never loop
+ * indefinitely on a malformed or adversarial `Link` header.
+ */
+export const MAX_REVIEW_PAGES = 10;
 
 /** Separator for the repo-set dependency key (repo names can't contain it). */
 const KEY_SEPARATOR = '\n';
-
-/**
- * Minimal Search response schema (local to this hook). `.passthrough()` keeps
- * the dozens of unused Search fields from breaking validation; only
- * `repository_url` is read, to attribute each PR to a repo.
- */
-const ReviewRequestedSearchSchema = z
-  .object({
-    total_count: z.number(),
-    items: z.array(z.object({ repository_url: z.string() }).passthrough()),
-  })
-  .passthrough();
 
 /** Absolute Search URL for the review-requested query (one call for the fleet). */
 export function reviewRequestedSearchUrl(): string {
@@ -108,6 +109,30 @@ function uniformSlices(
 }
 
 /**
+ * Walks the review-requested Search result set page by page, following each
+ * response's `Link: rel="next"` URL, and returns every item across all pages so
+ * counts include PRs beyond the first {@link SEARCH_PAGE_SIZE}. Stops at
+ * {@link MAX_REVIEW_PAGES} (or sooner when `signal` aborts) so a malformed or
+ * adversarial `Link` chain can never loop indefinitely.
+ */
+async function collectReviewRequestedItems(
+  token: string,
+  signal: AbortSignal,
+): Promise<{ repository_url: string }[]> {
+  const items: { repository_url: string }[] = [];
+  let nextUrl: string | null = reviewRequestedSearchUrl();
+
+  for (let pageNumber = 0; nextUrl !== null && pageNumber < MAX_REVIEW_PAGES; pageNumber += 1) {
+    if (signal.aborted) break;
+    const page = await fetchReviewRequestedPage(nextUrl, { token, signal });
+    items.push(...page.items);
+    nextUrl = page.nextPageUrl;
+  }
+
+  return items;
+}
+
+/**
  * Resolves the review-request queue for every repo in `repos`.
  *
  * @param repos - Repositories to surface review counts for.
@@ -132,21 +157,17 @@ export function useReviewsSignal(
     }
 
     // One controller per run: cleanup (or a repos/token change) aborts the
-    // in-flight request so superseded work stops instead of racing to set state.
+    // in-flight pages so superseded work stops instead of racing to set state.
     const controller = new AbortController();
 
     setSlices(uniformSlices(repoNames, 'loading'));
 
-    fetchWithETag(reviewRequestedSearchUrl(), ReviewRequestedSearchSchema, {
-      token,
-      context: 'useReviewsSignal',
-      signal: controller.signal,
-    })
-      .then((data) => {
+    collectReviewRequestedItems(token, controller.signal)
+      .then((items) => {
         if (generation !== generationRef.current) {
           return;
         }
-        setSlices(distributeReviewCounts(repoNames, data.items));
+        setSlices(distributeReviewCounts(repoNames, items));
       })
       .catch((err) => {
         // A cancelled request is not a failure: stay quiet (no log, no error).
