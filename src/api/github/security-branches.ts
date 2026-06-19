@@ -37,6 +37,12 @@ export interface SecurityAlertSummary {
   medium: number;
   low: number;
   total: number;
+  /**
+   * `true` when pagination stopped at {@link MAX_ALERT_PAGES} while the feed
+   * still advertised another page — the counts are a **lower bound**, not a
+   * complete tally, so callers can flag the grade as partial (issue #77).
+   */
+  truncated: boolean;
 }
 
 /**
@@ -73,11 +79,24 @@ function parseNextPageUrl(linkHeader: string | null): string | null {
 }
 
 /**
+ * Result of paginating an alert feed: the concatenated rows plus whether the
+ * {@link MAX_ALERT_PAGES} cap stopped pagination early (issue #77).
+ */
+interface AlertPageResult<T> {
+  items: T[];
+  /** `true` when the cap was reached while another page was still advertised. */
+  truncated: boolean;
+}
+
+/**
  * Fetches every page of an alert feed, following `Link: rel="next"` until the
  * feed is exhausted or {@link MAX_ALERT_PAGES} is reached. Returns the
- * concatenated raw rows. A single `per_page=100` request silently undercounts
- * any repo with more than 100 open alerts (issue #63), so both alert feeds
- * enumerate every page before grading.
+ * concatenated raw rows plus a {@link AlertPageResult.truncated} flag that is
+ * `true` when the cap stopped pagination while more pages remained — so the
+ * caller can mark the count as a lower bound instead of silently undercounting
+ * (issues #63, #77). A single `per_page=100` request silently undercounts any
+ * repo with more than 100 open alerts, so both alert feeds enumerate every page
+ * before grading.
  */
 async function fetchAllAlertPages<T>(
   initialUrl: string,
@@ -87,7 +106,7 @@ async function fetchAllAlertPages<T>(
   owner: string,
   repo: string,
   signal?: AbortSignal,
-): Promise<T[]> {
+): Promise<AlertPageResult<T>> {
   const headers = buildHeaders(token);
   const items: T[] = [];
   let url: string | null = initialUrl;
@@ -112,7 +131,8 @@ async function fetchAllAlertPages<T>(
     url = parseNextPageUrl(response.headers.get('link'));
   }
 
-  return items;
+  // A still-non-null `url` means the cap stopped us with pages remaining.
+  return { items, truncated: url !== null };
 }
 
 /**
@@ -135,7 +155,7 @@ export async function fetchDependabotAlerts(
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
     `/dependabot/alerts?state=open&per_page=100`;
-  const alerts = await fetchAllAlertPages(
+  const { items: alerts, truncated } = await fetchAllAlertPages(
     initialUrl,
     z.array(DependabotAlertSchema),
     token,
@@ -145,7 +165,14 @@ export async function fetchDependabotAlerts(
     signal,
   );
 
-  const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+  const summary: SecurityAlertSummary = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    truncated,
+  };
   for (const alert of alerts) {
     const severity = alert.security_advisory?.severity ?? 'low';
     if (
@@ -223,7 +250,7 @@ export async function fetchCodeScanningAlerts(
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
     `/code-scanning/alerts?state=open&per_page=100`;
-  const alerts = await fetchAllAlertPages(
+  const { items: alerts, truncated } = await fetchAllAlertPages(
     initialUrl,
     z.array(CodeScanningAlertSchema),
     token,
@@ -233,7 +260,14 @@ export async function fetchCodeScanningAlerts(
     signal,
   );
 
-  const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+  const summary: SecurityAlertSummary = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    truncated,
+  };
   for (const alert of alerts) {
     const severity = codeScanningSeverity(alert);
     if (severity) {
