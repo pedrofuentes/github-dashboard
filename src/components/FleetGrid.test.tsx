@@ -1,8 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { FleetColumn, Repo } from '../types/fleet';
+import type { FleetColumn, GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import { repoColumn } from './columns';
 import { FleetGrid } from './FleetGrid';
 
@@ -232,5 +233,82 @@ describe('FleetGrid drill-down placeholder hook', () => {
     render(<FleetGrid repos={[repo('octo/hello')]} />);
     const rowHeader = screen.getByRole('rowheader');
     expect(within(rowHeader).queryByRole('button')).toBeNull();
+  });
+});
+
+describe('FleetGrid performance (memoisation)', () => {
+  // A stable getRowData reference: rows receive the function, not its result,
+  // so returning a fresh object per call is fine as long as the ref is stable.
+  const STABLE_ROW_DATA: GetRowData = () => ({});
+
+  it('does not re-render a row when an unrelated parent state changes', async () => {
+    const user = userEvent.setup();
+    const renderSpy = vi.fn();
+    const columns: FleetColumn[] = [
+      repoColumn,
+      {
+        id: 'spy',
+        header: 'Spy',
+        render: (repo) => {
+          renderSpy(repo.nameWithOwner);
+          return <span>cell</span>;
+        },
+      },
+    ];
+
+    function Wrapper() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((value) => !value)}>
+            toggle unrelated
+          </button>
+          {open ? <p>unrelated state</p> : null}
+          <FleetGrid repos={REPOS} columns={columns} getRowData={STABLE_ROW_DATA} />
+        </>
+      );
+    }
+
+    render(<Wrapper />);
+    // Each row renders its cell exactly once on mount.
+    expect(renderSpy).toHaveBeenCalledTimes(REPOS.length);
+    renderSpy.mockClear();
+
+    // Flip a sibling state that touches no FleetGrid prop.
+    await user.click(screen.getByRole('button', { name: /toggle unrelated/i }));
+
+    // Guard: memoised rows keep stable props, so none re-render. Removing
+    // React.memo from the row makes this spy fire again and fails the test.
+    expect(renderSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not recompute the sorted/filtered rows on an unrelated re-render', async () => {
+    const user = userEvent.setup();
+    const getRowData = vi.fn((): RepoSignalData => ({}));
+
+    function Wrapper() {
+      const [tick, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick((value) => value + 1)}>
+            bump {tick}
+          </button>
+          <FleetGrid repos={REPOS} getRowData={getRowData} />
+        </>
+      );
+    }
+
+    render(<Wrapper />);
+    // Sorting (active column has getSortValue) and row rendering both consult
+    // getRowData on the initial pass.
+    expect(getRowData).toHaveBeenCalled();
+    getRowData.mockClear();
+
+    await user.click(screen.getByRole('button', { name: /bump/i }));
+
+    // Guard: visibleRepos is memoised and rows are memoised, so no per-repo work
+    // re-runs on an unrelated re-render. Dropping the useMemo makes sortRepos
+    // re-invoke getRowData; dropping the row memo makes the cells re-read it.
+    expect(getRowData).not.toHaveBeenCalled();
   });
 });
