@@ -1,14 +1,18 @@
 import type { FleetColumn } from '../../types/fleet';
-import { StubCell } from './StubCell';
+import { CiCell } from './CiCell';
 
 /**
- * CI signal — STUB. Replaced by issue #12 (failing GitHub Actions). To take
- * this over: keep the `id`, populate `render` from `data.ci`, and add
- * `sortable` + `getSortValue` reading `data.ci.score`. See `columns/index.ts`.
+ * The CI column — owned by issue #12 (failing GitHub Actions). Centered and
+ * sortable by the slice `score`, with a descending default so failing repos
+ * surface at the top. The cell lives in {@link CiCell}; this file exports only
+ * the descriptor so it stays Fast-Refresh clean.
  */
 export const ciColumn: FleetColumn = {
   id: 'ci',
   header: 'CI',
   align: 'center',
-  render: () => <StubCell srLabel="CI status not available yet" />,
+  sortable: true,
+  defaultSortDirection: 'desc',
+  getSortValue: (_, data) => data.ci?.score ?? -1,
+  render: (_, data) => <CiCell slice={data.ci} />,
 };
