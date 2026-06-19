@@ -152,8 +152,8 @@ hook ──► coordinator.fetchData(repo, token)
 │        │  fetch (allowed by CSP connect-src)                                          │
 │        ▼                                                                              │
 │  ALLOWED ────► api.github.com            (REST + GraphQL; sends CORS)                 │
-│  ALLOWED ────► github.com/login/*        (future auth; CORS-blocked → device flow deferred) │
-│  ALLOWED ────► *.githubusercontent.com   (avatars / raw images)                      │
+│  ALLOWED ────► github.com                (origin-wide; future github.com/login/* auth, CORS-blocked) │
+│  ALLOWED ────► *.githubusercontent.com   (avatars / raw images; img-src + connect-src) │
 │  BLOCKED ──X─► any other origin (CDNs, analytics, fonts, telemetry) — no third parties │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 Verified by an automated Playwright network-interception test: 0 non-GitHub requests.
@@ -230,11 +230,15 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
 ## 10. Privacy & network boundary  — ADR-004
 
 - **Runtime allowlist — GitHub-owned only:** `api.github.com`,
-  `github.com/login/*`, `*.githubusercontent.com`.
-- **Strict CSP** with `connect-src` limited to GitHub-owned origins; e.g.
-  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'
-  https://*.githubusercontent.com; connect-src https://api.github.com;
-  object-src 'none'`.
+  `github.com` (origin-wide; reserved for the future `github.com/login/*` auth
+  flow), `*.githubusercontent.com`.
+- **Strict CSP** with `connect-src` limited to GitHub-owned origins plus
+  `'self'`. The shipped policy (`index.html`) is `default-src 'self'; base-uri
+  'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self'
+  https://*.githubusercontent.com data:; script-src 'self'; style-src 'self';
+  font-src 'self'; connect-src 'self' https://api.github.com https://github.com
+  https://*.githubusercontent.com; form-action 'self'` — `*.githubusercontent.com`
+  appears in both `img-src` and `connect-src`.
 - **Fonts/assets bundled locally** — no CDN/analytics/third-party origins. No
   `eval()`/`new Function()`; render API strings via `textContent`, never
   `innerHTML`.
