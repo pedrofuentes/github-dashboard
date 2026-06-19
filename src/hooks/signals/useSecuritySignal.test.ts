@@ -43,7 +43,7 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 
 /** Builds a severity summary (the shape both alert fetchers now return). */
 function summaryOf(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
-  return { critical: 0, high: 0, medium: 0, low: 0, total: 0, ...partial };
+  return { critical: 0, high: 0, medium: 0, low: 0, total: 0, truncated: false, ...partial };
 }
 
 const dependabot = summaryOf;
@@ -116,6 +116,32 @@ describe('useSecuritySignal', () => {
       score: 1 * 100 + 1 * 20 + 3 * 5 + 0,
       grade: 'F',
     });
+  });
+
+  it('flags the slice as truncated when a contributing feed hit the page cap (#77)', async () => {
+    mockDependabot.mockResolvedValue(dependabot({ critical: 1, truncated: true }));
+    codeScanning({ high: 1 });
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    // A partial feed must surface up to the slice so the cell can warn the
+    // grade is a lower bound — losing this drops the truncation indicator.
+    expect(result.current.get('octo/a')?.truncated).toBe(true);
+  });
+
+  it('leaves the slice un-truncated when every feed was fully counted (#77)', async () => {
+    mockDependabot.mockResolvedValue(dependabot({ critical: 1, truncated: false }));
+    codeScanning({ high: 1, truncated: false });
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    expect(result.current.get('octo/a')?.truncated).toBeUndefined();
   });
 
   it('treats a 403 on one source as "no data from that source", using the other', async () => {
@@ -209,10 +235,14 @@ describe('useSecuritySignal', () => {
     });
 
     // The first token's slow feeds NOW settle, with a critical count that would
-    // crash the grade to 'F'. The generation guard must discard this write.
-    resolveStaleDependabot?.(dependabot({ critical: 9 }));
-    resolveStaleCodeScanning?.(summaryOf({}));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // crash the grade to 'F'. The generation guard must discard this write. Flush
+    // via the file's macrotask `flush()` inside `act()` (not an arbitrary 10ms
+    // sleep) so the discarded continuation is drained deterministically (#66).
+    await act(async () => {
+      resolveStaleDependabot?.(dependabot({ critical: 9 }));
+      resolveStaleCodeScanning?.(summaryOf({}));
+      await flush();
+    });
 
     expect(result.current.get('octo/a')).toEqual({
       status: 'ready',
@@ -228,7 +258,10 @@ describe('useSecuritySignal', () => {
       rejectStale = reject;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
-    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
+    // Defer only the stale generation's sibling feed (mirroring the resolution
+    // race test) so it never settles on its own; the fresh generation below sets
+    // its own resolved default (#66).
+    mockCodeScanning.mockReturnValueOnce(new Promise<SecurityAlertSummary>(() => {}));
 
     const { result, rerender } = renderHook(({ token }) => useSecuritySignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -243,8 +276,12 @@ describe('useSecuritySignal', () => {
       expect(result.current.get('octo/a')?.status).toBe('ready');
     });
 
-    rejectStale?.(new Error('stale failure'));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Drain the stale rejection deterministically via `act(flush)` rather than an
+    // arbitrary timed sleep; the abort + generation guard must keep it quiet (#66).
+    await act(async () => {
+      rejectStale?.(new Error('stale failure'));
+      await flush();
+    });
 
     expect(result.current.get('octo/a')?.status).toBe('ready');
   });
@@ -388,12 +425,18 @@ describe('useSecuritySignal', () => {
     mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
 
     const { unmount, result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
-    const captured = mockDependabot.mock.calls[0]?.[3] as AbortSignal | undefined;
-    expect(captured).toBeInstanceOf(AbortSignal);
-    expect(captured?.aborted).toBe(false);
+    // BOTH feeds must receive the run's shared AbortSignal — not just Dependabot —
+    // so unmount cancels every in-flight request, including code-scanning (#72).
+    const dependabotSignal = mockDependabot.mock.calls[0]?.[3] as AbortSignal | undefined;
+    const codeScanningSignal = mockCodeScanning.mock.calls[0]?.[3] as AbortSignal | undefined;
+    expect(dependabotSignal).toBeInstanceOf(AbortSignal);
+    expect(codeScanningSignal).toBeInstanceOf(AbortSignal);
+    expect(dependabotSignal?.aborted).toBe(false);
+    expect(codeScanningSignal?.aborted).toBe(false);
 
     unmount();
-    expect(captured?.aborted).toBe(true);
+    expect(dependabotSignal?.aborted).toBe(true);
+    expect(codeScanningSignal?.aborted).toBe(true);
 
     await act(async () => {
       rejectFetch(new DOMException('The operation was aborted', 'AbortError'));

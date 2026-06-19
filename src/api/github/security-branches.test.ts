@@ -16,9 +16,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   MAX_ALERT_PAGES,
+  assertGitHubApiOrigin,
   fetchCodeScanningAlerts,
   fetchDependabotAlerts,
 } from './security-branches';
+import { ETagCache } from './etag-cache';
 import { GitHubApiError, GitHubErrorCode } from './index';
 
 // ──────────────────────────────────────────────
@@ -35,9 +37,15 @@ function mockHeaders(overrides: Record<string, string> = {}): Headers {
   return new Headers({ ...defaults, ...overrides });
 }
 
-/** Builds a fake `Response`; pass `link` to advertise a `rel="next"` page. */
-function mockResponse(status: number, body: unknown, link?: string): Response {
-  const headers = mockHeaders(link ? { link } : {});
+/**
+ * Builds a fake `Response`; pass `link` to advertise a `rel="next"` page and
+ * `etag` to set the validator a later conditional request echoes back.
+ */
+function mockResponse(status: number, body: unknown, link?: string, etag?: string): Response {
+  const headers = mockHeaders({
+    ...(link ? { link } : {}),
+    ...(etag ? { etag } : {}),
+  });
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -80,7 +88,14 @@ describe('fetchCodeScanningAlerts', () => {
     const summary = await fetchCodeScanningAlerts('octo', 'a', 'tok');
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(summary).toEqual({ critical: 1, high: 2, medium: 0, low: 0, total: 3 });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 2,
+      medium: 0,
+      low: 0,
+      total: 3,
+      truncated: false,
+    });
   });
 
   it('follows Link rel="next" and counts alerts across every page (>100)', async () => {
@@ -99,6 +114,8 @@ describe('fetchCodeScanningAlerts', () => {
     expect(summary.high).toBe(100);
     expect(summary.critical).toBe(30);
     expect(summary.total).toBe(130);
+    // The feed was exhausted within the cap, so the tally is complete (#77).
+    expect(summary.truncated).toBe(false);
   });
 
   it('buckets every severity source (level + rule.severity), ignoring unknowns', async () => {
@@ -119,7 +136,14 @@ describe('fetchCodeScanningAlerts', () => {
 
     const summary = await fetchCodeScanningAlerts('octo', 'a', 'tok');
 
-    expect(summary).toEqual({ critical: 1, high: 2, medium: 2, low: 2, total: 7 });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 2,
+      medium: 2,
+      low: 2,
+      total: 7,
+      truncated: false,
+    });
   });
 
   it('stops after a single request when there is no Link next header', async () => {
@@ -166,6 +190,9 @@ describe('fetchCodeScanningAlerts', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(MAX_ALERT_PAGES);
     expect(summary.low).toBe(MAX_ALERT_PAGES);
+    // The same-origin `Link` chain was still advertising another page when the
+    // cap stopped the loop, so the tally is partial, not complete (issue #77).
+    expect(summary.truncated).toBe(true);
   });
 
   it('throws an access-denied GitHubApiError on 403 (surfaces as "no access")', async () => {
@@ -206,7 +233,14 @@ describe('fetchDependabotAlerts', () => {
     const summary = await fetchDependabotAlerts('octo', 'a', 'tok');
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(summary).toEqual({ critical: 1, high: 0, medium: 1, low: 0, total: 2 });
+    expect(summary).toEqual({
+      critical: 1,
+      high: 0,
+      medium: 1,
+      low: 0,
+      total: 2,
+      truncated: false,
+    });
   });
 
   it('follows Link rel="next" and counts alerts across every page (>100)', async () => {
@@ -238,5 +272,290 @@ describe('fetchDependabotAlerts', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(MAX_ALERT_PAGES);
     expect(summary.total).toBe(MAX_ALERT_PAGES);
+    expect(summary.truncated).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────
+// Page-1 conditional caching — issue #78
+// ──────────────────────────────────────────────
+
+describe('alert feeds — page-1 conditional caching (#78)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('sends no If-None-Match on a cold cache and stores page 1\u2019s ETag', async () => {
+    const cache = new ETagCache();
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('high')], undefined, 'W/"v1"'),
+    );
+
+    const summary = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    expect(summary).toEqual({
+      critical: 0,
+      high: 1,
+      medium: 0,
+      low: 0,
+      total: 1,
+      truncated: false,
+    });
+    const headers = (vi.mocked(globalThis.fetch).mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
+    expect(headers['If-None-Match']).toBeUndefined();
+  });
+
+  it('replays the stored validator and short-circuits to the cached count on 304', async () => {
+    const cache = new ETagCache();
+    // First refresh: a 200 on page 1 caches both the ETag and the summary.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('critical'), levelAlert('high')], undefined, 'W/"v1"'),
+    );
+    const first = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(first).toEqual({ critical: 1, high: 1, medium: 0, low: 0, total: 2, truncated: false });
+
+    // Second refresh: the head of the feed is unchanged, so the server answers
+    // 304 and the cached summary is reused without re-reading the body.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v1"'));
+    const second = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    expect(second).toEqual(first);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    const conditionalHeaders = (vi.mocked(globalThis.fetch).mock.calls[1][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(conditionalHeaders['If-None-Match']).toBe('W/"v1"');
+  });
+
+  it('skips re-paginating later pages when page 1 is a 304', async () => {
+    const cache = new ETagCache();
+    const page1 = Array.from({ length: 100 }, () => levelAlert('high'));
+    const page2 = Array.from({ length: 5 }, () => levelAlert('critical'));
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(mockResponse(200, page1, NEXT_PAGE_2, 'W/"v1"'))
+      .mockResolvedValueOnce(mockResponse(200, page2));
+    const first = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(first.high).toBe(100);
+    expect(first.critical).toBe(5);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+
+    // A 304 on page 1 returns the full cached summary with exactly ONE request —
+    // no page-2 re-fetch — proving the short-circuit skips re-pagination.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v1"'));
+    const second = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    expect(second).toEqual(first);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('re-paginates and refreshes the cache when page 1 changed (200, new ETag)', async () => {
+    const cache = new ETagCache();
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('high')], undefined, 'W/"v1"'),
+    );
+    await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    // The head changed: a 200 (not 304) with a new ETag re-counts and re-caches.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('critical'), levelAlert('critical')], undefined, 'W/"v2"'),
+    );
+    const refreshed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(refreshed).toEqual({
+      critical: 2,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 2,
+      truncated: false,
+    });
+
+    // A third refresh now conditionalizes on the *new* validator.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v2"'));
+    const cached = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(cached).toEqual(refreshed);
+  });
+
+  it('isolates caches per feed/instance so distinct URLs never collide', async () => {
+    const cache = new ETagCache();
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [advisoryAlert('critical')], undefined, 'W/"dep"'),
+    );
+    const dep = await fetchDependabotAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(dep.critical).toBe(1);
+
+    // Same repo, different feed/URL → no 304 reuse; a fresh 200 is counted.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('low')], undefined, 'W/"cs"'),
+    );
+    const cs = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(cs.low).toBe(1);
+    expect(cs.critical).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────
+// Reopened/un-dismissed alert re-entering on page ≥2 — issue #78 follow-up
+//
+// GitHub preserves an alert's original `created_at` when it is reopened, and
+// these feeds pin neither sort nor direction (so they inherit the API default
+// `sort=created&direction=desc`). On a feed with >100 open alerts a reopened
+// alert re-enters at its OLD created position on page ≥2 and leaves page 1
+// byte-identical, so the page-1 `If-None-Match` yields `304`, the stale cached
+// summary is served, and pages 2..N — including the reopened (possibly
+// critical) alert — are skipped: a silent UNDER-report in the unsafe direction.
+//
+// Requesting `sort=updated&direction=desc` makes any new/reopened alert (whose
+// `updated_at` is "now") sort to the TOP of page 1, changing page 1's body/ETag
+// → `200` → full re-pagination → correct count.
+// ──────────────────────────────────────────────
+
+describe('alert feeds — reopened alert re-entering on page ≥2 (#78 follow-up)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /**
+   * A stateful fake GitHub alert feed of >100 OPEN alerts (so page ≥2 exists)
+   * with one CRITICAL alert that gets reopened. The reopen keeps the alert's
+   * OLD `created_at` (so under `sort=created` it stays on page 2 and page 1 is
+   * byte-identical → 304) but sets `updated_at` to "now" (so under
+   * `sort=updated` it jumps to the head of page 1 → page 1 changes → 200 →
+   * re-pagination). The page-1 ETag therefore only changes once the reopened
+   * alert sorts to its head, which happens exclusively under `sort=updated`.
+   */
+  function makeReopenServer(makeAlert: (severity: string) => Record<string, unknown>) {
+    let reopened = false;
+    const ETAG_BEFORE = 'W/"page1-v1"';
+    const ETAG_AFTER = 'W/"page1-v2"';
+    const highs = (n: number) => Array.from({ length: n }, () => makeAlert('high'));
+    const mediums = (n: number) => Array.from({ length: n }, () => makeAlert('medium'));
+    const reopenedCritical = makeAlert('critical');
+
+    const impl = (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> => {
+      const url = new URL(String(input));
+      const sortByUpdated =
+        url.searchParams.get('sort') === 'updated' && url.searchParams.get('direction') === 'desc';
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const ifNoneMatch = (init?.headers as Record<string, string> | undefined)?.['If-None-Match'];
+
+      if (page <= 1) {
+        const etag = reopened && sortByUpdated ? ETAG_AFTER : ETAG_BEFORE;
+        if (ifNoneMatch && ifNoneMatch === etag) {
+          return Promise.resolve(mockResponse(304, null, undefined, etag));
+        }
+        // Mirror the request's query (incl. sort/direction) onto the next link
+        // so the followed page-2 URL stays faithful to the chosen sort regime.
+        const next = new URL(url);
+        next.searchParams.set('page', '2');
+        const link = `<${next.toString()}>; rel="next"`;
+        const body = reopened && sortByUpdated ? [reopenedCritical, ...highs(99)] : highs(100);
+        return Promise.resolve(mockResponse(200, body, link, etag));
+      }
+
+      // Page 2 (last page): the reopened critical lives here under `sort=created`
+      // (old created position) and is displaced to page 1 under `sort=updated`.
+      const body = reopened
+        ? sortByUpdated
+          ? [...highs(1), ...mediums(10)]
+          : [...mediums(10), reopenedCritical]
+        : mediums(10);
+      return Promise.resolve(mockResponse(200, body));
+    };
+
+    return {
+      install: () => vi.mocked(globalThis.fetch).mockImplementation(impl),
+      reopen: () => {
+        reopened = true;
+      },
+    };
+  }
+
+  it('code-scanning: counts a reopened critical re-entering on page ≥2 (no stale 304 under-report)', async () => {
+    const cache = new ETagCache();
+    const server = makeReopenServer(levelAlert);
+    server.install();
+
+    // Seed the page-1 ETag + full tally from a complete two-page read.
+    const seeded = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(seeded.critical).toBe(0);
+    expect(seeded.total).toBe(110);
+
+    // A previously dismissed CRITICAL alert is reopened. Its created_at is old
+    // (page ≥2), so page 1's bytes are unchanged under the default `sort=created`
+    // → 304. Only `sort=updated` floats it to page 1's head and forces a recount.
+    server.reopen();
+    const refreshed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    // The reopened critical MUST be counted — a 304 short-circuit hides it and
+    // silently under-grades the repo (worst-severity F shown as the stale C).
+    expect(refreshed.critical).toBe(1);
+    expect(refreshed.total).toBe(111);
+
+    // Regression guard: the conditional read must pin sort=updated&direction=desc
+    // so a future revert to `created`/unsorted re-breaks this test.
+    const firstUrl = String(vi.mocked(globalThis.fetch).mock.calls[0][0]);
+    expect(firstUrl).toContain('sort=updated');
+    expect(firstUrl).toContain('direction=desc');
+  });
+
+  it('dependabot: counts a reopened critical re-entering on page ≥2 (no stale 304 under-report)', async () => {
+    const cache = new ETagCache();
+    const server = makeReopenServer(advisoryAlert);
+    server.install();
+
+    const seeded = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+    expect(seeded.critical).toBe(0);
+    expect(seeded.total).toBe(110);
+
+    server.reopen();
+    const refreshed = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+
+    expect(refreshed.critical).toBe(1);
+    expect(refreshed.total).toBe(111);
+
+    const firstUrl = String(vi.mocked(globalThis.fetch).mock.calls[0][0]);
+    expect(firstUrl).toContain('sort=updated');
+    expect(firstUrl).toContain('direction=desc');
+  });
+});
+
+// ──────────────────────────────────────────────
+// Origin-assert symmetry — issue #66
+// ──────────────────────────────────────────────
+
+describe('assertGitHubApiOrigin (#66)', () => {
+  it('accepts a GitHub API origin URL', () => {
+    expect(() =>
+      assertGitHubApiOrigin('https://api.github.com/repos/octo/a/dependabot/alerts'),
+    ).not.toThrow();
+  });
+
+  it('refuses an off-origin URL so the PAT/ETag never leak to a forged host', () => {
+    expect(() => assertGitHubApiOrigin('https://evil.example.com/dependabot/alerts')).toThrow(
+      /origin/i,
+    );
+  });
+
+  it('refuses an unparseable URL', () => {
+    expect(() => assertGitHubApiOrigin('not-a-valid-url')).toThrow();
   });
 });

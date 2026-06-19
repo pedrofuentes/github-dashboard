@@ -60,6 +60,15 @@ function CheckIcon() {
   );
 }
 
+/** A trailing-ellipsis glyph hinting "more, not counted" for partial tallies. */
+function PartialIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+      <path d="M4 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" />
+    </svg>
+  );
+}
+
 /**
  * Renders the Security column cell: a letter grade plus a compact severity
  * summary (e.g. `C2 H1`), with every state conveyed by text/icon and an
@@ -116,9 +125,14 @@ export function SecurityCell({ slice }: SecurityCellProps) {
   const grade = slice.grade ?? 'A';
   const { compact, spoken } = summarise(slice.counts);
   const allClear = compact === '';
+  // A truncated tally is a lower bound: the cell says so in words + an icon
+  // (never colour alone) so the understated grade is legible to everyone (#77).
+  const partial = slice.truncated === true && !allClear;
   const label = allClear
     ? `Security grade ${grade}: no open alerts`
-    : `Security grade ${grade}: ${spoken}`;
+    : partial
+      ? `Security grade ${grade}: at least ${spoken} (partial — more alerts not counted)`
+      : `Security grade ${grade}: ${spoken}`;
 
   return (
     <span className="inline-flex items-center justify-center gap-1.5" aria-label={label}>
@@ -133,7 +147,17 @@ export function SecurityCell({ slice }: SecurityCellProps) {
         </span>
       ) : (
         <span aria-hidden="true" className="text-xs font-medium tabular-nums text-slate-700">
-          {compact}
+          {partial ? `≥${compact}` : compact}
+        </span>
+      )}
+      {partial && (
+        <span
+          aria-hidden="true"
+          className="inline-flex items-center gap-0.5 text-xs text-slate-500"
+          title="Alert count is partial — pagination cap reached; more alerts were not counted"
+        >
+          <PartialIcon />
+          partial
         </span>
       )}
       <span className="sr-only">{label}</span>

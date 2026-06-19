@@ -51,6 +51,12 @@ export interface CiSignalSlice extends SignalSlice {
 export interface SecuritySignalSlice extends SignalSlice {
   grade?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
   counts?: { critical: number; high: number; medium: number; low: number };
+  /**
+   * `true` when at least one contributing alert feed hit the pagination cap, so
+   * the counts/grade are a lower bound and the cell shows a partial indicator
+   * (issue #77). Omitted when every feed was fully counted.
+   */
+  truncated?: boolean;
 }
 
 /** Reviews slice — owned by issue #14 (review requests assigned to the viewer). */

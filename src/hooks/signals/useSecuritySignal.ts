@@ -39,7 +39,13 @@ const EMPTY: Map<string, SecuritySignalSlice> = new Map();
 
 /** Sentinel: a feed exists but is not accessible to this token/repo. */
 const NO_ACCESS = Symbol('security:no-access');
-type FeedResult = SecurityCounts | typeof NO_ACCESS;
+/** Severity counts from one accessible feed, plus whether it was truncated. */
+interface FeedData {
+  counts: SecurityCounts;
+  /** `true` when this feed hit the pagination cap (partial count; issue #77). */
+  truncated: boolean;
+}
+type FeedResult = FeedData | typeof NO_ACCESS;
 
 /** One alert feed for a repo: severity counts, or NO_ACCESS when unavailable. */
 type FeedLoader = (repo: Repo, token: string, signal?: AbortSignal) => Promise<FeedResult>;
@@ -74,10 +80,13 @@ function feedLoader(fetcher: SummaryFetcher): FeedLoader {
     try {
       const summary = await fetcher(repo.owner, repo.name, token, signal);
       return {
-        critical: summary.critical,
-        high: summary.high,
-        medium: summary.medium,
-        low: summary.low,
+        counts: {
+          critical: summary.critical,
+          high: summary.high,
+          medium: summary.medium,
+          low: summary.low,
+        },
+        truncated: summary.truncated,
       };
     } catch (error) {
       if (isNoAccessError(error)) return NO_ACCESS;
@@ -97,20 +106,26 @@ function combineFeeds(feeds: FeedResult[]): SecuritySignalSlice {
   }
 
   const counts = emptyCounts();
+  let truncated = false;
   for (const feed of feeds) {
     if (feed === NO_ACCESS) continue;
-    counts.critical += feed.critical;
-    counts.high += feed.high;
-    counts.medium += feed.medium;
-    counts.low += feed.low;
+    counts.critical += feed.counts.critical;
+    counts.high += feed.counts.high;
+    counts.medium += feed.counts.medium;
+    counts.low += feed.counts.low;
+    // Any partial feed makes the merged count a lower bound (issue #77).
+    if (feed.truncated) truncated = true;
   }
 
-  return {
+  const slice: SecuritySignalSlice = {
     status: 'ready',
     score: computeSecurityScore(counts),
     grade: computeGrade(counts),
     counts,
   };
+  // Only set the flag when partial, so a fully-counted slice stays clean.
+  if (truncated) slice.truncated = true;
+  return slice;
 }
 
 /** One scheduled unit of work: a single feed request for a single repo. */

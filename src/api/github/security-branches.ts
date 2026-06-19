@@ -16,6 +16,7 @@ import {
   parseRateLimitHeaders,
   parseRetryAfter,
 } from './core';
+import { ETagCache } from './etag-cache';
 import {
   DependabotAlertSchema,
   BranchComparisonResponseSchema,
@@ -37,6 +38,12 @@ export interface SecurityAlertSummary {
   medium: number;
   low: number;
   total: number;
+  /**
+   * `true` when pagination stopped at {@link MAX_ALERT_PAGES} while the feed
+   * still advertised another page — the counts are a **lower bound**, not a
+   * complete tally, so callers can flag the grade as partial (issue #77).
+   */
+  truncated: boolean;
 }
 
 /**
@@ -46,6 +53,44 @@ export interface SecurityAlertSummary {
  * keeps advertising another on-origin "next" page (issue #63).
  */
 export const MAX_ALERT_PAGES = 50;
+
+/** The single origin (`https://api.github.com`) every alert request may target. */
+const GITHUB_API_ORIGIN = new URL(GITHUB_API_BASE).origin;
+
+/**
+ * Asserts that `url` is on the GitHub API origin before it is fetched with the
+ * user's PAT — and, for page 1, an `If-None-Match` validator — attached.
+ *
+ * Defense-in-depth symmetry with the ETag path (issue #66): the conditional
+ * caching layer in `etag-cache.ts` guards every request this way, and the alert
+ * feeds follow attacker-influenced `Link: rel="next"` URLs, so each page must be
+ * proven on-origin before the token/ETag is sent. {@link parseNextPageUrl}
+ * already drops off-origin "next" links; this is the belt to that suspenders and
+ * additionally guards the initial page-1 URL.
+ *
+ * @throws {Error} when `url` is unparseable or not on the GitHub API origin
+ */
+export function assertGitHubApiOrigin(url: string): void {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    throw new Error(`assertGitHubApiOrigin: invalid request URL "${url}"`);
+  }
+  if (origin !== GITHUB_API_ORIGIN) {
+    throw new Error(
+      `assertGitHubApiOrigin: refusing to send a request to non-GitHub origin "${origin}"`,
+    );
+  }
+}
+
+/**
+ * Process-local cache used by the alert feeds when a caller does not inject its
+ * own. Keyed by the page-1 URL, it stores the last fully-counted
+ * {@link SecurityAlertSummary} plus the page-1 `ETag` so a subsequent refresh
+ * can replay the validator and short-circuit on `304` (issue #78).
+ */
+const defaultAlertCache = new ETagCache();
 
 /**
  * Parses the GitHub `Link` header to extract the URL for the next page.
@@ -73,46 +118,143 @@ function parseNextPageUrl(linkHeader: string | null): string | null {
 }
 
 /**
- * Fetches every page of an alert feed, following `Link: rel="next"` until the
- * feed is exhausted or {@link MAX_ALERT_PAGES} is reached. Returns the
- * concatenated raw rows. A single `per_page=100` request silently undercounts
- * any repo with more than 100 open alerts (issue #63), so both alert feeds
- * enumerate every page before grading.
+ * Outcome of a (possibly conditional) alert-feed read.
+ *
+ * Either the feed's first page was unchanged since the last successful read — so
+ * the previously computed summary is served straight from cache without
+ * re-paginating (`hit: true`, issue #78) — or every page was (re)read and the
+ * raw rows are returned for the caller to tally with its feed-specific severity
+ * rules, along with a {@link AlertFeedFresh.commit} hook that persists the
+ * resulting summary for the next conditional read.
  */
-async function fetchAllAlertPages<T>(
+type AlertFeedRead<T> = { hit: true; summary: SecurityAlertSummary } | AlertFeedFresh<T>;
+
+interface AlertFeedFresh<T> {
+  hit: false;
+  /** Concatenated raw rows across page 1 plus any `Link: rel="next"` pages. */
+  items: T[];
+  /** `true` when {@link MAX_ALERT_PAGES} stopped pagination with pages remaining. */
+  truncated: boolean;
+  /**
+   * Persists `summary` as the cached answer for the next conditional read, keyed
+   * by the page-1 URL and tagged with page 1's `ETag`. A no-op when the read was
+   * truncated — a lower-bound count must never be replayed as a `304`
+   * "unchanged" answer (issues #77, #78).
+   */
+  commit: (summary: SecurityAlertSummary) => void;
+}
+
+/**
+ * Reads an alert feed with page-1 conditional caching, following
+ * `Link: rel="next"` until the feed is exhausted or {@link MAX_ALERT_PAGES} is
+ * reached. A single `per_page=100` request silently undercounts any repo with
+ * more than 100 open alerts, so every page is enumerated before grading (issues
+ * #63, #77).
+ *
+ * Conditional caching (issue #78): the feed is requested
+ * `sort=updated&direction=desc` and page 1 carries an `If-None-Match` built from
+ * the previously stored `ETag`. Sorting by `updated` is what makes the page-1
+ * short-circuit sound: ANY change to the open set — a brand-new alert or a
+ * **reopened/un-dismissed** one — bumps that alert's `updated_at` to now (GitHub
+ * preserves the original `created_at` on reopen) and floats it to the head of
+ * page 1, changing page 1's bytes/`ETag` so the server returns `200` and every
+ * page is re-counted. A `304 Not Modified` therefore means page 1 is
+ * byte-identical AND, because the newest `updated_at` has not advanced, nothing
+ * entered the open set since last time — so the cached summary is reused
+ * verbatim and pages 2..N are not re-fetched, restoring the 304 rate-limit
+ * savings that #76 lost when code-scanning moved off the ETag path to read
+ * `Link` headers.
+ *
+ * Why `updated` and not `created` (the API default): a reopened alert keeps its
+ * old `created_at`, so under `created` it re-enters on page ≥2 and leaves a
+ * multi-page feed's page 1 unchanged → `304` → its (possibly **critical**) count
+ * is silently dropped — an UNDER-report in the unsafe direction. Under `updated`
+ * the only remaining 304 case is an alert dismissed/fixed off page ≥2 that
+ * leaves page 1's 100 items unchanged: that yields a transient **over**-count
+ * until page 1 next changes — the grade errs toward "needs attention" and never
+ * hides a problem. Truncated reads are never cached, so a lower-bound tally can
+ * never be served as an "unchanged" 304.
+ *
+ * Every page URL — including attacker-influenceable `Link` targets — is passed
+ * through {@link assertGitHubApiOrigin} before the PAT/ETag is attached (issue
+ * #66).
+ */
+async function readAlertFeed<T>(
   initialUrl: string,
   schema: z.ZodType<T[]>,
   token: string,
   context: string,
   owner: string,
   repo: string,
+  cache: ETagCache,
   signal?: AbortSignal,
-): Promise<T[]> {
+): Promise<AlertFeedRead<T>> {
   const headers = buildHeaders(token);
-  const items: T[] = [];
-  let url: string | null = initialUrl;
+  const cached = cache.get<SecurityAlertSummary>(initialUrl);
 
-  for (let page = 0; url && page < MAX_ALERT_PAGES; page++) {
+  // Page 1 is conditional: replay the stored validator so an unchanged feed head
+  // answers 304 and reuses the cached tally without re-paginating (issue #78).
+  const firstHeaders: Record<string, string> = { ...headers };
+  if (cached?.etag) {
+    firstHeaders['If-None-Match'] = cached.etag;
+  }
+
+  assertGitHubApiOrigin(initialUrl);
+  const first = await fetchWithRetry(initialUrl, { headers: firstHeaders, signal }, context);
+
+  // 304 must be checked before `!ok` (a 304 reports `ok === false`).
+  if (first.status === 304 && cached) {
+    return { hit: true, summary: cached.data };
+  }
+
+  if (!first.ok) {
+    handleApiError(
+      first.status,
+      parseRateLimitHeaders(first.headers),
+      owner,
+      repo,
+      parseRetryAfter(first.headers),
+    );
+  }
+
+  const pageOneEtag = first.headers.get('etag');
+  const items: T[] = [];
+  for (const item of schema.parse(await first.json())) items.push(item);
+
+  let url: string | null = parseNextPageUrl(first.headers.get('link'));
+  let pagesFetched = 1;
+  while (url && pagesFetched < MAX_ALERT_PAGES) {
+    assertGitHubApiOrigin(url);
     const response = await fetchWithRetry(url, { headers, signal }, context);
 
     if (!response.ok) {
-      const rateLimitInfo = parseRateLimitHeaders(response.headers);
       handleApiError(
         response.status,
-        rateLimitInfo,
+        parseRateLimitHeaders(response.headers),
         owner,
         repo,
         parseRetryAfter(response.headers),
       );
     }
 
-    const parsed = schema.parse(await response.json());
-    for (const item of parsed) items.push(item);
-
+    for (const item of schema.parse(await response.json())) items.push(item);
+    pagesFetched++;
     url = parseNextPageUrl(response.headers.get('link'));
   }
 
-  return items;
+  // A still-non-null `url` means the cap stopped us with pages remaining.
+  const truncated = url !== null;
+  const commit = (summary: SecurityAlertSummary): void => {
+    // Only a complete tally may seed a future 304 short-circuit.
+    if (summary.truncated) return;
+    cache.set<SecurityAlertSummary>(initialUrl, {
+      etag: pageOneEtag,
+      data: summary,
+      storedAt: Date.now(),
+    });
+  };
+
+  return { hit: false, items, truncated, commit };
 }
 
 /**
@@ -123,6 +265,8 @@ async function fetchAllAlertPages<T>(
  * @param repo - Repository name
  * @param token - GitHub PAT
  * @param signal - Optional signal to cancel the in-flight request
+ * @param cache - Conditional-request cache (defaults to a shared instance);
+ *   injectable for test isolation
  * @returns Alert summary with counts by severity
  * @throws {GitHubApiError} on API errors
  */
@@ -131,22 +275,34 @@ export async function fetchDependabotAlerts(
   repo: string,
   token: string,
   signal?: AbortSignal,
+  cache: ETagCache = defaultAlertCache,
 ): Promise<SecurityAlertSummary> {
+  // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
+  // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
-    `/dependabot/alerts?state=open&per_page=100`;
-  const alerts = await fetchAllAlertPages(
+    `/dependabot/alerts?state=open&per_page=100&sort=updated&direction=desc`;
+  const read = await readAlertFeed(
     initialUrl,
     z.array(DependabotAlertSchema),
     token,
     'fetchDependabotAlerts',
     owner,
     repo,
+    cache,
     signal,
   );
+  if (read.hit) return read.summary;
 
-  const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-  for (const alert of alerts) {
+  const summary: SecurityAlertSummary = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    truncated: read.truncated,
+  };
+  for (const alert of read.items) {
     const severity = alert.security_advisory?.severity ?? 'low';
     if (
       severity === 'critical' ||
@@ -158,6 +314,7 @@ export async function fetchDependabotAlerts(
     }
     summary.total++;
   }
+  read.commit(summary);
   return summary;
 }
 
@@ -204,13 +361,18 @@ function codeScanningSeverity(alert: CodeScanningAlert): AlertSeverity | null {
  *
  * Mirrors {@link fetchDependabotAlerts}: it follows `Link: rel="next"` so a
  * repo with more than 100 open alerts is fully counted instead of being
- * silently over-graded (issue #63). Uses {@link fetchWithRetry} (not the ETag
- * cache) because following `Link` requires the response headers.
+ * silently over-graded (issue #63). Following `Link` requires reading the
+ * response headers, so this path cannot route through the body-only
+ * `fetchWithETag` wrapper; instead it restores conditional-request savings with
+ * a page-1 `If-None-Match` short-circuit (issue #78 — see
+ * {@link readAlertFeed}).
  *
  * @param owner - Repository owner
  * @param repo - Repository name
  * @param token - GitHub PAT
  * @param signal - Optional signal to cancel the in-flight request
+ * @param cache - Conditional-request cache (defaults to a shared instance);
+ *   injectable for test isolation
  * @returns Alert summary with counts by severity
  * @throws {GitHubApiError} on API errors
  */
@@ -219,28 +381,41 @@ export async function fetchCodeScanningAlerts(
   repo: string,
   token: string,
   signal?: AbortSignal,
+  cache: ETagCache = defaultAlertCache,
 ): Promise<SecurityAlertSummary> {
+  // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
+  // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
     `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
-    `/code-scanning/alerts?state=open&per_page=100`;
-  const alerts = await fetchAllAlertPages(
+    `/code-scanning/alerts?state=open&per_page=100&sort=updated&direction=desc`;
+  const read = await readAlertFeed(
     initialUrl,
     z.array(CodeScanningAlertSchema),
     token,
     'fetchCodeScanningAlerts',
     owner,
     repo,
+    cache,
     signal,
   );
+  if (read.hit) return read.summary;
 
-  const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-  for (const alert of alerts) {
+  const summary: SecurityAlertSummary = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    truncated: read.truncated,
+  };
+  for (const alert of read.items) {
     const severity = codeScanningSeverity(alert);
     if (severity) {
       summary[severity]++;
       summary.total++;
     }
   }
+  read.commit(summary);
   return summary;
 }
 
