@@ -262,6 +262,65 @@ describe('fetchWithETag / fetchWithETagResult', () => {
     }
   });
 
+  it('throws ACCESS_DENIED on 403 when budget remains (a permissions problem)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse({ message: 'forbidden' }, 403, mockHeaders({ 'x-ratelimit-remaining': '4999' })),
+    );
+
+    let caught: unknown;
+    try {
+      await fetchWithETag(URL_A, BodySchema, { token: 't' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    if (caught instanceof GitHubApiError) {
+      expect(caught.code).toBe(GitHubErrorCode.ACCESS_DENIED);
+      expect(caught.status).toBe(403);
+    }
+  });
+
+  it('throws SERVER_ERROR on an unclassified status (500)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse({ message: 'boom' }, 500));
+
+    let caught: unknown;
+    try {
+      await fetchWithETag(URL_A, BodySchema);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    if (caught instanceof GitHubApiError) {
+      expect(caught.code).toBe(GitHubErrorCode.SERVER_ERROR);
+      expect(caught.status).toBe(500);
+    }
+  });
+
+  it('throws RATE_LIMITED on a persistent 429 after retries are exhausted', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        jsonResponse({ message: 'too many' }, 429, mockHeaders({ 'x-ratelimit-remaining': '0' })),
+      );
+
+      let caught: unknown;
+      const settled = fetchWithETag(URL_A, BodySchema, { token: 't' }).catch((err: unknown) => {
+        caught = err;
+      });
+      // Drive the exponential backoff (1s + 2s + 4s) to completion.
+      await vi.advanceTimersByTimeAsync(8000);
+      await settled;
+
+      expect(caught).toBeInstanceOf(GitHubApiError);
+      if (caught instanceof GitHubApiError) {
+        expect(caught.code).toBe(GitHubErrorCode.RATE_LIMITED);
+        expect(caught.status).toBe(429);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('throws when a 304 arrives with no cached entry to serve', async () => {
     const notModified = {
       ok: false,

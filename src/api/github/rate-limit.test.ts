@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 
-import { GitHubApiError, type RateLimitInfo } from './core';
+import { GitHubApiError, GitHubErrorCode, type RateLimitInfo } from './core';
 import { checkRateLimitBudget, evaluateBudget, fetchRateLimit, isBudgetLow } from './rate-limit';
 
 // ──────────────────────────────────────────────
@@ -97,6 +97,36 @@ describe('fetchRateLimit', () => {
   it('throws a GitHubApiError on a non-ok response', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse({ message: 'bad' }, 401));
     await expect(fetchRateLimit('bad')).rejects.toBeInstanceOf(GitHubApiError);
+  });
+
+  it('codes a 5xx failure as SERVER_ERROR', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse({ message: 'boom' }, 500));
+    let caught: unknown;
+    try {
+      await fetchRateLimit('t');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    if (caught instanceof GitHubApiError) {
+      expect(caught.code).toBe(GitHubErrorCode.SERVER_ERROR);
+      expect(caught.status).toBe(500);
+    }
+  });
+
+  it('derives used from limit - remaining and omits absent buckets', async () => {
+    const reset = Math.floor(Date.now() / 1000 + 3600);
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse({
+        resources: { core: { limit: 5000, remaining: 4000, reset } },
+        rate: { limit: 5000, remaining: 4000, reset },
+      }),
+    );
+
+    const snapshot = await fetchRateLimit();
+    expect(snapshot.core.used).toBe(1000); // 5000 - 4000, since `used` was absent
+    expect(snapshot.graphql).toBeUndefined();
+    expect(snapshot.search).toBeUndefined();
   });
 
   it('throws a ZodError when the body is malformed', async () => {
