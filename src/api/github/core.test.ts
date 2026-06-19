@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchWithRetry, GitHubApiError } from './core';
+import { abortableSleep, fetchWithRetry, GitHubApiError } from './core';
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -381,5 +381,132 @@ describe('fetchWithRetry — AbortSignal cancellation', () => {
     await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
     // AbortError must short-circuit the retry loop: exactly one fetch attempt.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ──────────────────────────────────────────────
+// #70 — Abort-aware retry backoff
+// ──────────────────────────────────────────────
+
+describe('abortableSleep', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('resolves after the full delay when no signal is supplied', async () => {
+    vi.useFakeTimers();
+    const onResolve = vi.fn();
+    void abortableSleep(1000).then(onResolve);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(onResolve).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects immediately with AbortError when the signal is already aborted', async () => {
+    // Real timers + a long delay: only an abort-aware sleep can settle promptly.
+    const controller = new AbortController();
+    controller.abort();
+    await expect(abortableSleep(60_000, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
+  it('rejects and clears the pending timer when the signal aborts mid-sleep', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const settled = expect(abortableSleep(60_000, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+
+    controller.abort();
+    await settled;
+    // The backoff timer must be cleared on abort (no lingering timer/worker slot).
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('fetchWithRetry — abort-aware backoff', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('cancels promptly when the signal aborts during backoff: no extra fetch, rejects AbortError', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    // Always-retryable 503 so the loop enters its 1s exponential backoff.
+    const fetchSpy = vi.fn().mockResolvedValue(mockFetchResponse(503));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const rejection = expect(
+      fetchWithRetry('https://api.github.com/test', { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    // Settle the first fetch (503) so we are parked inside the backoff sleep.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Abort mid-backoff. An abort-aware sleep rejects at once; a blind
+    // setTimeout would instead elapse and fire a second fetch.
+    controller.abort();
+    await vi.runAllTimersAsync();
+
+    await rejection;
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait the full Retry-After backoff once the signal aborts', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    // 429 + Retry-After: 30s would normally block the loop for 30s.
+    const headers = mockHeaders({ 'retry-after': '30' });
+    const fetchSpy = vi.fn().mockResolvedValue(mockFetchResponse(429, headers));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const rejection = expect(
+      fetchWithRetry('https://api.github.com/test', { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Abort 1s in — far short of the 30s Retry-After window.
+    await vi.advanceTimersByTimeAsync(1000);
+    controller.abort();
+    await rejection;
+
+    // No second request fired despite the long Retry-After delay.
+    await vi.runAllTimersAsync();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('still retries a genuine timeout when a non-aborted caller signal is present', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController(); // never aborted
+    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    const okResponse = mockFetchResponse(200);
+    const fetchSpy = vi.fn().mockRejectedValueOnce(abortError).mockResolvedValueOnce(okResponse);
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const promise = fetchWithRetry(
+      'https://api.github.com/test',
+      { signal: controller.signal },
+      'ctx',
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    const result = await promise;
+
+    // A 30s internal timeout (no external abort) must remain retryable.
+    expect(result).toBe(okResponse);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
