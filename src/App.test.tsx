@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -134,5 +134,38 @@ describe('App', () => {
 
     await screen.findByText(/authenticated as octocat/i);
     expect(mockUseRepos).toHaveBeenCalledWith('ghp_valid');
+  });
+
+  it('opens an origin-validated drill-down dialog when a repo row is activated', async () => {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    mockUseRepos.mockReturnValue({
+      status: 'success',
+      repos: [repo('octo/hello-world')],
+      error: null,
+      reload: vi.fn(),
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByRole('table');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    const trigger = screen.getByRole('button', { name: /view details for octo\/hello-world/i });
+    await user.click(trigger);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(within(dialog).getByRole('link', { name: 'octo/hello-world' })).toHaveAttribute(
+      'href',
+      'https://github.com/octo/hello-world',
+    );
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(trigger).toHaveFocus();
   });
 });
