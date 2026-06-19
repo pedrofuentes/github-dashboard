@@ -4,19 +4,43 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken } from './lib/token-storage';
 import { validateToken } from './lib/validate-token';
+import { useRepos } from './hooks/useRepos';
+import type { Repo } from './types/fleet';
 import { App } from './App';
 
 vi.mock('./lib/validate-token', () => ({
   validateToken: vi.fn(),
 }));
 
+vi.mock('./hooks/useRepos', () => ({
+  useRepos: vi.fn(),
+}));
+
 const mockValidate = vi.mocked(validateToken);
+const mockUseRepos = vi.mocked(useRepos);
+
+function repo(nameWithOwner: string, isPrivate = false): Repo {
+  const slash = nameWithOwner.indexOf('/');
+  return {
+    nameWithOwner,
+    owner: nameWithOwner.slice(0, slash),
+    name: nameWithOwner.slice(slash + 1),
+    isPrivate,
+  };
+}
 
 beforeEach(() => {
   forgetToken();
   sessionStorage.clear();
   localStorage.clear();
   mockValidate.mockReset();
+  mockUseRepos.mockReset();
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos: [],
+    error: null,
+    reload: vi.fn(),
+  });
 });
 
 afterEach(() => {
@@ -70,5 +94,36 @@ describe('App', () => {
 
     expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('renders the fleet grid for the authenticated user', async () => {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    mockUseRepos.mockReturnValue({
+      status: 'success',
+      repos: [repo('octo/hello-world'), repo('octo/secret', true)],
+      error: null,
+      reload: vi.fn(),
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /repository/i })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /octo\/hello-world/i })).toBeInTheDocument();
+  });
+
+  it('passes the authenticated token to the repo data hook', async () => {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+
+    await screen.findByText(/authenticated as octocat/i);
+    expect(mockUseRepos).toHaveBeenCalledWith('ghp_valid');
   });
 });
