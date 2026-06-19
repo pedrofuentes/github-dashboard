@@ -89,10 +89,13 @@ describe('stub signal columns', () => {
     ]);
   });
 
-  it('are not sortable yet (sorting is contributed by features #12-18)', () => {
+  it('pair sortability with a getSortValue accessor as features are contributed (#12-18)', () => {
     for (const column of stubs) {
-      expect(column.sortable).toBeFalsy();
-      expect(column.getSortValue).toBeUndefined();
+      if (column.sortable) {
+        expect(typeof column.getSortValue).toBe('function');
+      } else {
+        expect(column.getSortValue).toBeUndefined();
+      }
     }
   });
 
