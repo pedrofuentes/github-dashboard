@@ -198,11 +198,26 @@ export async function fetchUserRepos(token?: string): Promise<DataSourceItem[]> 
 /**
  * Parses the GitHub `Link` header to extract the URL for the next page.
  * Returns null if there is no next page.
+ *
+ * Security: the returned URL is followed with the user's PAT attached, so a
+ * forged or MITM'd `Link` header must never redirect that PAT off-origin. Only
+ * URLs on the GitHub API origin are accepted; anything else (or an unparseable
+ * value) is treated as "no next page" so pagination simply stops.
  */
 function parseNextPageUrl(linkHeader: string | null): string | null {
   if (!linkHeader) return null;
   const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-  return match ? match[1] : null;
+  if (!match) return null;
+
+  const next = match[1];
+  try {
+    if (new URL(next).origin !== new URL(GITHUB_API_BASE).origin) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return next;
 }
 
 /**
