@@ -34,12 +34,13 @@ npm run preview       # preview production build locally
 Run these before every push (CI enforces them all):
 
 ```bash
-npm run lint          # ESLint (zero warnings) + Prettier format check
-npm run format        # auto-fix formatting with Prettier
-npm run typecheck     # TypeScript type-check (no emit)
-npm test              # Vitest unit/integration suite
-npm run test:coverage # same + coverage report (≥ 80% required)
-npm run test:e2e      # Playwright end-to-end tests
+npm run lint           # ESLint (zero warnings) + Prettier format check
+npm run format         # auto-fix formatting with Prettier
+npm run typecheck      # TypeScript type-check (no emit)
+npm run typecheck:test # type-check the test files (tsconfig.vitest.json)
+npm test               # Vitest unit/integration suite
+npm run test:coverage  # same + coverage report (≥ 80% required)
+npm run test:e2e       # Playwright end-to-end tests
 ```
 
 Target a specific file for faster feedback:
@@ -135,6 +136,7 @@ Before opening a PR, verify:
 - [ ] `npm run test:coverage` — coverage ≥ 80%
 - [ ] `npm run lint` — zero warnings
 - [ ] `npm run typecheck` — no errors
+- [ ] `npm run typecheck:test` — test files type-check (`tsconfig.vitest.json`; CI enforces it)
 - [ ] Commit messages follow Conventional Commits format
 - [ ] No secrets, PATs, or hardcoded credentials in any changed file
 - [ ] Sentinel conditions resolved (see [`docs/SENTINEL.md`](./docs/SENTINEL.md))

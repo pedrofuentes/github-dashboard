@@ -107,6 +107,7 @@ npm run dev   # start the Vite dev server, then open the printed localhost URL
 | `npm run test:e2e`      | Run end-to-end tests (Playwright).                     |
 | `npm run lint`          | ESLint (zero warnings) **and** a Prettier format check. |
 | `npm run typecheck`     | Type-check with the TypeScript compiler only.          |
+| `npm run typecheck:test` | Type-check the test files (`tsconfig.vitest.json`).   |
 | `npm run format`        | Format the codebase with Prettier.                     |
 
 ## Tech stack
