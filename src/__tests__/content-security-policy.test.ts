@@ -10,6 +10,15 @@
  * This test pins the policy declared in `index.html` so the lock can never be
  * silently loosened. The companion `e2e/privacy.spec.ts` proves the *runtime*
  * behaviour (only GitHub origins are actually contacted).
+ *
+ * Header-delivered hardening — a real `Content-Security-Policy` *response header*
+ * (so `frame-ancestors 'none'` applies), an `X-Frame-Options: DENY` header, and
+ * path-scoping `connect-src` to `github.com/login/*` — is a hosting-layer
+ * follow-up, not achievable here: GitHub Pages serves no custom response
+ * headers, so those are deferred to a header-capable host/proxy rather than
+ * weakening this `<meta>` policy (#81, #36, #44). This guard therefore pins only
+ * what the `<meta>` tag can carry, and rejects duplicate directives (which
+ * browsers resolve first-wins) so a second, looser copy can't slip through.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -32,7 +41,15 @@ function parsePolicy(policy: string): Map<string, string[]> {
     if (name === undefined) {
       continue;
     }
-    directives.set(name.toLowerCase(), tokens.slice(1));
+    const directive = name.toLowerCase();
+    if (directives.has(directive)) {
+      // Browsers honour the FIRST occurrence of a duplicated directive and
+      // ignore the rest; a last-wins parse (Map overwrite) would mask a second,
+      // looser copy. Reject duplicates so the pin reflects what the browser
+      // actually enforces.
+      throw new Error(`Duplicate CSP directive: ${directive}`);
+    }
+    directives.set(directive, tokens.slice(1));
   }
   return directives;
 }
@@ -71,5 +88,24 @@ describe('index.html Content-Security-Policy', () => {
     expect(directives.get('default-src')).toContain("'self'");
     expect(directives.get('object-src')).toContain("'none'");
     expect(directives.get('base-uri')).toContain("'self'");
+  });
+
+  it('declares each directive at most once (no duplicate the parser must resolve)', () => {
+    expect(() => parsePolicy(cspContent(INDEX_HTML) ?? '')).not.toThrow();
+  });
+});
+
+describe('parsePolicy duplicate-directive guard', () => {
+  it('rejects a policy that declares the same directive more than once', () => {
+    // Browsers honour the FIRST occurrence and ignore the rest, so a last-wins
+    // parse would silently mask a second, looser `connect-src *`. Reject it.
+    expect(() =>
+      parsePolicy("default-src 'self'; connect-src https://api.github.com; connect-src *"),
+    ).toThrow(/duplicate csp directive: connect-src/i);
+  });
+
+  it('still parses a single occurrence of each directive', () => {
+    const directives = parsePolicy("default-src 'self'; connect-src https://api.github.com");
+    expect(directives.get('connect-src')).toEqual(['https://api.github.com']);
   });
 });

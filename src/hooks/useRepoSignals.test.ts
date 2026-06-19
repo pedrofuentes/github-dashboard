@@ -146,4 +146,21 @@ describe('useRepoSignals', () => {
     expect(vi.mocked(useCiSignal).mock.calls.length).toBeGreaterThan(before);
     expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(REPOS, 'ghp_token');
   });
+
+  it('hands the signal hooks a fresh repos array (not the caller reference) on revalidation', () => {
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    setHidden(true);
+    setHidden(false);
+
+    // Foreground revalidation must pass down a NEW array (repos.slice()), never
+    // the caller's own `REPOS` reference: that fresh identity is exactly what
+    // re-runs each signal hook's `[repos, token]` conditional-fetch effect.
+    // `toHaveBeenLastCalledWith(REPOS)` only checks deep equality, so it would
+    // still pass if the slice were dropped — assert reference identity too so
+    // that regression is caught.
+    const lastRepos = vi.mocked(useCiSignal).mock.calls.at(-1)?.[0];
+    expect(lastRepos).not.toBe(REPOS);
+    expect(lastRepos).toEqual(REPOS);
+  });
 });

@@ -113,7 +113,9 @@ function uniformSlices(
  * response's `Link: rel="next"` URL, and returns every item across all pages so
  * counts include PRs beyond the first {@link SEARCH_PAGE_SIZE}. Stops at
  * {@link MAX_REVIEW_PAGES} (or sooner when `signal` aborts) so a malformed or
- * adversarial `Link` chain can never loop indefinitely.
+ * adversarial `Link` chain can never loop indefinitely; if the cap is reached
+ * while more pages are still advertised it warns, since the counts may then
+ * undercount.
  */
 async function collectReviewRequestedItems(
   token: string,
@@ -127,6 +129,16 @@ async function collectReviewRequestedItems(
     const page = await fetchReviewRequestedPage(nextUrl, { token, signal });
     items.push(...page.items);
     nextUrl = page.nextPageUrl;
+  }
+
+  // Stopped at the cap while GitHub still advertised more pages: the counts may
+  // undercount, so surface it rather than silently truncating (an aborted run
+  // is an intentional stop, not a cap hit).
+  if (nextUrl !== null && !signal.aborted) {
+    console.warn(
+      `useReviewsSignal: stopped following review-request pagination at the ` +
+        `${MAX_REVIEW_PAGES}-page cap while more pages were available; counts may undercount`,
+    );
   }
 
   return items;
