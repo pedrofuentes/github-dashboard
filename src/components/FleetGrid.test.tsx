@@ -64,7 +64,9 @@ describe('FleetGrid structure & accessibility', () => {
 
   it('does not expose aria-sort on non-sortable columns', () => {
     render(<FleetGrid repos={REPOS} />);
-    expect(screen.getByRole('columnheader', { name: /^CI$/i })).not.toHaveAttribute('aria-sort');
+    expect(screen.getByRole('columnheader', { name: /^Security$/i })).not.toHaveAttribute(
+      'aria-sort',
+    );
   });
 });
 
