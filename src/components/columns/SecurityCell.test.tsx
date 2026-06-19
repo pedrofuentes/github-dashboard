@@ -122,9 +122,7 @@ describe('SecurityCell', () => {
 
     // The accessible label must say the count is partial / a lower bound — not
     // colour alone — so a screen-reader user learns the grade is understated.
-    expect(
-      screen.getByLabelText(/at least 2 critical, 1 high.*partial/i),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/at least 2 critical, 1 high.*partial/i)).toBeInTheDocument();
     // A visible, decorative "partial" marker accompanies it (text, not colour).
     const marker = screen.getByText('partial');
     expect(marker).toHaveAttribute('aria-hidden', 'true');
