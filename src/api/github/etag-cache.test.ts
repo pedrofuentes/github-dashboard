@@ -82,6 +82,66 @@ describe('ETagCache', () => {
   });
 });
 
+describe('ETagCache — bounded LRU', () => {
+  const entry = (value: number): { etag: string; data: Body; storedAt: number } => ({
+    etag: `"v${value}"`,
+    data: { value },
+    storedAt: value,
+  });
+  const u = (k: string): string => `https://api.github.com/repos/o/${k}`;
+
+  it('caps the cache at maxSize, evicting the least-recently-used entry', () => {
+    const cache = new ETagCache(2);
+    cache.set(u('a'), entry(1));
+    cache.set(u('b'), entry(2));
+    expect(cache.size).toBe(2);
+
+    // Inserting a third entry must evict the oldest (`a`), not grow unbounded.
+    cache.set(u('c'), entry(3));
+    expect(cache.size).toBe(2);
+    expect(cache.has(u('a'))).toBe(false);
+    expect(cache.has(u('b'))).toBe(true);
+    expect(cache.has(u('c'))).toBe(true);
+  });
+
+  it('a get() marks an entry most-recently-used, sparing it from eviction', () => {
+    const cache = new ETagCache(2);
+    cache.set(u('a'), entry(1));
+    cache.set(u('b'), entry(2));
+
+    // Touch `a` so `b` becomes the least-recently-used victim instead.
+    expect(cache.get(u('a'))?.data).toEqual({ value: 1 });
+    cache.set(u('c'), entry(3));
+
+    expect(cache.has(u('a'))).toBe(true); // spared by the recent get()
+    expect(cache.has(u('b'))).toBe(false); // evicted as LRU
+    expect(cache.has(u('c'))).toBe(true);
+  });
+
+  it('re-setting an existing key refreshes it without growing the cache', () => {
+    const cache = new ETagCache(2);
+    cache.set(u('a'), entry(1));
+    cache.set(u('b'), entry(2));
+
+    // Overwriting `a` updates in place and marks it MRU; size stays at the cap.
+    cache.set(u('a'), entry(9));
+    expect(cache.size).toBe(2);
+    expect(cache.get(u('a'))?.etag).toBe('"v9"');
+
+    // `b` is now LRU and is evicted next.
+    cache.set(u('c'), entry(3));
+    expect(cache.has(u('b'))).toBe(false);
+    expect(cache.has(u('a'))).toBe(true);
+  });
+
+  it('defaults to a large cap that does not evict typical fleet usage', () => {
+    const cache = new ETagCache();
+    for (let i = 0; i < 200; i++) cache.set(u(String(i)), entry(i));
+    expect(cache.size).toBe(200);
+    expect(cache.has(u('0'))).toBe(true);
+  });
+});
+
 describe('fetchWithETag / fetchWithETagResult', () => {
   let originalFetch: typeof globalThis.fetch;
 
