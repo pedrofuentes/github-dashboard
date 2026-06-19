@@ -26,7 +26,12 @@ describe('securityColumn descriptor', () => {
 
   it('renders the SecurityCell for the row’s security slice', () => {
     const data: RepoSignalData = {
-      security: { status: 'ready', score: 120, grade: 'F', counts: { critical: 1, high: 1, medium: 0, low: 0 } },
+      security: {
+        status: 'ready',
+        score: 120,
+        grade: 'F',
+        counts: { critical: 1, high: 1, medium: 0, low: 0 },
+      },
     };
     render(<>{securityColumn.render(REPO, data) as ReactElement}</>);
     expect(screen.getByText(/security grade f/i)).toBeInTheDocument();

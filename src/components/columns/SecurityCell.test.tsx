@@ -29,7 +29,11 @@ describe('SecurityCell', () => {
   it('summarises medium and low severities too', () => {
     render(
       <SecurityCell
-        slice={ready({ score: 25, grade: 'D', counts: { critical: 0, high: 0, medium: 3, low: 5 } })}
+        slice={ready({
+          score: 25,
+          grade: 'D',
+          counts: { critical: 0, high: 0, medium: 3, low: 5 },
+        })}
       />,
     );
 
@@ -93,7 +97,11 @@ describe('SecurityCell', () => {
   it('keeps the compact severity summary out of the accessibility tree', () => {
     render(
       <SecurityCell
-        slice={ready({ score: 100, grade: 'F', counts: { critical: 1, high: 0, medium: 0, low: 0 } })}
+        slice={ready({
+          score: 100,
+          grade: 'F',
+          counts: { critical: 1, high: 0, medium: 0, low: 0 },
+        })}
       />,
     );
 
