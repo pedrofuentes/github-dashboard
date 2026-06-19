@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-19
+
 ### Added
 
 - Initial application scaffold — Vite + React 18 + TypeScript (strict), Tailwind
