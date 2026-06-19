@@ -8,7 +8,7 @@
  * status announcement, localStorage persistence of sort + filter, and an
  * optional drill-down hook (REC-8). Columns own only their cell + sort value.
  */
-import { useId, useState } from 'react';
+import { memo, useId, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import { loadFleetPreferences, saveFleetFilter, saveFleetSort } from '../lib/fleet-preferences';
@@ -54,6 +54,62 @@ function alignClass(column: FleetColumn): string {
   return 'text-left';
 }
 
+interface FleetRowProps {
+  repo: Repo;
+  columns: FleetColumn[];
+  getRowData: GetRowData;
+  onRepoActivate?: (repo: Repo) => void;
+}
+
+/**
+ * A single repo row, memoised so unrelated parent state (e.g. opening the
+ * drill-down drawer) does not re-render every row. It receives the stable
+ * `getRowData` function — not its result — and resolves its own signal data,
+ * keeping the props shallow-equal across re-renders when nothing changed.
+ */
+const FleetRow = memo(function FleetRow({
+  repo,
+  columns,
+  getRowData,
+  onRepoActivate,
+}: FleetRowProps) {
+  const data = getRowData(repo);
+  return (
+    <tr className="border-b border-slate-200 last:border-0 hover:bg-slate-100">
+      {columns.map((column) => {
+        const content = column.render(repo, data);
+        if (column.isRowHeader) {
+          return (
+            <th
+              key={column.id}
+              scope="row"
+              className={cn('px-3 py-2 font-normal text-slate-900', alignClass(column))}
+            >
+              {onRepoActivate ? (
+                <button
+                  type="button"
+                  onClick={() => onRepoActivate(repo)}
+                  aria-label={`View details for ${repo.nameWithOwner}`}
+                  className="block w-full text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+                >
+                  {content}
+                </button>
+              ) : (
+                content
+              )}
+            </th>
+          );
+        }
+        return (
+          <td key={column.id} className={cn('px-3 py-2 text-slate-700', alignClass(column))}>
+            {content}
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
 export function FleetGrid({
   repos,
   columns = fleetColumns,
@@ -69,6 +125,11 @@ export function FleetGrid({
     resolveInitialSort(columns, preferences.sort),
   );
   const [filter, setFilter] = useState(preferences.filter);
+
+  const visibleRepos = useMemo(() => {
+    const activeColumn = columns.find((column) => column.id === sort.columnId);
+    return sortRepos(filterRepos(repos, filter), activeColumn, sort.direction, getRowData);
+  }, [repos, columns, filter, sort.columnId, sort.direction, getRowData]);
 
   function handleSortActivate(columnId: string) {
     const next = nextSortState(sort, columnId, columns);
@@ -105,13 +166,6 @@ export function FleetGrid({
     );
   }
 
-  const activeColumn = columns.find((column) => column.id === sort.columnId);
-  const visibleRepos = sortRepos(
-    filterRepos(repos, filter),
-    activeColumn,
-    sort.direction,
-    getRowData,
-  );
   const showSkeleton = loading && visibleRepos.length === 0;
   const isEmpty = !showSkeleton && visibleRepos.length === 0;
   const emptyMessage =
@@ -216,52 +270,15 @@ export function FleetGrid({
                 </td>
               </tr>
             ) : (
-              visibleRepos.map((repo) => {
-                const data = getRowData(repo);
-                return (
-                  <tr
-                    key={repo.nameWithOwner}
-                    className="border-b border-slate-200 last:border-0 hover:bg-slate-100"
-                  >
-                    {columns.map((column) => {
-                      const content = column.render(repo, data);
-                      if (column.isRowHeader) {
-                        return (
-                          <th
-                            key={column.id}
-                            scope="row"
-                            className={cn(
-                              'px-3 py-2 font-normal text-slate-900',
-                              alignClass(column),
-                            )}
-                          >
-                            {onRepoActivate ? (
-                              <button
-                                type="button"
-                                onClick={() => onRepoActivate(repo)}
-                                aria-label={`View details for ${repo.nameWithOwner}`}
-                                className="block w-full text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
-                              >
-                                {content}
-                              </button>
-                            ) : (
-                              content
-                            )}
-                          </th>
-                        );
-                      }
-                      return (
-                        <td
-                          key={column.id}
-                          className={cn('px-3 py-2 text-slate-700', alignClass(column))}
-                        >
-                          {content}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
+              visibleRepos.map((repo) => (
+                <FleetRow
+                  key={repo.nameWithOwner}
+                  repo={repo}
+                  columns={columns}
+                  getRowData={getRowData}
+                  onRepoActivate={onRepoActivate}
+                />
+              ))
             )}
           </tbody>
         </table>

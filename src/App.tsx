@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -62,6 +62,11 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { getRowData } = useRepoSignals(repos, token);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
 
+  // Stable callbacks so the memoised grid rows keep shallow-equal props and do
+  // not all re-render when the drawer opens or closes.
+  const handleRepoActivate = useCallback((repo: Repo) => setSelectedRepo(repo), []);
+  const handleCloseDrawer = useCallback(() => setSelectedRepo(null), []);
+
   return (
     <>
       <FleetGrid
@@ -70,13 +75,13 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
         loading={status === 'loading'}
         error={status === 'error' ? error : null}
         onRetry={reload}
-        onRepoActivate={(repo) => setSelectedRepo(repo)}
+        onRepoActivate={handleRepoActivate}
       />
       {selectedRepo !== null ? (
         <DrillDownDrawer
           repo={selectedRepo}
           data={getRowData(selectedRepo)}
-          onClose={() => setSelectedRepo(null)}
+          onClose={handleCloseDrawer}
         />
       ) : null}
     </>
