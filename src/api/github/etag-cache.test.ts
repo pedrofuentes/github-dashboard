@@ -331,6 +331,17 @@ describe('fetchWithETag / fetchWithETagResult', () => {
     } as unknown as Response;
     vi.mocked(globalThis.fetch).mockResolvedValue(notModified);
 
-    await expect(fetchWithETag(URL_A, BodySchema)).rejects.toThrow();
+    let caught: unknown;
+    try {
+      await fetchWithETag(URL_A, BodySchema);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    if (caught instanceof GitHubApiError) {
+      expect(caught.status).toBe(304);
+      expect(caught.code).toBe(GitHubErrorCode.SERVER_ERROR);
+      expect(caught.message).toMatch(/no cached response/i);
+    }
   });
 });
