@@ -46,6 +46,7 @@ export interface SecurityAlertSummary {
  * @param owner - Repository owner
  * @param repo - Repository name
  * @param token - GitHub PAT
+ * @param signal - Optional signal to cancel the in-flight request
  * @returns Alert summary with counts by severity
  * @throws {GitHubApiError} on API errors
  */
@@ -53,10 +54,11 @@ export async function fetchDependabotAlerts(
   owner: string,
   repo: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<SecurityAlertSummary> {
   const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dependabot/alerts?state=open&per_page=100`;
   const headers = buildHeaders(token);
-  const response = await fetchWithRetry(url, { headers }, 'fetchDependabotAlerts');
+  const response = await fetchWithRetry(url, { headers, signal }, 'fetchDependabotAlerts');
 
   if (!response.ok) {
     const rateLimitInfo = parseRateLimitHeaders(response.headers);

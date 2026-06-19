@@ -49,6 +49,9 @@ function repo(nameWithOwner: string): Repo {
 
 const REPOS: Repo[] = [repo('octo/a'), repo('octo/b'), repo('octo/c')];
 
+/** Flush all pending microtasks via a macrotask boundary. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 beforeEach(() => {
   mockFetchWithETag.mockReset();
 });
@@ -257,5 +260,65 @@ describe('useReviewsSignal', () => {
     // The superseded token-one rejection must not flip token-two's ready data to error.
     expect(result.current.get('octo/b')?.status).toBe('ready');
     expect(result.current.get('octo/b')?.requestedCount).toBe(1);
+  });
+
+  it('aborts the in-flight request on unmount without logging or error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectFetch!: (reason: unknown) => void;
+    mockFetchWithETag.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFetch = reject;
+        }) as never,
+    );
+
+    const { unmount, result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+    const captured = (mockFetchWithETag.mock.calls[0]?.[2] as { signal?: AbortSignal } | undefined)
+      ?.signal;
+    expect(captured).toBeInstanceOf(AbortSignal);
+    expect(captured?.aborted).toBe(false);
+
+    unmount();
+    expect(captured?.aborted).toBe(true);
+
+    await act(async () => {
+      rejectFetch(new DOMException('The operation was aborted', 'AbortError'));
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logs non-abort failures with repo context and sets error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('boom');
+    mockFetchWithETag.mockRejectedValue(failure as never);
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    const args = errorSpy.mock.calls.at(-1) ?? [];
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
+    expect(args).toContain(failure);
+    errorSpy.mockRestore();
+  });
+
+  it('stays quiet (no log, no error slice) when the request rejects with AbortError', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetchWithETag.mockRejectedValue(
+      new DOMException('The operation was aborted', 'AbortError') as never,
+    );
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

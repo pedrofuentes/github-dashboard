@@ -86,6 +86,8 @@ export interface FetchWithETagOptions {
   context?: string;
   /** Cache instance to use (defaults to {@link globalETagCache}). */
   cache?: ETagCache;
+  /** Optional signal to cancel the request (aborts the underlying fetch). */
+  signal?: AbortSignal;
 }
 
 /** Result of a conditional fetch, including cache-hit and budget metadata. */
@@ -228,7 +230,11 @@ export async function fetchWithETagResult<T>(
     headers['If-None-Match'] = cached.etag;
   }
 
-  const response = await fetchWithRetry(url, { headers }, options.context ?? url);
+  const response = await fetchWithRetry(
+    url,
+    { headers, signal: options.signal },
+    options.context ?? url,
+  );
 
   if (response.status === 304) {
     if (!cached) {

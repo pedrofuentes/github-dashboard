@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { fetchIssueCount } from '../../api/github';
+import { isAbortError } from '../../lib/abort';
 import type { IssuesSignalSlice, Repo } from '../../types/fleet';
 
 /**
@@ -67,6 +69,10 @@ export function useIssuesSignal(
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts every
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     setSlices(
       new Map<string, IssuesSignalSlice>(
         currentRepos.map((repo): [string, IssuesSignalSlice] => [
@@ -76,11 +82,14 @@ export function useIssuesSignal(
       ),
     );
 
-    for (const repo of currentRepos) {
-      // `fetchIssueCount(..., 'open')` returns open_issues_count minus open PRs,
-      // so the value we surface excludes pull requests by construction.
-      fetchIssueCount(repo.owner, repo.name, token, 'open')
-        .then((openCount) => {
+    void mapWithConcurrency(
+      currentRepos,
+      SIGNAL_FETCH_CONCURRENCY,
+      async (repo, signal) => {
+        // `fetchIssueCount(..., 'open')` returns open_issues_count minus open PRs,
+        // so the value we surface excludes pull requests by construction.
+        try {
+          const openCount = await fetchIssueCount(repo.owner, repo.name, token, 'open', signal);
           if (generation !== generationRef.current) {
             return;
           }
@@ -89,8 +98,13 @@ export function useIssuesSignal(
             next.set(repo.nameWithOwner, readySlice(openCount));
             return next;
           });
-        })
-        .catch(() => {
+        } catch (err) {
+          // A cancelled request is not a failure: stay quiet (no log, no error).
+          if (signal?.aborted || isAbortError(err)) return;
+          console.error(
+            `useIssuesSignal: failed to fetch issue count for ${repo.nameWithOwner}`,
+            err,
+          );
           if (generation !== generationRef.current) {
             return;
           }
@@ -99,8 +113,12 @@ export function useIssuesSignal(
             next.set(repo.nameWithOwner, { status: 'error' });
             return next;
           });
-        });
-    }
+        }
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [repoSignature, token]);
 
   return slices;

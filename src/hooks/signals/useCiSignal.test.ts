@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchWithETag } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import { useCiSignal } from './useCiSignal';
@@ -13,6 +14,19 @@ vi.mock('../../api/github', () => ({
 const fetchMock = vi.mocked(fetchWithETag);
 
 const REPOS: Repo[] = [{ nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false }];
+
+/** Builds N distinct repos to exercise the per-repo concurrency limiter. */
+function manyRepos(count: number): Repo[] {
+  return Array.from({ length: count }, (_, i) => ({
+    nameWithOwner: `octo/r${i}`,
+    owner: 'octo',
+    name: `r${i}`,
+    isPrivate: false,
+  }));
+}
+
+/** Flush all pending microtasks via a macrotask boundary. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 interface RawRun {
   status?: string | null;
@@ -219,5 +233,100 @@ describe('useCiSignal', () => {
       stale.reject(new Error('stale failure'));
     });
     expect(result.current.get('octo/a')).toMatchObject({ status: 'ready', conclusion: 'success' });
+  });
+
+  it('never exceeds SIGNAL_FETCH_CONCURRENCY in-flight requests (bounded fan-out)', async () => {
+    const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
+    let inFlight = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    fetchMock.mockImplementation(() => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise((resolve) => {
+        release.push(() => {
+          inFlight -= 1;
+          resolve(runs({ status: 'completed', conclusion: 'success' }));
+        });
+      });
+    });
+
+    const { unmount } = renderHook(() => useCiSignal(repos, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    // The limiter starts only `cap` requests; the rest queue. Without the cap
+    // every repo fetches at once and `peak` jumps to repos.length.
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    expect(fetchMock).toHaveBeenCalledTimes(SIGNAL_FETCH_CONCURRENCY);
+
+    await act(async () => {
+      while (release.length > 0) {
+        release.shift()?.();
+        await flush();
+        expect(inFlight).toBeLessThanOrEqual(SIGNAL_FETCH_CONCURRENCY);
+      }
+    });
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    unmount();
+  });
+
+  it('aborts in-flight requests on unmount without logging or error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let captured: AbortSignal | undefined;
+    let rejectFetch!: (reason: unknown) => void;
+    fetchMock.mockImplementation((_url, _schema, options) => {
+      captured = (options as { signal?: AbortSignal } | undefined)?.signal;
+      return new Promise((_resolve, reject) => {
+        rejectFetch = reject;
+      });
+    });
+
+    const { unmount, result } = renderHook(() => useCiSignal(REPOS, 'ghp_token'));
+    expect(captured).toBeInstanceOf(AbortSignal);
+    expect(captured?.aborted).toBe(false);
+
+    unmount();
+    // Cleanup must abort the controller threaded into the fetch.
+    expect(captured?.aborted).toBe(true);
+
+    await act(async () => {
+      rejectFetch(new DOMException('The operation was aborted', 'AbortError'));
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logs non-abort failures with repo context and sets an error slice', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('boom');
+    fetchMock.mockRejectedValue(failure);
+
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    const args = errorSpy.mock.calls.at(-1) ?? [];
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
+    expect(args).toContain(failure);
+    errorSpy.mockRestore();
+  });
+
+  it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchMock.mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
+
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

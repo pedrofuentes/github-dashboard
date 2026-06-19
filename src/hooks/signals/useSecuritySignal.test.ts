@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -8,6 +8,7 @@ import {
   fetchWithETag,
   type SecurityAlertSummary,
 } from '../../api/github';
+import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import type { Repo } from '../../types/fleet';
 import { useSecuritySignal } from './useSecuritySignal';
 
@@ -25,6 +26,19 @@ const mockCodeScanning = vi.mocked(fetchWithETag);
 
 const REPO: Repo = { nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false };
 const REPOS: Repo[] = [REPO];
+
+/** Builds N distinct repos to exercise the per-repo concurrency limiter. */
+function manyRepos(count: number): Repo[] {
+  return Array.from({ length: count }, (_, i) => ({
+    nameWithOwner: `octo/r${i}`,
+    owner: 'octo',
+    name: `r${i}`,
+    isPrivate: false,
+  }));
+}
+
+/** Flush all pending microtasks via a macrotask boundary. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function dependabot(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
   return { critical: 0, high: 0, medium: 0, low: 0, total: 0, ...partial };
@@ -250,5 +264,102 @@ describe('useSecuritySignal', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(result.current.get('octo/a')?.status).toBe('ready');
+  });
+
+  it('never exceeds SIGNAL_FETCH_CONCURRENCY in-flight requests (bounded fan-out)', async () => {
+    const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
+    let inFlight = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    mockDependabot.mockImplementation(() => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise<SecurityAlertSummary>((resolve) => {
+        release.push(() => {
+          inFlight -= 1;
+          resolve(dependabot({}));
+        });
+      });
+    });
+    codeScanning([]);
+
+    const { unmount } = renderHook(() => useSecuritySignal(repos, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    // The limiter caps cold-start fan-out; without it every repo fetches at once.
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    expect(mockDependabot).toHaveBeenCalledTimes(SIGNAL_FETCH_CONCURRENCY);
+
+    await act(async () => {
+      while (release.length > 0) {
+        release.shift()?.();
+        await flush();
+        expect(inFlight).toBeLessThanOrEqual(SIGNAL_FETCH_CONCURRENCY);
+      }
+    });
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    unmount();
+  });
+
+  it('aborts in-flight requests on unmount without logging or error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectFetch!: (reason: unknown) => void;
+    mockDependabot.mockImplementation(
+      () =>
+        new Promise<SecurityAlertSummary>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    mockCodeScanning.mockReturnValue(new Promise(() => {}) as never);
+
+    const { unmount, result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+    const captured = mockDependabot.mock.calls[0]?.[3] as AbortSignal | undefined;
+    expect(captured).toBeInstanceOf(AbortSignal);
+    expect(captured?.aborted).toBe(false);
+
+    unmount();
+    expect(captured?.aborted).toBe(true);
+
+    await act(async () => {
+      rejectFetch(new DOMException('The operation was aborted', 'AbortError'));
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logs non-abort failures with repo context and sets an error slice', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('boom');
+    mockDependabot.mockRejectedValue(failure);
+    codeScanning([]);
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    const args = errorSpy.mock.calls.at(-1) ?? [];
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
+    expect(args).toContain(failure);
+    errorSpy.mockRestore();
+  });
+
+  it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockDependabot.mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
+    codeScanning([]);
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

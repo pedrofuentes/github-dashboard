@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
+import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { fetchWithETag, GITHUB_API_BASE } from '../../api/github';
+import { isAbortError } from '../../lib/abort';
 import type { PullRequestsSignalSlice, Repo } from '../../types/fleet';
 
 /**
@@ -82,6 +84,10 @@ export function usePullRequestsSignal(
       return;
     }
 
+    // One controller per run: cleanup (or a repos/token change) aborts every
+    // in-flight request so superseded work stops instead of racing to set state.
+    const controller = new AbortController();
+
     setSlices(
       new Map(
         repos.map((repo): [string, PullRequestsSignalSlice] => [
@@ -91,19 +97,30 @@ export function usePullRequestsSignal(
       ),
     );
 
-    for (const repo of repos) {
-      const url = `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/pulls?state=open&per_page=100`;
-
-      fetchWithETag(url, OpenPullRequestsSchema, { token })
-        .then((pulls) => {
+    void mapWithConcurrency(
+      repos,
+      SIGNAL_FETCH_CONCURRENCY,
+      async (repo, signal) => {
+        const url = `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/pulls?state=open&per_page=100`;
+        try {
+          const pulls = await fetchWithETag(url, OpenPullRequestsSchema, { token, signal });
           if (generation !== generationRef.current) return;
           setSlices((prev) => new Map(prev).set(repo.nameWithOwner, summarize(pulls)));
-        })
-        .catch(() => {
+        } catch (err) {
+          // A cancelled request is not a failure: stay quiet (no log, no error).
+          if (signal?.aborted || isAbortError(err)) return;
+          console.error(
+            `usePullRequestsSignal: failed to fetch pull requests for ${repo.nameWithOwner}`,
+            err,
+          );
           if (generation !== generationRef.current) return;
           setSlices((prev) => new Map(prev).set(repo.nameWithOwner, { status: 'error' }));
-        });
-    }
+        }
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [repos, token]);
 
   return slices;

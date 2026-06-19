@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchIssueCount } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import { ISSUE_TRIAGE_THRESHOLD, useIssuesSignal } from './useIssuesSignal';
@@ -22,6 +23,14 @@ function repo(nameWithOwner: string, isPrivate = false): Repo {
 }
 
 const ONE_REPO: Repo[] = [repo('octo/a')];
+
+/** Builds N distinct repos to exercise the per-repo concurrency limiter. */
+function manyRepos(count: number): Repo[] {
+  return Array.from({ length: count }, (_, i) => repo(`octo/r${i}`));
+}
+
+/** Flush all pending microtasks via a macrotask boundary. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A promise plus its resolver/rejecter, to control async resolution order. */
 function deferred<T>() {
@@ -86,7 +95,13 @@ describe('useIssuesSignal', () => {
 
     // The 'open' state of fetchIssueCount returns open_issues_count minus open
     // PRs, so the count we surface excludes pull requests by construction.
-    expect(mockFetchIssueCount).toHaveBeenCalledWith('octo', 'a', 'ghp_token', 'open');
+    expect(mockFetchIssueCount).toHaveBeenCalledWith(
+      'octo',
+      'a',
+      'ghp_token',
+      'open',
+      expect.any(AbortSignal),
+    );
     expect(result.current.get('octo/a')).toMatchObject({
       status: 'ready',
       openCount: 5,
@@ -175,13 +190,25 @@ describe('useIssuesSignal', () => {
     });
 
     await waitFor(() => {
-      expect(mockFetchIssueCount).toHaveBeenCalledWith('octo', 'a', 'ghp_one', 'open');
+      expect(mockFetchIssueCount).toHaveBeenCalledWith(
+        'octo',
+        'a',
+        'ghp_one',
+        'open',
+        expect.any(AbortSignal),
+      );
     });
 
     rerender({ token: 'ghp_two' });
 
     await waitFor(() => {
-      expect(mockFetchIssueCount).toHaveBeenCalledWith('octo', 'a', 'ghp_two', 'open');
+      expect(mockFetchIssueCount).toHaveBeenCalledWith(
+        'octo',
+        'a',
+        'ghp_two',
+        'open',
+        expect.any(AbortSignal),
+      );
     });
   });
 
@@ -265,5 +292,100 @@ describe('useIssuesSignal', () => {
     rerender({ token: null });
 
     expect(result.current.size).toBe(0);
+  });
+
+  it('never exceeds SIGNAL_FETCH_CONCURRENCY in-flight requests (bounded fan-out)', async () => {
+    const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
+    let inFlight = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    mockFetchIssueCount.mockImplementation(() => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise<number>((resolve) => {
+        release.push(() => {
+          inFlight -= 1;
+          resolve(3);
+        });
+      });
+    });
+
+    const { unmount } = renderHook(() => useIssuesSignal(repos, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    // The limiter caps cold-start fan-out; without it every repo fetches at once.
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    expect(mockFetchIssueCount).toHaveBeenCalledTimes(SIGNAL_FETCH_CONCURRENCY);
+
+    await act(async () => {
+      while (release.length > 0) {
+        release.shift()?.();
+        await flush();
+        expect(inFlight).toBeLessThanOrEqual(SIGNAL_FETCH_CONCURRENCY);
+      }
+    });
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    unmount();
+  });
+
+  it('aborts in-flight requests on unmount without logging or error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectFetch!: (reason: unknown) => void;
+    mockFetchIssueCount.mockImplementation(
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+
+    const { unmount, result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token'));
+    const captured = mockFetchIssueCount.mock.calls[0]?.[4] as AbortSignal | undefined;
+    expect(captured).toBeInstanceOf(AbortSignal);
+    expect(captured?.aborted).toBe(false);
+
+    unmount();
+    expect(captured?.aborted).toBe(true);
+
+    await act(async () => {
+      rejectFetch(new DOMException('The operation was aborted', 'AbortError'));
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logs non-abort failures with repo context and sets an error slice', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('boom');
+    mockFetchIssueCount.mockRejectedValue(failure);
+
+    const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    const args = errorSpy.mock.calls.at(-1) ?? [];
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
+    expect(args).toContain(failure);
+    errorSpy.mockRestore();
+  });
+
+  it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetchIssueCount.mockRejectedValue(
+      new DOMException('The operation was aborted', 'AbortError'),
+    );
+
+    const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

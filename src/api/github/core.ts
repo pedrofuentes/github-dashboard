@@ -6,6 +6,8 @@
  * @license MIT
  */
 
+import { isAbortError } from '../../lib/abort';
+
 /** Canonical error codes for GitHub API errors. */
 export enum GitHubErrorCode {
   RATE_LIMITED = 'rate_limited',
@@ -77,26 +79,40 @@ export function buildHeaders(token?: string): Record<string, string> {
  * Fetch with timeout and network error handling.
  * Wraps fetch() with a 30-second AbortSignal timeout and converts
  * network errors into GitHubApiError with context.
+ *
+ * When the caller supplies `options.signal`, an abort on that signal is
+ * forwarded to the internal timeout controller and rethrown as a raw
+ * `AbortError` so {@link fetchWithRetry} can distinguish an intentional
+ * cancellation (do not retry) from a transient 30s timeout (retryable).
  */
 export async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
   context?: string,
 ): Promise<Response> {
+  const { signal: externalSignal, ...rest } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  // Bridge the caller's signal to the internal controller so a single
+  // controller.signal drives both the timeout and caller-initiated aborts.
+  const forwardAbort = (): void => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', forwardAbort, { once: true });
+  }
+
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, { ...rest, signal: controller.signal });
     return response;
   } catch (err) {
-    // An aborted fetch rejects with a DOMException named "AbortError". In the
-    // browser a DOMException is not an `instanceof Error`, so detect the abort
-    // by inspecting the `name` property on any thrown object.
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      (err as { name?: unknown }).name === 'AbortError'
-    ) {
+    // An aborted fetch rejects with a DOMException named "AbortError". If the
+    // caller's signal triggered it, rethrow the raw AbortError so the retry
+    // loop short-circuits; otherwise it was our 30s timeout (retryable).
+    if (isAbortError(err)) {
+      if (externalSignal?.aborted) {
+        throw err;
+      }
       throw new GitHubApiError(
         `Request timed out after 30s${context ? ` (${context})` : ''}`,
         0,
@@ -114,6 +130,7 @@ export async function fetchWithTimeout(
     );
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener('abort', forwardAbort);
   }
 }
 
