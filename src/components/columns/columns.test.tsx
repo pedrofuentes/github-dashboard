@@ -76,15 +76,15 @@ describe('repo column', () => {
 });
 
 describe('stub signal columns', () => {
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo');
+  // `issues` is now implemented (issue #16); it has its own column/cell tests.
+  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && c.id !== 'issues');
 
-  it('cover CI, Security, Reviews, PRs, Issues, and Stale', () => {
+  it('cover CI, Security, Reviews, PRs, and Stale', () => {
     expect(stubs.map((c) => c.id)).toEqual([
       'ci',
       'security',
       'reviews',
       'pullRequests',
-      'issues',
       'stale',
     ]);
   });
