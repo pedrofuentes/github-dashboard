@@ -403,6 +403,142 @@ describe('alert feeds — page-1 conditional caching (#78)', () => {
 });
 
 // ──────────────────────────────────────────────
+// Reopened/un-dismissed alert re-entering on page ≥2 — issue #78 follow-up
+//
+// GitHub preserves an alert's original `created_at` when it is reopened, and
+// these feeds pin neither sort nor direction (so they inherit the API default
+// `sort=created&direction=desc`). On a feed with >100 open alerts a reopened
+// alert re-enters at its OLD created position on page ≥2 and leaves page 1
+// byte-identical, so the page-1 `If-None-Match` yields `304`, the stale cached
+// summary is served, and pages 2..N — including the reopened (possibly
+// critical) alert — are skipped: a silent UNDER-report in the unsafe direction.
+//
+// Requesting `sort=updated&direction=desc` makes any new/reopened alert (whose
+// `updated_at` is "now") sort to the TOP of page 1, changing page 1's body/ETag
+// → `200` → full re-pagination → correct count.
+// ──────────────────────────────────────────────
+
+describe('alert feeds — reopened alert re-entering on page ≥2 (#78 follow-up)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /**
+   * A stateful fake GitHub alert feed of >100 OPEN alerts (so page ≥2 exists)
+   * with one CRITICAL alert that gets reopened. The reopen keeps the alert's
+   * OLD `created_at` (so under `sort=created` it stays on page 2 and page 1 is
+   * byte-identical → 304) but sets `updated_at` to "now" (so under
+   * `sort=updated` it jumps to the head of page 1 → page 1 changes → 200 →
+   * re-pagination). The page-1 ETag therefore only changes once the reopened
+   * alert sorts to its head, which happens exclusively under `sort=updated`.
+   */
+  function makeReopenServer(makeAlert: (severity: string) => Record<string, unknown>) {
+    let reopened = false;
+    const ETAG_BEFORE = 'W/"page1-v1"';
+    const ETAG_AFTER = 'W/"page1-v2"';
+    const highs = (n: number) => Array.from({ length: n }, () => makeAlert('high'));
+    const mediums = (n: number) => Array.from({ length: n }, () => makeAlert('medium'));
+    const reopenedCritical = makeAlert('critical');
+
+    const impl = (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> => {
+      const url = new URL(String(input));
+      const sortByUpdated =
+        url.searchParams.get('sort') === 'updated' && url.searchParams.get('direction') === 'desc';
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const ifNoneMatch = (init?.headers as Record<string, string> | undefined)?.['If-None-Match'];
+
+      if (page <= 1) {
+        const etag = reopened && sortByUpdated ? ETAG_AFTER : ETAG_BEFORE;
+        if (ifNoneMatch && ifNoneMatch === etag) {
+          return Promise.resolve(mockResponse(304, null, undefined, etag));
+        }
+        // Mirror the request's query (incl. sort/direction) onto the next link
+        // so the followed page-2 URL stays faithful to the chosen sort regime.
+        const next = new URL(url);
+        next.searchParams.set('page', '2');
+        const link = `<${next.toString()}>; rel="next"`;
+        const body = reopened && sortByUpdated ? [reopenedCritical, ...highs(99)] : highs(100);
+        return Promise.resolve(mockResponse(200, body, link, etag));
+      }
+
+      // Page 2 (last page): the reopened critical lives here under `sort=created`
+      // (old created position) and is displaced to page 1 under `sort=updated`.
+      const body = reopened
+        ? sortByUpdated
+          ? [...highs(1), ...mediums(10)]
+          : [...mediums(10), reopenedCritical]
+        : mediums(10);
+      return Promise.resolve(mockResponse(200, body));
+    };
+
+    return {
+      install: () => vi.mocked(globalThis.fetch).mockImplementation(impl),
+      reopen: () => {
+        reopened = true;
+      },
+    };
+  }
+
+  it('code-scanning: counts a reopened critical re-entering on page ≥2 (no stale 304 under-report)', async () => {
+    const cache = new ETagCache();
+    const server = makeReopenServer(levelAlert);
+    server.install();
+
+    // Seed the page-1 ETag + full tally from a complete two-page read.
+    const seeded = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(seeded.critical).toBe(0);
+    expect(seeded.total).toBe(110);
+
+    // A previously dismissed CRITICAL alert is reopened. Its created_at is old
+    // (page ≥2), so page 1's bytes are unchanged under the default `sort=created`
+    // → 304. Only `sort=updated` floats it to page 1's head and forces a recount.
+    server.reopen();
+    const refreshed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    // The reopened critical MUST be counted — a 304 short-circuit hides it and
+    // silently under-grades the repo (worst-severity F shown as the stale C).
+    expect(refreshed.critical).toBe(1);
+    expect(refreshed.total).toBe(111);
+
+    // Regression guard: the conditional read must pin sort=updated&direction=desc
+    // so a future revert to `created`/unsorted re-breaks this test.
+    const firstUrl = String(vi.mocked(globalThis.fetch).mock.calls[0][0]);
+    expect(firstUrl).toContain('sort=updated');
+    expect(firstUrl).toContain('direction=desc');
+  });
+
+  it('dependabot: counts a reopened critical re-entering on page ≥2 (no stale 304 under-report)', async () => {
+    const cache = new ETagCache();
+    const server = makeReopenServer(advisoryAlert);
+    server.install();
+
+    const seeded = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+    expect(seeded.critical).toBe(0);
+    expect(seeded.total).toBe(110);
+
+    server.reopen();
+    const refreshed = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+
+    expect(refreshed.critical).toBe(1);
+    expect(refreshed.total).toBe(111);
+
+    const firstUrl = String(vi.mocked(globalThis.fetch).mock.calls[0][0]);
+    expect(firstUrl).toContain('sort=updated');
+    expect(firstUrl).toContain('direction=desc');
+  });
+});
+
+// ──────────────────────────────────────────────
 // Origin-assert symmetry — issue #66
 // ──────────────────────────────────────────────
 
