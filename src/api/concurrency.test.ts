@@ -9,8 +9,11 @@ describe('SIGNAL_FETCH_CONCURRENCY', () => {
   it('is a small, bounded positive integer (cold-start fan-out cap)', () => {
     expect(Number.isInteger(SIGNAL_FETCH_CONCURRENCY)).toBe(true);
     expect(SIGNAL_FETCH_CONCURRENCY).toBeGreaterThanOrEqual(1);
-    // Issue #60 recommends 4-6 in flight; keep the cap conservative.
-    expect(SIGNAL_FETCH_CONCURRENCY).toBeLessThanOrEqual(10);
+    // Issue #60 caps cold-start fan-out at 4-6 in flight. Assert the tight bound
+    // (not a loose <=10) so a regression that re-bursts GitHub's secondary rate
+    // limits by bumping the cap fails here (#72).
+    expect(SIGNAL_FETCH_CONCURRENCY).toBeGreaterThanOrEqual(4);
+    expect(SIGNAL_FETCH_CONCURRENCY).toBeLessThanOrEqual(6);
   });
 });
 
@@ -147,5 +150,29 @@ describe('mapWithConcurrency', () => {
 
     // No new tasks scheduled after the abort — removing the guard grows this list.
     expect(started).toEqual([0, 1]);
+  });
+
+  it('returns only the settled results densely (no holes) when aborted mid-flight', async () => {
+    const controller = new AbortController();
+    const items = Array.from({ length: 6 }, (_, i) => i);
+    const release: Array<() => void> = [];
+    const fn = (item: number): Promise<number> =>
+      new Promise<number>((resolve) => release.push(() => resolve(item * 10)));
+
+    const promise = mapWithConcurrency(items, 2, fn, controller.signal);
+    await tick();
+
+    // Items 0 and 1 are in flight; aborting before they settle stops the pool
+    // from scheduling items 2..5 once the in-flight pair resolves.
+    controller.abort();
+    release.forEach((r) => r());
+    const results = await promise;
+
+    // Only the two completed results are returned, in input order, with NO holes
+    // for the never-scheduled items. The old behavior returned a length-6 sparse
+    // array padded with holes; both assertions below reject that.
+    expect(results).toEqual([0, 10]);
+    expect(results).toHaveLength(2);
+    expect(Object.keys(results)).toEqual(['0', '1']);
   });
 });
