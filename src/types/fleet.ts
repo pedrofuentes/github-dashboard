@@ -34,16 +34,59 @@ export interface SignalSlice {
 }
 
 /**
+ * CI slice — owned by issue #12 (failing GitHub Actions). Carries the latest
+ * workflow conclusion, how many workflows are currently failing, and a deep
+ * link to the most recent run.
+ */
+export interface CiSignalSlice extends SignalSlice {
+  conclusion?: 'success' | 'failure' | 'in_progress' | 'queued' | 'none';
+  failingCount?: number;
+  latestRunUrl?: string;
+}
+
+/**
+ * Security slice — owned by issue #13 (Dependabot / code-scanning alerts).
+ * Carries a letter grade plus the alert breakdown by severity.
+ */
+export interface SecuritySignalSlice extends SignalSlice {
+  grade?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+  counts?: { critical: number; high: number; medium: number; low: number };
+}
+
+/** Reviews slice — owned by issue #14 (review requests assigned to the viewer). */
+export interface ReviewsSignalSlice extends SignalSlice {
+  requestedCount?: number;
+}
+
+/** Pull-requests slice — owned by issue #15 (open / external-contributor PRs). */
+export interface PullRequestsSignalSlice extends SignalSlice {
+  openCount?: number;
+  externalCount?: number;
+}
+
+/** Issues slice — owned by issue #16 (open issue counts / triage threshold). */
+export interface IssuesSignalSlice extends SignalSlice {
+  openCount?: number;
+  overThreshold?: boolean;
+}
+
+/** Stale slice — owned by issue #17 (stale branches / inactivity). */
+export interface StaleSignalSlice extends SignalSlice {
+  staleCount?: number;
+}
+
+/**
  * Per-repo signal payload. Each optional slot is owned by one signal feature
- * (issues #12-18); the grid framework ships them all empty.
+ * (issues #12-17) and carries every field that feature needs, so populating a
+ * column never requires another edit to this file.
  */
 export interface RepoSignalData {
-  ci?: SignalSlice;
-  security?: SignalSlice;
-  reviews?: SignalSlice;
-  pullRequests?: SignalSlice;
-  issues?: SignalSlice;
-  stale?: SignalSlice;
+  ci?: CiSignalSlice;
+  security?: SecuritySignalSlice;
+  reviews?: ReviewsSignalSlice;
+  pullRequests?: PullRequestsSignalSlice;
+  issues?: IssuesSignalSlice;
+  stale?: StaleSignalSlice;
 }
 
 /** Resolves the signal payload for a repo (defaults to empty in the framework). */
