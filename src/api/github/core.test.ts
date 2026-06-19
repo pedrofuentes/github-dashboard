@@ -324,3 +324,62 @@ describe('fetchWithRetry', () => {
     }
   });
 });
+
+describe('fetchWithRetry — AbortSignal cancellation', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("aborts the underlying fetch when the caller's signal aborts", () => {
+    const controller = new AbortController();
+    let passedSignal: AbortSignal | undefined;
+    let resolveFetch!: (response: Response) => void;
+    const fetchSpy = vi.fn((_url: string, opts: RequestInit) => {
+      passedSignal = opts.signal ?? undefined;
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const promise = fetchWithRetry('https://api.github.com/test', { signal: controller.signal });
+    promise.catch(() => {});
+
+    // fetch was invoked synchronously with a (not-yet-aborted) signal.
+    expect(passedSignal).toBeInstanceOf(AbortSignal);
+    expect(passedSignal?.aborted).toBe(false);
+
+    // Aborting the caller's signal must propagate to the signal handed to fetch.
+    controller.abort();
+    expect(passedSignal?.aborted).toBe(true);
+
+    resolveFetch(mockFetchResponse(200));
+  });
+
+  it('does not retry and rejects with AbortError when the signal is already aborted', async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const controller = new AbortController();
+    controller.abort();
+
+    const promise = fetchWithRetry('https://api.github.com/test', { signal: controller.signal });
+    promise.catch(() => {});
+    // Give a (wrongly) retrying implementation room to fire its backoff retries.
+    await vi.advanceTimersByTimeAsync(10000);
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    // AbortError must short-circuit the retry loop: exactly one fetch attempt.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});

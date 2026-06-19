@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchWithETag } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import {
@@ -63,6 +64,14 @@ function countsByRepo(counts: Record<string, number>): (url: string) => Promise<
 }
 
 const ONE_REPO: Repo[] = [repo('octo/a')];
+
+/** Builds N distinct repos to exercise the per-repo concurrency limiter. */
+function manyRepos(count: number): Repo[] {
+  return Array.from({ length: count }, (_, i) => repo(`octo/r${i}`));
+}
+
+/** Flush all pending microtasks via a macrotask boundary. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
   mockFetchWithETag.mockReset();
@@ -301,5 +310,100 @@ describe('useStaleSignal', () => {
     rerender({ token: null });
 
     expect(result.current.size).toBe(0);
+  });
+
+  it('never exceeds SIGNAL_FETCH_CONCURRENCY in-flight requests (bounded fan-out)', async () => {
+    const repos = manyRepos(SIGNAL_FETCH_CONCURRENCY + 5);
+    let inFlight = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    mockFetchWithETag.mockImplementation((() => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise<CountPayload>((resolve) => {
+        release.push(() => {
+          inFlight -= 1;
+          resolve({ total_count: 1 });
+        });
+      });
+    }) as never);
+
+    const { unmount } = renderHook(() => useStaleSignal(repos, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    // The limiter caps cold-start fan-out; without it every repo fetches at once.
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(SIGNAL_FETCH_CONCURRENCY);
+
+    await act(async () => {
+      while (release.length > 0) {
+        release.shift()?.();
+        await flush();
+        expect(inFlight).toBeLessThanOrEqual(SIGNAL_FETCH_CONCURRENCY);
+      }
+    });
+    expect(peak).toBe(SIGNAL_FETCH_CONCURRENCY);
+    unmount();
+  });
+
+  it('aborts in-flight requests on unmount without logging or error slices', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectFetch!: (reason: unknown) => void;
+    mockFetchWithETag.mockImplementation((() => {
+      return new Promise<CountPayload>((_resolve, reject) => {
+        rejectFetch = reject;
+      });
+    }) as never);
+
+    const { unmount, result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+    const captured = (mockFetchWithETag.mock.calls[0]?.[2] as { signal?: AbortSignal } | undefined)
+      ?.signal;
+    expect(captured).toBeInstanceOf(AbortSignal);
+    expect(captured?.aborted).toBe(false);
+
+    unmount();
+    expect(captured?.aborted).toBe(true);
+
+    await act(async () => {
+      rejectFetch(new DOMException('The operation was aborted', 'AbortError'));
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logs non-abort failures with repo context and sets an error slice', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = new Error('boom');
+    mockFetchWithETag.mockRejectedValue(failure as never);
+
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('error'));
+
+    expect(errorSpy).toHaveBeenCalled();
+    const args = errorSpy.mock.calls.at(-1) ?? [];
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
+    expect(args).toContain(failure);
+    errorSpy.mockRestore();
+  });
+
+  it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetchWithETag.mockRejectedValue(
+      new DOMException('The operation was aborted', 'AbortError') as never,
+    );
+
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.get('octo/a')?.status).not.toBe('error');
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
