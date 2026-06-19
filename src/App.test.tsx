@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetToken } from './lib/token-storage';
 import { validateToken } from './lib/validate-token';
 import { useRepos } from './hooks/useRepos';
-import type { Repo } from './types/fleet';
+import { useRepoSignals } from './hooks/useRepoSignals';
+import type { GetRowData, Repo } from './types/fleet';
 import { App } from './App';
 
 vi.mock('./lib/validate-token', () => ({
@@ -16,8 +17,14 @@ vi.mock('./hooks/useRepos', () => ({
   useRepos: vi.fn(),
 }));
 
+vi.mock('./hooks/useRepoSignals', () => ({
+  useRepoSignals: vi.fn(),
+}));
+
 const mockValidate = vi.mocked(validateToken);
 const mockUseRepos = vi.mocked(useRepos);
+const mockUseRepoSignals = vi.mocked(useRepoSignals);
+const getRowData: GetRowData = () => ({});
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -41,6 +48,8 @@ beforeEach(() => {
     error: null,
     reload: vi.fn(),
   });
+  mockUseRepoSignals.mockReset();
+  mockUseRepoSignals.mockReturnValue({ getRowData });
 });
 
 afterEach(() => {

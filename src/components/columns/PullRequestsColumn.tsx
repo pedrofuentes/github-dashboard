@@ -1,14 +1,18 @@
 import type { FleetColumn } from '../../types/fleet';
-import { StubCell } from './StubCell';
+import { PullRequestsCell } from './PullRequestsCell';
 
 /**
- * New PRs signal — STUB. Replaced by issue #15 (new external-contributor pull
- * requests). Populate `render` from `data.pullRequests` and add sorting on
- * `data.pullRequests.score`. See `columns/index.ts`.
+ * The PRs column (issue #15) — open pull requests with a highlight for those
+ * from new outside contributors. Sorts on the slice `score`, which weights
+ * new-contributor PRs heavily, so the most attention-worthy repos lead a
+ * descending sort. A missing/scoreless slice sorts below every real score.
  */
 export const pullRequestsColumn: FleetColumn = {
   id: 'pullRequests',
-  header: 'New PRs',
+  header: 'PRs',
   align: 'center',
-  render: () => <StubCell srLabel="New pull requests not available yet" />,
+  sortable: true,
+  defaultSortDirection: 'desc',
+  getSortValue: (_, d) => d.pullRequests?.score ?? -1,
+  render: (_, d) => <PullRequestsCell slice={d.pullRequests} />,
 };
