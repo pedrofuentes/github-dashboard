@@ -189,7 +189,7 @@ export function FleetGrid({
             value={filter}
             onChange={handleFilterChange}
             placeholder="Filter repositories…"
-            className="w-full rounded-md border border-slate-400 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            className="w-full rounded-md border border-slate-500 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
           />
         </div>
         <p role="status" aria-live="polite" className="text-sm text-slate-600">
