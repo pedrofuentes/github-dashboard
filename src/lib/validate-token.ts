@@ -6,10 +6,12 @@ export interface ValidateTokenSuccess {
   ok: true;
   login: string;
   /**
-   * Avatar URL, present only when it passed the GitHub-owned host allowlist
-   * (ADR-004). A value that is not an `https:` URL on `githubusercontent.com`
-   * (or a sub-domain of it) is dropped to `undefined` so the UI never issues a
-   * request to a non-GitHub origin.
+   * Avatar URL — **may be `undefined`**. On a success result the property is
+   * always present: its value is the GitHub avatar URL when that URL passed the
+   * GitHub-owned host allowlist (ADR-004), or `undefined` when it was dropped.
+   * Any value that is not an `https:` URL on `githubusercontent.com` (the apex
+   * or a sub-domain of it, e.g. `avatars.githubusercontent.com`) is reduced to
+   * `undefined` so the UI never issues a request to a non-GitHub origin.
    */
   avatarUrl?: string;
 }
@@ -42,6 +44,12 @@ const AVATAR_HOST = 'githubusercontent.com';
  * shape — `http`/`data`/`blob`/`javascript` schemes, protocol-relative `//host`,
  * `user@host` userinfo, suffix-confusion (`githubusercontent.com.evil.com`),
  * lookalike, trailing-dot or otherwise unparseable values — yields `undefined`.
+ *
+ * Accepting the bare apex `githubusercontent.com` is intentionally one step
+ * broader than ADR-004's documented `*.githubusercontent.com` wildcard: GitHub
+ * serves avatars only from sub-domains, and the shipped CSP
+ * `img-src https://*.githubusercontent.com` is the browser-level backstop that
+ * would block an apex image anyway.
  */
 function sanitizeAvatarUrl(raw: string): string | undefined {
   let url: URL;

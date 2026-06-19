@@ -12,9 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Initial application scaffold — Vite + React 18 + TypeScript (strict), Tailwind
   CSS, with Vitest (unit) and Playwright (e2e) test runners (#5).
 - GitHub REST data layer: every response is Zod-validated at the boundary,
-  requests are conditional (`If-None-Match`), and per-repo fetches run under a
-  bounded concurrency cap so a large fleet fans out without exhausting the
-  rate-limit budget (#60, #64).
+  cache-backed requests are conditional (`If-None-Match`) — the Link-paginated
+  alert feeds (e.g. code-scanning) fetch directly so they can read pagination
+  headers — and per-repo fetches run under a bounded concurrency cap so a large
+  fleet fans out without exhausting the rate-limit budget (#60, #64).
 - PAT sign-in with in-browser token storage — in-memory by default, opt-in
   `sessionStorage`/`localStorage` persistence, and a one-click "Forget token"
   (#10).
@@ -29,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Open pull requests with new outside-contributor highlighting (#13).
   - Issues overview with an over-threshold indicator (#16).
   - Stale PR/issue detection (#17).
-- Row drill-down drawer with per-signal tabs (CI, Security, PRs, Issues, Stale)
-  for at-a-glance triage (#18).
+- Row drill-down drawer with per-signal sections (CI, Security, PRs, Issues,
+  Stale) for at-a-glance triage (#18).
 - Bounded in-memory LRU for the ETag/response cache (size cap with oldest-entry
   eviction) so long sessions can't grow the cache unbounded (#47).
 - Live rate-limit awareness: a small in-memory store records the latest

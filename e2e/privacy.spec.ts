@@ -254,8 +254,9 @@ test('contacts only GitHub-owned origins across the whole authenticated flow', a
 
   // DoD #80 — the app's own origin ('self') is permitted only as a navigation /
   // static-asset channel, never a same-origin data-exfiltration path. Every
-  // first-party request must therefore be a GET for a document/script/style/
-  // font/image (no XHR/fetch/websocket) and carry NO request body.
+  // first-party request must therefore be a GET for one of the static-asset
+  // resource types (document/script/stylesheet/font/image/manifest/other — see
+  // STATIC_ASSET_RESOURCE_TYPES; no XHR/fetch/websocket) and carry NO request body.
   const appRequests = requests.filter((r) => r.origin === appOrigin);
   expect(appRequests.length).toBeGreaterThan(0);
   const appOriginOffenders = appRequests
