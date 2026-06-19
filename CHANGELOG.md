@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-19
+
 ### Added
 
 - Initial application scaffold — Vite + React 18 + TypeScript (strict), Tailwind
@@ -42,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Visibility-driven revalidation: returning to a tab triggers a throttled,
   conditional (`If-None-Match`) refresh of per-repo signals — refreshing
   background-stale data with mostly-free `304`s (#47).
+- Security grade "partial" indicator — when a repository has more open security
+  alerts than the per-feed pagination cap can enumerate, the Security column now
+  surfaces a **lower-bound** grade instead of silently undercounting: the
+  severity summary is prefixed with `≥` and tagged "partial", and the cell's
+  accessible label reads "at least … (partial — more alerts not counted)". The
+  grade is derived from the alerts counted so far, so a truncated tally can only
+  understate risk, never hide it; partial reads are also never cached as an
+  unchanged `304` (#77).
 
 ### Changed
 
@@ -68,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   protection and logged an error-level message in the console on every load.
   Dropping it clears the only console error on the live site without weakening
   any other directive; header-delivered frame protection remains tracked as a
-  hosting-layer follow-up (#81).
+  hosting-layer follow-up (#104).
 - Abort-aware retry backoff: cancelling a request during the retry backoff now
   aborts promptly instead of waiting out the full delay, and never issues an
   extra network request; genuine timeouts remain retryable (#70).
