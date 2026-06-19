@@ -1,14 +1,18 @@
 import type { FleetColumn } from '../../types/fleet';
-import { StubCell } from './StubCell';
+import { IssuesCell } from './IssuesCell';
 
 /**
- * Issues signal — STUB. Replaced by issue #16 (open issue counts / triage).
- * Populate `render` from `data.issues` and add sorting on `data.issues.score`.
- * See `columns/index.ts`.
+ * The Issues column (issue #16) — open issue counts (pull requests excluded)
+ * with a triage-threshold flag. Sortable by the slice score, defaulting to
+ * descending so the noisiest backlogs surface first; repos without a score
+ * (no data yet, loading, or error) sort last.
  */
 export const issuesColumn: FleetColumn = {
   id: 'issues',
   header: 'Issues',
   align: 'center',
-  render: () => <StubCell srLabel="Issue status not available yet" />,
+  sortable: true,
+  defaultSortDirection: 'desc',
+  getSortValue: (_, data) => data.issues?.score ?? -1,
+  render: (_, data) => <IssuesCell slice={data.issues} />,
 };
