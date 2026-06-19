@@ -41,13 +41,26 @@ test.describe('accessibility: skip-to-content keyboard flow', () => {
     await expect(page.getByRole('main')).toBeFocused();
   });
 
-  test('the token form field is keyboard reachable and has an accessible name', async ({
+  test('the token form field is keyboard reachable via Tab and has an accessible name', async ({
     page,
   }) => {
     await page.goto('/');
 
     const tokenField = page.getByLabel('GitHub personal access token');
-    await tokenField.focus();
+
+    // Real keyboard navigation — not a programmatic `.focus()`, which would pass
+    // regardless of tab order. Starting from page load, Tab forward until the
+    // PAT field receives focus, proving it is reachable in the natural tab order
+    // (no focus trap, no positive-tabindex jump). The loop is bounded so an
+    // unreachable field fails fast instead of hanging.
+    const maxTabStops = 10;
+    let reached = false;
+    for (let step = 0; step < maxTabStops && !reached; step += 1) {
+      await page.keyboard.press('Tab');
+      reached = await tokenField.evaluate((element) => element === document.activeElement);
+    }
+
+    expect(reached, `the PAT field was not reachable within ${maxTabStops} Tab presses`).toBe(true);
     await expect(tokenField).toBeFocused();
     await expect(page.getByRole('button', { name: 'Connect to GitHub' })).toBeVisible();
   });
