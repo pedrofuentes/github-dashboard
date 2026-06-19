@@ -7,8 +7,14 @@
  * `Map<nameWithOwner, slice>` results into a memoized `getRowData(repo)` that
  * the grid consumes. `getRowData` keeps a stable identity while its inputs are
  * unchanged, so the grid doesn't re-sort or re-render on every parent render.
+ *
+ * When the tab returns to `visible`, a throttled revalidation (via
+ * {@link useVisibilityRevalidate}) hands each signal hook a fresh `repos`
+ * reference so their conditional (`If-None-Match`) effects re-run — refreshing
+ * data that went stale in the background with mostly-free `304`s — without
+ * changing this hook's public return shape or any signal hook's logic.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import type { GetRowData, Repo } from '../types/fleet';
 import { useCiSignal } from './signals/useCiSignal';
@@ -17,6 +23,7 @@ import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
+import { useVisibilityRevalidate } from './useVisibilityRevalidate';
 
 /** Public shape returned by {@link useRepoSignals}. */
 export interface UseRepoSignalsResult {
@@ -31,12 +38,22 @@ export interface UseRepoSignalsResult {
  * @param token - Auth token forwarded to each signal hook (may be `null`).
  */
 export function useRepoSignals(repos: Repo[], token: string | null): UseRepoSignalsResult {
-  const ci = useCiSignal(repos, token);
-  const security = useSecuritySignal(repos, token);
-  const reviews = useReviewsSignal(repos, token);
-  const pullRequests = usePullRequestsSignal(repos, token);
-  const issues = useIssuesSignal(repos, token);
-  const stale = useStaleSignal(repos, token);
+  // Bumping this nonce on foreground hands the signal hooks a new `repos`
+  // identity, re-running their conditional fetches without touching their logic.
+  const [revalidateNonce, setRevalidateNonce] = useState(0);
+  useVisibilityRevalidate(() => setRevalidateNonce((n) => n + 1));
+
+  // A fresh array reference per revalidation (but stable across unrelated
+  // re-renders) so each signal hook's `[repos, token]` effect re-runs only when
+  // `repos` actually changes or the tab returns to visible.
+  const revalidatedRepos = useMemo(() => repos.slice(), [repos, revalidateNonce]);
+
+  const ci = useCiSignal(revalidatedRepos, token);
+  const security = useSecuritySignal(revalidatedRepos, token);
+  const reviews = useReviewsSignal(revalidatedRepos, token);
+  const pullRequests = usePullRequestsSignal(revalidatedRepos, token);
+  const issues = useIssuesSignal(revalidatedRepos, token);
+  const stale = useStaleSignal(revalidatedRepos, token);
 
   const getRowData = useMemo<GetRowData>(
     () => (repo: Repo) => ({
