@@ -11,7 +11,6 @@ import {
   fetchLatestWorkflowRun,
   fetchLatestDeploymentStatus,
   fetchWorkflowInfo,
-  triggerWorkflowDispatch,
   getWorkflowDisplayStatus,
   getWorkflowStatusLabel,
   GitHubApiError,
@@ -584,117 +583,6 @@ describe('Workflow API', () => {
 
     it('returns raw status for unknown values', () => {
       expect(getWorkflowStatusLabel('custom_status')).toBe('custom_status');
-    });
-  });
-
-  // ── triggerWorkflowDispatch ─────────────────
-
-  describe('triggerWorkflowDispatch', () => {
-    it('sends a POST request with correct URL and body', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        status: 204,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test');
-
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'https://api.github.com/repos/owner/repo/actions/workflows/deploy.yml/dispatches',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ ref: 'main' }),
-          headers: expect.objectContaining({
-            Authorization: 'Bearer ghp_test',
-            'Content-Type': 'application/json',
-          }),
-        }),
-      );
-    });
-
-    it('encodes owner, repo, and workflow file in URL', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        status: 204,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await triggerWorkflowDispatch('my org', 'my repo', 'ci build.yml', 'main', 'ghp_test');
-
-      const calledUrl = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
-      expect(calledUrl).toContain('my%20org');
-      expect(calledUrl).toContain('my%20repo');
-      expect(calledUrl).toContain('ci%20build.yml');
-    });
-
-    it('resolves without error on 204 success', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        status: 204,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await expect(
-        triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test'),
-      ).resolves.toBeUndefined();
-    });
-
-    it('throws GitHubApiError with permission message on 403', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: false,
-        status: 403,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await expect(
-        triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test'),
-      ).rejects.toThrow(GitHubApiError);
-
-      await expect(
-        triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test'),
-      ).rejects.toThrow('Actions: Write permission');
-    });
-
-    it('throws GitHubApiError with status code on other errors', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await expect(
-        triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test'),
-      ).rejects.toThrow('404');
-    });
-
-    it('throws GitHubApiError with correct status property on 422', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: false,
-        status: 422,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      try {
-        await triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'main', 'ghp_test');
-        expect.fail('Should have thrown');
-      } catch (err) {
-        expect(err).toBeInstanceOf(GitHubApiError);
-        expect((err as GitHubApiError).status).toBe(422);
-      }
-    });
-
-    it('uses the provided ref in the request body', async () => {
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        status: 204,
-        headers: makeHeaders(),
-      } as unknown as Response);
-
-      await triggerWorkflowDispatch('owner', 'repo', 'deploy.yml', 'release/v2', 'ghp_test');
-
-      const callArgs = vi.mocked(globalThis.fetch).mock.calls[0];
-      const body = JSON.parse(callArgs[1]?.body as string);
-      expect(body.ref).toBe('release/v2');
     });
   });
 });

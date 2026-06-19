@@ -10,7 +10,6 @@ import { z } from 'zod';
 
 import {
   GITHUB_API_BASE,
-  GitHubApiError,
   buildHeaders,
   fetchWithRetry,
   handleApiError,
@@ -256,56 +255,6 @@ export async function fetchWorkflowInfo(
   ]);
 
   return { latestRun, deployment };
-}
-
-/**
- * Triggers a workflow dispatch event for the specified workflow.
- * Requires the token to have `Actions: Write` permission.
- *
- * @param owner - Repository owner
- * @param repo - Repository name
- * @param workflowFile - Workflow filename (e.g., "deploy.yml")
- * @param ref - Branch or tag to run the workflow on
- * @param token - GitHub PAT with Actions write permission
- * @throws GitHubApiError if the request fails (e.g., 403 for missing permissions)
- */
-export async function triggerWorkflowDispatch(
-  owner: string,
-  repo: string,
-  workflowFile: string,
-  ref: string,
-  token: string,
-): Promise<void> {
-  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${encodeURIComponent(workflowFile)}/dispatches`;
-  const response = await fetchWithRetry(
-    url,
-    {
-      method: 'POST',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ref }),
-    },
-    'triggerWorkflowDispatch',
-  );
-
-  if (!response.ok) {
-    const rateLimitInfo = parseRateLimitHeaders(response.headers);
-    if (response.status === 403) {
-      throw new GitHubApiError(
-        'Workflow dispatch requires Actions: Write permission on your token',
-        403,
-        rateLimitInfo,
-      );
-    }
-    throw new GitHubApiError(
-      `Failed to trigger workflow dispatch: ${response.status}`,
-      response.status,
-      rateLimitInfo,
-    );
-  }
 }
 
 /**
