@@ -1,5 +1,6 @@
 /**
- * Fleet column registry — the extension point for the signal features (#12-18).
+ * Fleet column registry — the assembly point for the signal columns (#12-18),
+ * all shipped: every column below is implemented and sortable.
  *
  * ## How the grid is built
  * `<FleetGrid>` renders its header row and body purely from an ordered array of
@@ -14,21 +15,22 @@
  * columns own only their cell + sort value.
  *
  * ## One column = one file
- * Every column lives in its own file and is registered here, so the six signal
- * features can land in parallel with near-zero merge conflict: each issue
- * replaces exactly one stub file and touches nothing else.
+ * Every column lives in its own file and is registered here. The six signal
+ * features each shipped as exactly one column file touching nothing shared, so
+ * they landed in parallel with near-zero merge conflict — and future column
+ * work stays the same one-file change.
  *
  *   src/components/columns/
  *     RepoColumn.tsx          ← shipped (row anchor + default sort)
- *     CiColumn.tsx            ← stub, owned by #12
- *     SecurityColumn.tsx      ← stub, owned by #13
- *     ReviewsColumn.tsx       ← stub, owned by #14
- *     PullRequestsColumn.tsx  ← stub, owned by #15
- *     IssuesColumn.tsx        ← stub, owned by #16
- *     StaleColumn.tsx         ← stub, owned by #17
+ *     CiColumn.tsx            ← shipped (sortable)
+ *     SecurityColumn.tsx      ← shipped (sortable)
+ *     ReviewsColumn.tsx       ← shipped (sortable)
+ *     PullRequestsColumn.tsx  ← shipped (sortable)
+ *     IssuesColumn.tsx        ← shipped (sortable)
+ *     StaleColumn.tsx         ← shipped (sortable)
  *     index.ts                ← this registry (order = on-screen order)
  *
- * ## To replace a stub (per signal feature)
+ * ## To add or evolve a column
  * 1. Extend the column's slice in `src/types/fleet.ts` if richer data is needed.
  * 2. Render real content from `data.<slice>`; encode state with icon **and**
  *    text/`aria-label`, never colour alone (WCAG 2.1 AA).
