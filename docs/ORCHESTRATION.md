@@ -1,6 +1,6 @@
 # Orchestration — Running the Sub-Agent Fleet
 
-How the autonomous build is organized as a small "company" of sub-agents operating under the `agents-template` + Sentinel rules. The **Delivery Lead** (the top-level agent that received the kickoff prompt) owns the board, spawns the fleet, invokes Sentinel, and merges. Everyone else is a sub-agent. *(The cofounder handle for @-mentions is in `MISSION.md` §1.)*
+How the autonomous build is organized as a small "company" of sub-agents operating under the `agents-template` + Sentinel rules. The **Delivery Lead** (the top-level agent that received the kickoff prompt) owns the board, spawns the fleet, invokes Sentinel, and merges. Everyone else is a sub-agent. **Operating as this structure is required, not optional** — the Lead *coordinates and delegates* substantial work; it does not quietly execute the whole build as a single agent. *(The cofounder handle for @-mentions is in `MISSION.md` §1.)*
 
 ## The org
 
@@ -20,6 +20,10 @@ How the autonomous build is organized as a small "company" of sub-agents operati
 - **Sub-agents do NOT inherit `AGENTS.md`.** When spawning any sub-agent, **copy into its prompt**: the TDD choreography (`test(red)` → `feat(green)` → `refactor`), the 4-tier Boundaries, and the **Delegated Implementation rule** (code → test → pre-push verify → push → open PR → **stop**; report PR URL + HEAD SHA upward; do not invoke Sentinel on your own work, do not merge).
 - **Sentinel is invoked by an agent OUTSIDE the entire implementation chain.** For nested delegation (Lead → engineer → helper), each implementer stops and reports upward; only the Lead (or a sibling not in the chain) invokes Sentinel.
 - **Sentinel must be a full-capability model** (≥ Sonnet-class) able to run commands and spawn the A–F dimension sub-agents. Never a fast/cheap/explore-class model.
+
+### Nested delegation — expected, and degrades gracefully
+
+Sub-agents may spawn their **own** sub-agents (an engineer spins up a test-data or research helper; Sentinel spawns its A–F dimension agents; a research lead fans out to per-topic researchers). This recursive "agents creating agents" is the intended operating mode. **But it depends on the runtime:** where your platform does **not** let a sub-agent spawn further sub-agents, the nearest agent that *can* spawn does so on its behalf — record the limitation and continue; never block on it. In every case the implementation chain **reports upward**, and Sentinel is invoked from **outside** the entire chain (coder ≠ reviewer, at any depth).
 - **One worktree per increment.** `git worktree add .worktrees/<name> -b <type>/<name> main`. Never commit on `main`.
 
 ## Parallelization model
