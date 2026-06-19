@@ -8,6 +8,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    typecheck: {
+      tsconfig: './tsconfig.vitest.json',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
