@@ -1,6 +1,6 @@
 /**
  * Security-alert grading — the pure scoring/rubric helper behind the Security
- * column (issue #13). Kept free of React/IO so it is trivially unit-tested and
+ * column (issue #14). Kept free of React/IO so it is trivially unit-tested and
  * reused by both the signal hook and (the spoken summary of) the cell.
  */
 import type { SecuritySignalSlice } from '../../types/fleet';

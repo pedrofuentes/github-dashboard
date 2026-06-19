@@ -1,7 +1,7 @@
 /**
  * Security signal — open Dependabot **and** code-scanning alerts per repo,
  * aggregated into a severity breakdown, weighted score and letter grade
- * (issue #13; research-api §(c),(4)).
+ * (issue #14; research-api §(c),(4)).
  *
  * Replaces the stub: it owns this file only. For each repo it fetches the two
  * alert feeds concurrently, merges their open counts, and emits one

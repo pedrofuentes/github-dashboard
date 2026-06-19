@@ -2,7 +2,7 @@ import type { FleetColumn } from '../../types/fleet';
 import { SecurityCell } from './SecurityCell';
 
 /**
- * Security signal — open Dependabot / code-scanning alerts (issue #13). Sorts
+ * Security signal — open Dependabot / code-scanning alerts (issue #14). Sorts
  * descending by the weighted alert score (repos needing attention first; repos
  * with no score sink to the bottom). Cell rendering lives in {@link SecurityCell}
  * so this descriptor file stays Fast-Refresh clean (const-only export).
