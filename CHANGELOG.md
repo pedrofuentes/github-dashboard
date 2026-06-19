@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Visibility-driven revalidation: returning to a tab triggers a throttled,
   conditional (`If-None-Match`) refresh of per-repo signals — refreshing
   background-stale data with mostly-free `304`s (#47).
+- Security grade "partial" indicator — when a repository has more open security
+  alerts than the per-feed pagination cap can enumerate, the Security column now
+  surfaces a **lower-bound** grade instead of silently undercounting: the
+  severity summary is prefixed with `≥` and tagged "partial", and the cell's
+  accessible label reads "at least … (partial — more alerts not counted)". The
+  grade is derived from the alerts counted so far, so a truncated tally can only
+  understate risk, never hide it; partial reads are also never cached as an
+  unchanged `304` (#77).
 
 ### Changed
 
