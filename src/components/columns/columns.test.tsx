@@ -76,13 +76,15 @@ describe('repo column', () => {
 });
 
 describe('stub signal columns', () => {
-  // `ci` (issue #12) and `reviews` (issue #15) are implemented — their
-  // descriptors/cells are covered in CiColumn.test.tsx / CiCell.test.tsx and
-  // ReviewsColumn.test.tsx / ReviewsCell.test.tsx, so they are excluded here.
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && c.id !== 'ci' && c.id !== 'reviews');
+  // A column is a stub until its signal feature (#12-18) ships a sort model;
+  // filtering on `!sortable` keeps this suite correct as each real column lands.
+  // `ci` and `reviews` (from main) and `pullRequests` (this branch) have shipped
+  // sortable descriptors — each covered by its own *Column/*Cell test file — so
+  // the filter excludes them and only the genuine stubs remain here.
+  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && !c.sortable);
 
-  it('cover Security, PRs, Issues, and Stale', () => {
-    expect(stubs.map((c) => c.id)).toEqual(['security', 'pullRequests', 'issues', 'stale']);
+  it('cover the signals still awaiting their feature (ci, reviews & PRs have shipped)', () => {
+    expect(stubs.map((c) => c.id)).toEqual(['security', 'issues', 'stale']);
   });
 
   it('stay non-sortable until their signal feature lands (sorting lands per #12-18)', () => {
