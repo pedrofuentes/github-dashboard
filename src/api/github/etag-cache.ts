@@ -42,20 +42,55 @@ export interface ETagCacheEntry<T = unknown> {
 }
 
 /**
+ * Default LRU cap for the in-memory ETag cache.
+ *
+ * Comfortably exceeds a large fleet's working set (dozens of repos × a handful
+ * of endpoints, plus pagination) so steady-state polling never evicts useful
+ * entries, while still bounding worst-case memory for a churning, long-lived tab.
+ */
+export const DEFAULT_ETAG_CACHE_MAX_SIZE = 500;
+
+/**
  * In-memory ETag cache keyed by absolute request URL.
  *
  * Deliberately process-local: nothing is persisted, so no validated GitHub data
  * ever lands in `localStorage`/`sessionStorage`.
+ *
+ * Bounded by a least-recently-used policy so a long-lived session polling a
+ * large, churning fleet cannot grow the cache without limit: `set` evicts the
+ * oldest entries past {@link maxSize}, and both `get` and `set` mark an entry as
+ * most-recently-used (a `Map` preserves insertion order, so re-inserting moves a
+ * key to the "newest" end and the first key is always the LRU victim).
  */
 export class ETagCache {
   private readonly store = new Map<string, ETagCacheEntry>();
+  /** Maximum number of entries retained before LRU eviction kicks in. */
+  readonly maxSize: number;
+
+  constructor(maxSize: number = DEFAULT_ETAG_CACHE_MAX_SIZE) {
+    this.maxSize = Math.max(1, Math.floor(maxSize));
+  }
 
   get<T = unknown>(url: string): ETagCacheEntry<T> | undefined {
-    return this.store.get(url) as ETagCacheEntry<T> | undefined;
+    const entry = this.store.get(url);
+    if (entry === undefined) return undefined;
+    // LRU touch: re-insert so this key becomes most-recently-used.
+    this.store.delete(url);
+    this.store.set(url, entry);
+    return entry as ETagCacheEntry<T>;
   }
 
   set<T = unknown>(url: string, entry: ETagCacheEntry<T>): void {
+    // Delete first so a re-set moves the key to the most-recently-used position
+    // (and overwrites) rather than updating in place at its old recency.
+    this.store.delete(url);
     this.store.set(url, entry);
+    // Evict least-recently-used entries until within the cap.
+    while (this.store.size > this.maxSize) {
+      const oldest = this.store.keys().next().value;
+      if (oldest === undefined) break;
+      this.store.delete(oldest);
+    }
   }
 
   has(url: string): boolean {
