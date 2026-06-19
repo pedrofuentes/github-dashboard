@@ -76,17 +76,12 @@ describe('repo column', () => {
 });
 
 describe('stub signal columns', () => {
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo');
+  // A column is a stub until its signal feature (#12-18) ships a sort model;
+  // filtering on `sortable` keeps this suite correct as each real column lands.
+  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && !c.sortable);
 
-  it('cover CI, Security, Reviews, PRs, Issues, and Stale', () => {
-    expect(stubs.map((c) => c.id)).toEqual([
-      'ci',
-      'security',
-      'reviews',
-      'pullRequests',
-      'issues',
-      'stale',
-    ]);
+  it('cover the signals still awaiting their feature (PRs has shipped)', () => {
+    expect(stubs.map((c) => c.id)).toEqual(['ci', 'security', 'reviews', 'issues', 'stale']);
   });
 
   it('are not sortable yet (sorting is contributed by features #12-18)', () => {

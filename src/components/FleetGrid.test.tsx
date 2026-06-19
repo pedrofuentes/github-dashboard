@@ -36,15 +36,7 @@ describe('FleetGrid structure & accessibility', () => {
     render(<FleetGrid repos={REPOS} />);
 
     expect(screen.getByRole('table')).toBeInTheDocument();
-    for (const header of [
-      'Repository',
-      'CI',
-      'Security',
-      'Reviews',
-      'New PRs',
-      'Issues',
-      'Stale',
-    ]) {
+    for (const header of ['Repository', 'CI', 'Security', 'Reviews', 'PRs', 'Issues', 'Stale']) {
       expect(
         screen.getByRole('columnheader', { name: new RegExp(`^${header}$`, 'i') }),
       ).toBeInTheDocument();
