@@ -211,6 +211,11 @@ describe('useReviewsSignal', () => {
     expect(mockFetchPage).toHaveBeenCalledTimes(2);
     // The second request must target the next-page URL reported by page 1.
     expect(mockFetchPage.mock.calls[1][0]).toBe(nextUrl);
+    // …and must keep threading the AbortSignal so a mid-pagination unmount or
+    // repos/token change cancels page 2+ as well, not just the first call.
+    expect((mockFetchPage.mock.calls[1][1] as { signal?: AbortSignal }).signal).toBeInstanceOf(
+      AbortSignal,
+    );
     expect(result.current.get('octo/a')).toEqual({
       status: 'ready',
       requestedCount: 150,
@@ -219,6 +224,8 @@ describe('useReviewsSignal', () => {
   });
 
   it('stops following pagination at the max page cap', async () => {
+    // Capping legitimately warns (covered below); silence it to keep output clean.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const selfNext = `${reviewRequestedSearchUrl()}&page=loop`;
     // Every page advertises a next page — a pathological loop the cap must break.
     mockFetchPage.mockResolvedValue(page(['octo/a'], selfNext, 9999) as never);
@@ -231,6 +238,43 @@ describe('useReviewsSignal', () => {
 
     expect(mockFetchPage).toHaveBeenCalledTimes(MAX_REVIEW_PAGES);
     expect(result.current.get('octo/a')?.requestedCount).toBe(MAX_REVIEW_PAGES);
+    warnSpy.mockRestore();
+  });
+
+  it('warns when pagination stops at the page cap with more pages still available', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const selfNext = `${reviewRequestedSearchUrl()}&page=loop`;
+    // Every page advertises a next page, so the cap is reached with more pending
+    // — the counts may undercount and that must not be silent.
+    mockFetchPage.mockResolvedValue(page(['octo/a'], selfNext, 9999) as never);
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+
+    expect(warnSpy).toHaveBeenCalled();
+    const warned = warnSpy.mock.calls.at(-1) ?? [];
+    expect(
+      warned.some((arg) => typeof arg === 'string' && arg.includes(String(MAX_REVIEW_PAGES))),
+    ).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn when pagination completes before the page cap', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resolveOnce(page(['octo/a'], `${reviewRequestedSearchUrl()}&page=2`, 2));
+    resolveOnce(page(['octo/a'], null, 2));
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.requestedCount).toBe(2);
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('reports loading first, then ready slices with distributed counts', async () => {
