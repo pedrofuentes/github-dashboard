@@ -147,7 +147,7 @@ its Success Criterion) lives in `research-ux`. Required for v1:
 - **Understandable.** `<html lang="en">` (3.1.1); consistent top‑nav placement (3.2.3); specific error messages (3.3.1).
 - **Robust.** ARIA grid roles for the interactive grid, native `<table>` for static drawer tables (APG); accessible names on icon buttons (4.1.2); ≤7 landmark regions (APG); a hidden `role="status"` fleet summary ("Monitoring 12 repos. 2 failing CI…"); test in forced‑colors mode.
 
-Accessibility is verified in the dedicated a11y pass (`ROADMAP.md` M9) and is a **Definition‑of‑Done** quality bar.
+Accessibility is verified in the dedicated a11y pass (`ROADMAP.md` M7) and is a **Definition‑of‑Done** quality bar.
 
 ---
 
@@ -163,7 +163,7 @@ before that sign‑off.*
 - **Token storage model** (`research-auth` §2.5): **in‑memory by default**; opt‑in "remember this session" → `sessionStorage`; opt‑in "remember across sessions" → `localStorage`; an always‑visible **"Forget token"** clears all three. **No Web‑Crypto "encryption theater"** — with no backend secret, encryption adds no real XSS protection for a read‑only token; the "no third‑party scripts" + strict CSP rule is the real mitigation.
 - **Device flow DEFERRED for v1**, with written rationale + cofounder sign‑off (`MISSION.md` §8). Exit condition: GitHub adds CORS (unlikely) **or** a stateless proxy is approved (a separate gated decision). The PKCE *authorize* (redirect) step may be pre‑built speculatively without shipping the broken token exchange.
 - **Privacy invariant.** Token + all data live **only** in the browser; no telemetry, no third parties (`MISSION.md` §5).
-- **Network allowlist (runtime origins) — GitHub‑owned only:** `api.github.com`, `github.com/login/*` (future auth), `avatars.githubusercontent.com` / `raw.githubusercontent.com` (images). Fonts/assets bundled locally; **no CDN/analytics origins**. Enforced by a strict CSP and **verified by an automated Playwright network‑interception test** (a Definition‑of‑Done item; `ROADMAP.md` M7).
+- **Network allowlist (runtime origins) — GitHub‑owned only:** `api.github.com`, `github.com/login/*` (future auth), `avatars.githubusercontent.com` / `raw.githubusercontent.com` (images). Fonts/assets bundled locally; **no CDN/analytics origins**. Enforced by a strict CSP and **verified by an automated Playwright network‑interception test** (a Definition‑of‑Done item; `ROADMAP.md` M5).
 
 ---
 
@@ -200,7 +200,7 @@ ETags**, **<300/hr with ETags** — far under the ceiling.
 |---|------|-----------|------------|
 | R1 | **Device flow stays infeasible** (CORS) → no zero‑PAT onboarding | High (structural) | Ship PAT‑only v1; defer device flow with sign‑off; pre‑build PKCE authorize step only (`research-auth`). |
 | R2 | **Outside‑contributor + stale signals need PR/issue *node* fetches**, not just counts → higher API cost | Medium | Use GraphQL aliasing for `authorAssociation`; compute staleness from cached `updated_at`; org‑level alert endpoints (`research-api`, `research-ux` §Gaps 1–2). |
-| R3 | **ETag layer is net‑new** (absent from the port) → if mis‑implemented, budget blows up | Medium | Treat ETag caching as a first‑class, separately‑tested integration task (`ROADMAP.md` M3); `/rate_limit` pre‑checks as backstop. |
+| R3 | **ETag layer is net‑new** (absent from the port) → if mis‑implemented, budget blows up | Medium | Treat ETag caching as a first‑class, separately‑tested integration task (`ROADMAP.md` M2); `/rate_limit` pre‑checks as backstop. |
 | R4 | **Search API stricter 30/min bucket** for review‑requested + stale queries | Low | Keep search to a few calls/min; prefer cached‑PR filtering where possible (`research-api` §2). |
 | R5 | **XSS would expose a persisted token** | Low | "No third‑party scripts" + strict CSP + `textContent` (not `innerHTML`); in‑memory default; read‑only token limits blast radius (`research-auth` §2.3). |
 | R6 | **Org‑level alert endpoints unavailable** for personal repos / insufficient grant | Medium | Per‑repo fallback already specified; degrade the Security cell per‑repo (`research-api` §1c). |
