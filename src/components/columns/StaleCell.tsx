@@ -42,7 +42,10 @@ export function StaleCell({ slice }: StaleCellProps) {
   if (slice?.status === 'loading') {
     return (
       <span className="inline-flex items-center justify-center">
-        <span aria-hidden="true" className="block h-3 w-12 animate-pulse rounded bg-slate-300/70" />
+        <span
+          aria-hidden="true"
+          className="block h-3 w-12 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+        />
         <span className="sr-only">Loading stale items…</span>
       </span>
     );

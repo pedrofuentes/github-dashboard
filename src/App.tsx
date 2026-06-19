@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -24,7 +24,13 @@ function Shell(): ReactElement {
   const authenticated = status === 'authenticated' && user !== null;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:font-medium focus:text-slate-900 focus:shadow-lg focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-sky-600"
+      >
+        Skip to main content
+      </a>
       <header className="mx-auto max-w-5xl px-6 py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -36,13 +42,18 @@ function Shell(): ReactElement {
           {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
         </div>
       </header>
-      <section aria-labelledby="overview-heading" className="mx-auto max-w-5xl px-6 pb-12">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        aria-labelledby="overview-heading"
+        className="mx-auto max-w-5xl px-6 pb-12 outline-none"
+      >
         <h2 id="overview-heading" className="sr-only">
           Fleet overview
         </h2>
         {authenticated ? <FleetPanel token={token} /> : <TokenInput />}
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -50,6 +61,11 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+
+  // Stable callbacks so the memoised grid rows keep shallow-equal props and do
+  // not all re-render when the drawer opens or closes.
+  const handleRepoActivate = useCallback((repo: Repo) => setSelectedRepo(repo), []);
+  const handleCloseDrawer = useCallback(() => setSelectedRepo(null), []);
 
   return (
     <>
@@ -59,13 +75,13 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
         loading={status === 'loading'}
         error={status === 'error' ? error : null}
         onRetry={reload}
-        onRepoActivate={(repo) => setSelectedRepo(repo)}
+        onRepoActivate={handleRepoActivate}
       />
       {selectedRepo !== null ? (
         <DrillDownDrawer
           repo={selectedRepo}
           data={getRowData(selectedRepo)}
-          onClose={() => setSelectedRepo(null)}
+          onClose={handleCloseDrawer}
         />
       ) : null}
     </>
@@ -94,7 +110,7 @@ function AccountBar({ user, onForget }: AccountBarProps): ReactElement {
       <button
         type="button"
         onClick={onForget}
-        className="rounded border border-slate-300 px-3 py-1 text-sm font-medium hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        className="rounded border border-slate-300 px-3 py-1 text-sm font-medium hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       >
         Forget token
       </button>

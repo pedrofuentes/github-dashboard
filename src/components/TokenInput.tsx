@@ -98,7 +98,7 @@ export function TokenInput(): ReactElement {
             disabled={isAuthenticating}
             aria-describedby={`${helpId} ${errorId}`}
             placeholder="github_pat_…"
-            className="w-full rounded border border-slate-300 px-3 py-2"
+            className="w-full rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
           />
         </div>
 
@@ -127,7 +127,7 @@ export function TokenInput(): ReactElement {
         <button
           type="submit"
           disabled={isAuthenticating}
-          className="rounded bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60"
+          className="rounded bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
         >
           {isAuthenticating ? 'Connecting…' : 'Connect to GitHub'}
         </button>
@@ -144,7 +144,7 @@ export function TokenInput(): ReactElement {
             href={PAT_CREATE_URL}
             target="_blank"
             rel="noreferrer noopener"
-            className="font-medium text-slate-900 underline"
+            className="rounded font-medium text-slate-900 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
           >
             fine-grained personal access token
           </a>{' '}
@@ -153,7 +153,7 @@ export function TokenInput(): ReactElement {
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {READ_ONLY_PERMISSIONS.map((permission) => (
             <li key={permission}>
-              {permission} <span className="text-slate-400">(read-only)</span>
+              {permission} <span className="text-slate-500">(read-only)</span>
             </li>
           ))}
         </ul>

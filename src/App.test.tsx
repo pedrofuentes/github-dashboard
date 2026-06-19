@@ -71,6 +71,30 @@ describe('App', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
+  it('exposes a top-level banner landmark that holds the dashboard heading', () => {
+    render(<App />);
+
+    const banner = screen.getByRole('banner');
+    expect(banner).toBeInTheDocument();
+    expect(
+      within(banner).getByRole('heading', { level: 1, name: 'github-dashboard' }),
+    ).toBeInTheDocument();
+    // The banner must NOT be nested inside the main landmark (else it is not a banner).
+    expect(screen.getByRole('main')).not.toContainElement(banner);
+  });
+
+  it('offers a skip-to-content link that targets the focusable main region', () => {
+    render(<App />);
+
+    const skipLink = screen.getByRole('link', { name: /skip to main content/i });
+    expect(skipLink).toHaveAttribute('href', '#main-content');
+
+    const main = screen.getByRole('main');
+    expect(main).toHaveAttribute('id', 'main-content');
+    // tabIndex=-1 lets the skip link move keyboard focus into <main> programmatically.
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
   it('shows the token input when unauthenticated', () => {
     render(<App />);
 

@@ -63,7 +63,7 @@ export function IssuesCell({ slice }: IssuesCellProps) {
       <span className="inline-flex items-center justify-center">
         <span
           aria-hidden="true"
-          className="inline-block h-3 w-10 animate-pulse rounded bg-slate-700/70"
+          className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
         />
         <span className="sr-only">Loading issue count…</span>
       </span>
@@ -86,13 +86,13 @@ export function IssuesCell({ slice }: IssuesCellProps) {
       aria-label={label}
       className={cn(
         'inline-flex items-center justify-center gap-1 tabular-nums',
-        overThreshold ? 'font-semibold text-amber-300' : 'text-slate-300',
+        overThreshold ? 'font-semibold text-amber-800' : 'text-slate-700',
       )}
     >
       <IssueOpenedIcon />
       <span aria-hidden="true">{openCount} open</span>
       {overThreshold ? (
-        <span title="over the triage threshold" className="inline-flex items-center text-amber-400">
+        <span title="over the triage threshold" className="inline-flex items-center text-amber-700">
           <TriageAlertIcon />
         </span>
       ) : null}
