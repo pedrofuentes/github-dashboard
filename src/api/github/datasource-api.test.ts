@@ -305,6 +305,35 @@ describe('Datasource API', () => {
       expect(items).toHaveLength(1);
       expect(items[0].label).toContain('🔒');
     });
+
+    it('does not follow an off-origin Link "next" URL (no PAT leak to non-GitHub host)', async () => {
+      const page1Repos = [{ full_name: 'owner/repo1', private: false, description: null }];
+      const leakedRepos = [{ full_name: 'evil/leak', private: false, description: null }];
+
+      vi.mocked(globalThis.fetch)
+        .mockResolvedValueOnce(
+          mockFetchResponse(
+            page1Repos,
+            200,
+            '<https://evil.example.com/user/repos?page=2&per_page=100>; rel="next"',
+          ),
+        )
+        .mockResolvedValueOnce(mockFetchResponse(leakedRepos));
+
+      const items = await fetchUserRepos('ghp_secret');
+
+      // Pagination must stop: only the on-origin first page is fetched.
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      // The PAT must never be sent to the forged off-origin host.
+      for (const call of vi.mocked(globalThis.fetch).mock.calls) {
+        expect(String(call[0])).not.toContain('evil.example.com');
+      }
+
+      // Only the legitimate first-page repo is returned.
+      expect(items).toHaveLength(1);
+      expect(items[0].value).toBe('owner/repo1');
+    });
   });
 
   // ── fetchRepoWorkflows ──────────────────────
