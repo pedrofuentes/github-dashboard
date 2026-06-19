@@ -176,19 +176,27 @@ describe('useSecuritySignal', () => {
   });
 
   it('ignores a stale resolution after the token changes (race guard)', async () => {
-    let resolveStale: ((value: SecurityAlertSummary) => void) | undefined;
+    // The stale generation's BOTH feeds are deferred so its `Promise.all`
+    // (useSecuritySignal.ts) only settles when we release it — *after* the
+    // fresh generation has already won. Releasing just one half would leave the
+    // stale `Promise.all` pending and the `.then` generation guard unexercised.
+    let resolveStaleDependabot: ((value: SecurityAlertSummary) => void) | undefined;
+    let resolveStaleCodeScanning: ((value: unknown[]) => void) | undefined;
     const staleDependabot = new Promise<SecurityAlertSummary>((resolve) => {
-      resolveStale = resolve;
+      resolveStaleDependabot = resolve;
+    });
+    const staleCodeScanning = new Promise<unknown[]>((resolve) => {
+      resolveStaleCodeScanning = resolve;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
-    mockCodeScanning.mockReturnValue(new Promise(() => {}) as never);
+    mockCodeScanning.mockReturnValueOnce(staleCodeScanning as never);
 
     const { result, rerender } = renderHook(({ token }) => useSecuritySignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
     });
     expect(result.current.get('octo/a')?.status).toBe('loading');
 
-    // Second token: both feeds resolve cleanly.
+    // Second token: both feeds resolve cleanly to a healthy 'B'.
     mockDependabot.mockResolvedValue(dependabot({ low: 1 }));
     codeScanning([]);
     rerender({ token: 'ghp_two' });
@@ -202,11 +210,19 @@ describe('useSecuritySignal', () => {
       });
     });
 
-    // The first token's slow response now arrives — it must not overwrite.
-    resolveStale?.(dependabot({ critical: 9 }));
+    // The first token's slow feeds NOW both settle, so its `Promise.all`
+    // resolves and the `.then` actually runs — with a critical count that would
+    // crash the grade to 'F'. The generation guard must discard this write.
+    resolveStaleDependabot?.(dependabot({ critical: 9 }));
+    resolveStaleCodeScanning?.([]);
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(result.current.get('octo/a')?.grade).toBe('B');
+    expect(result.current.get('octo/a')).toEqual({
+      status: 'ready',
+      counts: { critical: 0, high: 0, medium: 0, low: 1 },
+      score: 1,
+      grade: 'B',
+    });
   });
 
   it('ignores a stale rejection after the token changes (race guard)', async () => {
