@@ -16,6 +16,7 @@ import {
   parseRetryAfter,
 } from './core';
 import { SearchCountResponseSchema, ReviewSearchResponseSchema } from './schemas';
+import { z } from 'zod';
 
 /** Summary of a PR requesting the user's review */
 export interface ReviewRequestedPR {
@@ -172,5 +173,86 @@ export async function fetchReviewRequestedPRs(
   return {
     total_count: data.total_count,
     items,
+  };
+}
+
+/** One page of the cross-repo "review-requested:@me" search. */
+export interface ReviewRequestedSearchPage {
+  /** Search items carrying the `repository_url` used to attribute each PR. */
+  items: { repository_url: string }[];
+  /** Total matches across every page (GitHub Search `total_count`). */
+  totalCount: number;
+  /** Absolute URL of the next page (`Link: rel="next"`), or null when last. */
+  nextPageUrl: string | null;
+}
+
+/**
+ * Minimal schema for one review-requested Search page: only `total_count` and
+ * each item's `repository_url` are read, so `.passthrough()` keeps the many
+ * unused Search fields from failing validation.
+ */
+const ReviewRequestedSearchPageSchema = z
+  .object({
+    total_count: z.number(),
+    items: z.array(z.object({ repository_url: z.string() }).passthrough()),
+  })
+  .passthrough();
+
+/**
+ * Parses the GitHub `Link` header to extract the `rel="next"` URL.
+ *
+ * Security: the returned URL is followed with the user's PAT attached, so a
+ * forged or MITM'd `Link` header must never redirect that token off-origin.
+ * Only URLs on the GitHub API origin are accepted; anything else (or an
+ * unparseable value) is treated as "no next page" so pagination simply stops.
+ */
+function parseNextPageUrl(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  if (!match) return null;
+
+  const next = match[1];
+  try {
+    if (new URL(next).origin !== new URL(GITHUB_API_BASE).origin) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return next;
+}
+
+/**
+ * Fetches a single page of the cross-repo "review-requested:@me" search and
+ * reports the next-page URL parsed from the `Link` header so callers can follow
+ * pagination and count *all* review requests — not just the first page. A user
+ * with more than one page of requested reviews would otherwise be undercounted.
+ *
+ * @param url - Absolute Search URL for this page (first page or a `Link` next)
+ * @param options - Auth token and an optional AbortSignal to cancel the fetch
+ * @returns The page's items, the fleet-wide `total_count`, and the next-page URL
+ * @throws {GitHubApiError} on API errors (401/403/404/429/5xx)
+ */
+export async function fetchReviewRequestedPage(
+  url: string,
+  options: { token: string; signal?: AbortSignal },
+): Promise<ReviewRequestedSearchPage> {
+  const headers = buildHeaders(options.token);
+  const response = await fetchWithRetry(
+    url,
+    { headers, signal: options.signal },
+    'fetchReviewRequestedPage',
+  );
+  const rateLimitInfo = parseRateLimitHeaders(response.headers);
+
+  if (!response.ok) {
+    handleApiError(response.status, rateLimitInfo, '', '', parseRetryAfter(response.headers));
+  }
+
+  const data = ReviewRequestedSearchPageSchema.parse(await response.json());
+  return {
+    items: data.items.map((item) => ({ repository_url: item.repository_url })),
+    totalCount: data.total_count,
+    nextPageUrl: parseNextPageUrl(response.headers.get('link')),
   };
 }
