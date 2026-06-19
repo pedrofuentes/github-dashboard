@@ -105,7 +105,7 @@ function AccountBar({ user, onForget }: AccountBarProps): ReactElement {
       <button
         type="button"
         onClick={onForget}
-        className="rounded border border-slate-300 px-3 py-1 text-sm font-medium hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        className="rounded border border-slate-300 px-3 py-1 text-sm font-medium hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       >
         Forget token
       </button>

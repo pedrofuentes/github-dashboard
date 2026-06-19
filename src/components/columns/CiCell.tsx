@@ -19,10 +19,10 @@ interface Presentation {
 }
 
 const PRESENTATION: Record<Conclusion, Presentation> = {
-  success: { icon: '✓', text: 'Passing', label: 'CI passing', className: 'text-emerald-400' },
-  failure: { icon: '✗', text: 'Failing', label: 'CI failing', className: 'text-red-400' },
-  in_progress: { icon: '⟳', text: 'Running', label: 'CI running', className: 'text-amber-400' },
-  queued: { icon: '⟳', text: 'Queued', label: 'CI queued', className: 'text-amber-400' },
+  success: { icon: '✓', text: 'Passing', label: 'CI passing', className: 'text-emerald-700' },
+  failure: { icon: '✗', text: 'Failing', label: 'CI failing', className: 'text-red-700' },
+  in_progress: { icon: '⟳', text: 'Running', label: 'CI running', className: 'text-amber-700' },
+  queued: { icon: '⟳', text: 'Queued', label: 'CI queued', className: 'text-amber-700' },
   none: { icon: '–', text: 'No runs', label: 'CI no runs', className: 'text-slate-500' },
 };
 
@@ -62,7 +62,10 @@ export function CiCell({ slice }: CiCellProps) {
   if (slice.status === 'loading') {
     return (
       <span className="inline-flex items-center justify-center">
-        <span aria-hidden="true" className="h-3 w-12 animate-pulse rounded bg-slate-700" />
+        <span
+          aria-hidden="true"
+          className="h-3 w-12 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+        />
         <span className="sr-only">Loading CI status</span>
       </span>
     );
@@ -91,7 +94,7 @@ export function CiCell({ slice }: CiCellProps) {
         target="_blank"
         rel="noreferrer noopener"
         title="View latest CI run"
-        className="inline-flex rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+        className="inline-flex rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
       >
         {status}
       </a>

@@ -12,12 +12,12 @@ interface SecurityCellProps {
  * (WCAG AA / colour-blind safe).
  */
 const GRADE_BADGE_CLASS: Record<SecurityGrade, string> = {
-  A: 'bg-emerald-500/15 text-emerald-200 ring-emerald-400/40',
-  B: 'bg-lime-500/15 text-lime-200 ring-lime-400/40',
-  C: 'bg-amber-500/15 text-amber-100 ring-amber-400/40',
-  D: 'bg-orange-500/20 text-orange-100 ring-orange-400/50',
-  E: 'bg-rose-500/20 text-rose-100 ring-rose-400/50',
-  F: 'bg-red-600/25 text-red-100 ring-red-400/60',
+  A: 'bg-emerald-100 text-emerald-800 ring-emerald-300',
+  B: 'bg-lime-100 text-lime-800 ring-lime-300',
+  C: 'bg-amber-100 text-amber-900 ring-amber-300',
+  D: 'bg-orange-100 text-orange-800 ring-orange-300',
+  E: 'bg-rose-100 text-rose-800 ring-rose-300',
+  F: 'bg-red-100 text-red-800 ring-red-300',
 };
 
 /** [counts key, compact glyph, spoken word] in worst-first order. */
@@ -79,7 +79,10 @@ export function SecurityCell({ slice }: SecurityCellProps) {
   if (slice.status === 'loading') {
     return (
       <span className="inline-flex items-center justify-center">
-        <span className="h-4 w-10 animate-pulse rounded bg-slate-700" aria-hidden="true" />
+        <span
+          className="h-4 w-10 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          aria-hidden="true"
+        />
         <span className="sr-only">Loading security alerts…</span>
       </span>
     );
@@ -88,7 +91,7 @@ export function SecurityCell({ slice }: SecurityCellProps) {
   if (slice.status === 'error') {
     return (
       <span
-        className="inline-flex items-center justify-center text-amber-300"
+        className="inline-flex items-center justify-center text-amber-700"
         title="Couldn’t load security alerts"
       >
         <span aria-hidden="true">—</span>
@@ -123,13 +126,13 @@ export function SecurityCell({ slice }: SecurityCellProps) {
       {allClear ? (
         <span
           aria-hidden="true"
-          className="inline-flex items-center gap-0.5 text-xs text-emerald-200"
+          className="inline-flex items-center gap-0.5 text-xs text-emerald-700"
         >
           <CheckIcon />
           Clear
         </span>
       ) : (
-        <span aria-hidden="true" className="text-xs font-medium tabular-nums text-slate-300">
+        <span aria-hidden="true" className="text-xs font-medium tabular-nums text-slate-700">
           {compact}
         </span>
       )}

@@ -13,7 +13,7 @@ function PullRequestIcon() {
       width="13"
       height="13"
       fill="currentColor"
-      className="shrink-0 text-slate-400"
+      className="shrink-0 text-slate-500"
     >
       <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
     </svg>
@@ -60,7 +60,10 @@ export function PullRequestsCell({ slice }: PullRequestsCellProps) {
   if (status === 'loading') {
     return (
       <span className="inline-flex items-center justify-center">
-        <span className="h-3 w-12 animate-pulse rounded bg-slate-700/70" aria-hidden="true" />
+        <span
+          className="h-3 w-12 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          aria-hidden="true"
+        />
         <span className="sr-only">Loading pull requests…</span>
       </span>
     );
@@ -87,7 +90,7 @@ export function PullRequestsCell({ slice }: PullRequestsCellProps) {
 
   return (
     <span className="inline-flex items-center justify-center gap-2">
-      <span className="inline-flex items-center gap-1 text-slate-200">
+      <span className="inline-flex items-center gap-1 text-slate-700">
         <PullRequestIcon />
         <span aria-hidden="true">{openCount} open</span>
         <span className="sr-only">
@@ -96,7 +99,7 @@ export function PullRequestsCell({ slice }: PullRequestsCellProps) {
       </span>
       {externalCount > 0 ? (
         <span
-          className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-semibold text-orange-200 ring-1 ring-orange-400/50"
+          className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800 ring-1 ring-orange-300"
           title={`${externalCount} ${externalAbbrev} from new outside contributors`}
         >
           <NewContributorIcon />

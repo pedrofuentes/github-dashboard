@@ -12,7 +12,7 @@ function LockIcon() {
       width="12"
       height="12"
       fill="currentColor"
-      className="shrink-0 text-slate-400"
+      className="shrink-0 text-slate-500"
     >
       <path d="M4 6V4a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 7.5v6A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-6A1.5 1.5 0 0 1 3.5 6H4Zm2 0h4V4a2 2 0 1 0-4 0v2Z" />
     </svg>
@@ -34,7 +34,7 @@ export function RepoCell({ repo }: RepoCellProps) {
         </>
       ) : null}
       <span
-        className="block truncate font-medium text-slate-100"
+        className="block truncate font-medium text-slate-900"
         style={{ maxWidth: '24ch' }}
         title={repo.nameWithOwner}
       >
