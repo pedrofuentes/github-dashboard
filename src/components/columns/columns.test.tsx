@@ -76,17 +76,12 @@ describe('repo column', () => {
 });
 
 describe('stub signal columns', () => {
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo');
+  // `reviews` is implemented (issue #15) — its descriptor/cell are covered in
+  // ReviewsColumn.test.tsx / ReviewsCell.test.tsx, so it is excluded here.
+  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && c.id !== 'reviews');
 
-  it('cover CI, Security, Reviews, PRs, Issues, and Stale', () => {
-    expect(stubs.map((c) => c.id)).toEqual([
-      'ci',
-      'security',
-      'reviews',
-      'pullRequests',
-      'issues',
-      'stale',
-    ]);
+  it('cover CI, Security, PRs, Issues, and Stale', () => {
+    expect(stubs.map((c) => c.id)).toEqual(['ci', 'security', 'pullRequests', 'issues', 'stale']);
   });
 
   it('are not sortable yet (sorting is contributed by features #12-18)', () => {
