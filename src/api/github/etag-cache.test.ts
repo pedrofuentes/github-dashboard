@@ -17,6 +17,7 @@ import { z } from 'zod';
 
 import { GitHubApiError, GitHubErrorCode } from './core';
 import { ETagCache, fetchWithETag, fetchWithETagResult, globalETagCache } from './etag-cache';
+import { rateLimitStore } from './rate-limit-store';
 
 // ──────────────────────────────────────────────
 // Fixtures & helpers
@@ -149,12 +150,14 @@ describe('fetchWithETag / fetchWithETagResult', () => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn();
     globalETagCache.clear();
+    rateLimitStore.reset();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
     globalETagCache.clear();
+    rateLimitStore.reset();
   });
 
   it('on a first (uncached) request: sends no If-None-Match, validates and caches the body', async () => {
@@ -403,5 +406,94 @@ describe('fetchWithETag / fetchWithETagResult', () => {
       expect(caught.code).toBe(GitHubErrorCode.SERVER_ERROR);
       expect(caught.message).toMatch(/no cached response/i);
     }
+  });
+});
+
+describe('fetchWithETag — rate-limit awareness', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    globalETagCache.clear();
+    rateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+    globalETagCache.clear();
+    rateLimitStore.reset();
+  });
+
+  it("records each response's budget into the live rate-limit store", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse(
+        { value: 1 },
+        200,
+        mockHeaders({ 'x-ratelimit-remaining': '4242', etag: '"v1"' }),
+      ),
+    );
+
+    await fetchWithETag(URL_A, BodySchema, { token: 't' });
+
+    expect(rateLimitStore.getState().info?.remaining).toBe(4242);
+  });
+
+  it('defers a non-essential request without hitting the network while paused', async () => {
+    // Critically low budget that resets in 10 minutes → the store is paused.
+    rateLimitStore.record({
+      limit: 5000,
+      remaining: 5,
+      used: 4995,
+      reset: new Date(Date.now() + 600_000),
+    });
+    expect(rateLimitStore.isPaused()).toBe(true);
+
+    let caught: unknown;
+    try {
+      await fetchWithETag(URL_A, BodySchema, { token: 't', essential: false });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    if (caught instanceof GitHubApiError) {
+      expect(caught.code).toBe(GitHubErrorCode.RATE_LIMITED);
+    }
+    // The whole point: a deferred poll makes no request.
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('still performs an essential request even while paused', async () => {
+    rateLimitStore.record({
+      limit: 5000,
+      remaining: 5,
+      used: 4995,
+      reset: new Date(Date.now() + 600_000),
+    });
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse({ value: 1 }, 200, mockHeaders({ etag: '"v1"' })),
+    );
+
+    // essential defaults to true: critical data must not be withheld.
+    await expect(fetchWithETag(URL_A, BodySchema, { token: 't' })).resolves.toEqual({ value: 1 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a secondary-limit Retry-After pause from a 403 response', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse(
+        { message: 'secondary rate limit' },
+        403,
+        mockHeaders({ 'x-ratelimit-remaining': '4999', 'retry-after': '60' }),
+      ),
+    );
+
+    await fetchWithETag(URL_A, BodySchema, { token: 't' }).catch(() => {});
+
+    // Even though remaining looks healthy, the Retry-After imposes a pause.
+    expect(rateLimitStore.isPaused()).toBe(true);
+    expect(rateLimitStore.pauseRemainingMs()).toBeGreaterThan(0);
   });
 });
