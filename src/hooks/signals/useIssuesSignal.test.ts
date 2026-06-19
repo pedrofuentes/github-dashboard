@@ -218,6 +218,38 @@ describe('useIssuesSignal', () => {
     expect(result.current.get('octo/a')?.overThreshold).toBe(false);
   });
 
+  it('ignores a stale rejection after the token changes mid-flight', async () => {
+    const first = deferred<number>();
+    const second = deferred<number>();
+    mockFetchIssueCount.mockImplementation((_owner, _name, token) =>
+      token === 'ghp_one' ? first.promise : second.promise,
+    );
+
+    const { result, rerender } = renderHook(({ token }) => useIssuesSignal(ONE_REPO, token), {
+      initialProps: { token: 'ghp_one' },
+    });
+
+    rerender({ token: 'ghp_two' });
+
+    // The current token (ghp_two) resolves first with a healthy count.
+    act(() => {
+      second.resolve(2);
+    });
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+
+    // The superseded token (ghp_one) rejects late; the generation guard must
+    // keep that failure from flipping the current ready slice to 'error'.
+    act(() => {
+      first.reject(new Error('stale boom'));
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(result.current.get('octo/a')?.status).toBe('ready');
+    expect(result.current.get('octo/a')?.openCount).toBe(2);
+  });
+
   it('clears the map when the token is removed', async () => {
     mockFetchIssueCount.mockResolvedValue(3);
 
