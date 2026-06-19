@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
@@ -7,6 +9,7 @@ import { useAuth } from './hooks/useAuth';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import type { AuthUser } from './types/auth';
+import type { Repo } from './types/fleet';
 
 export function App(): ReactElement {
   return (
@@ -46,15 +49,26 @@ function Shell(): ReactElement {
 function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
+  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
 
   return (
-    <FleetGrid
-      repos={repos}
-      getRowData={getRowData}
-      loading={status === 'loading'}
-      error={status === 'error' ? error : null}
-      onRetry={reload}
-    />
+    <>
+      <FleetGrid
+        repos={repos}
+        getRowData={getRowData}
+        loading={status === 'loading'}
+        error={status === 'error' ? error : null}
+        onRetry={reload}
+        onRepoActivate={(repo) => setSelectedRepo(repo)}
+      />
+      {selectedRepo !== null ? (
+        <DrillDownDrawer
+          repo={selectedRepo}
+          data={getRowData(selectedRepo)}
+          onClose={() => setSelectedRepo(null)}
+        />
+      ) : null}
+    </>
   );
 }
 
