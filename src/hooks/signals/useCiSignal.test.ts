@@ -179,14 +179,19 @@ describe('useCiSignal', () => {
     });
     rerender({ token: 'new' });
 
-    await act(async () => {
-      stale.resolve(runs({ status: 'completed', conclusion: 'failure' }));
-    });
+    // Settle the current-generation ("new") request FIRST and prove it lands.
     await act(async () => {
       fresh.resolve(runs({ status: 'completed', conclusion: 'success' }));
     });
-
     await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    expect(result.current.get('octo/a')?.conclusion).toBe('success');
+
+    // THEN resolve the superseded ("old") request last: the generation guard
+    // must drop it so the fresh result is never clobbered. Without the guard,
+    // this stale resolve wins under last-write-wins and the assertion fails.
+    await act(async () => {
+      stale.resolve(runs({ status: 'completed', conclusion: 'failure' }));
+    });
     expect(result.current.get('octo/a')?.conclusion).toBe('success');
   });
 
@@ -200,14 +205,19 @@ describe('useCiSignal', () => {
     });
     rerender({ token: 'new' });
 
-    await act(async () => {
-      stale.reject(new Error('stale failure'));
-    });
+    // Settle the current-generation ("new") request FIRST and prove it lands.
     await act(async () => {
       fresh.resolve(runs({ status: 'completed', conclusion: 'success' }));
     });
-
     await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
     expect(result.current.get('octo/a')?.conclusion).toBe('success');
+
+    // THEN reject the superseded ("old") request last: the generation guard
+    // must drop the error so the fresh result survives. Without the guard, this
+    // stale rejection overwrites the slice with an error and the assertion fails.
+    await act(async () => {
+      stale.reject(new Error('stale failure'));
+    });
+    expect(result.current.get('octo/a')).toMatchObject({ status: 'ready', conclusion: 'success' });
   });
 });
