@@ -48,10 +48,27 @@ const ANALYTICS_HOSTS = [
   'facebook.com',
 ];
 
+/**
+ * Resource types a privacy-respecting, client-only app may fetch from its own
+ * origin: navigation + static assets only. The browser data channels
+ * (`xhr`, `fetch`, `websocket`, `eventsource`) are deliberately excluded — a
+ * same-origin one would be a backend / exfiltration path this app must not have.
+ */
+const STATIC_ASSET_RESOURCE_TYPES = new Set([
+  'document',
+  'script',
+  'stylesheet',
+  'font',
+  'image',
+  'manifest',
+  'other',
+]);
+
 interface RecordedRequest {
   url: string;
   method: string;
   origin: string;
+  resourceType: string;
   headers: Record<string, string>;
   postData: string | null;
 }
@@ -145,6 +162,7 @@ async function recordPrivacyFlow(page: Page, appOrigin: string): Promise<Recorde
       url,
       method,
       origin,
+      resourceType: request.resourceType(),
       headers: await request.allHeaders(),
       postData: request.postData(),
     });
@@ -233,6 +251,22 @@ test('contacts only GitHub-owned origins across the whole authenticated flow', a
     .filter((r) => r.origin !== appOrigin && !isAllowlistedGitHubOrigin(r.origin))
     .map((r) => `${r.method} ${r.url}`);
   expect(offenders).toEqual([]);
+
+  // DoD #80 — the app's own origin ('self') is permitted only as a navigation /
+  // static-asset channel, never a same-origin data-exfiltration path. Every
+  // first-party request must therefore be a GET for a document/script/style/
+  // font/image (no XHR/fetch/websocket) and carry NO request body.
+  const appRequests = requests.filter((r) => r.origin === appOrigin);
+  expect(appRequests.length).toBeGreaterThan(0);
+  const appOriginOffenders = appRequests
+    .filter(
+      (r) =>
+        r.method !== 'GET' ||
+        (r.postData ?? '') !== '' ||
+        !STATIC_ASSET_RESOURCE_TYPES.has(r.resourceType),
+    )
+    .map((r) => `${r.method} [${r.resourceType}] ${r.url} postData=${JSON.stringify(r.postData)}`);
+  expect(appOriginOffenders).toEqual([]);
 
   // Defense-in-depth: explicitly assert no analytics/telemetry host was hit.
   const contactedHosts = [...new Set(requests.map((r) => hostnameOf(r.url)))];

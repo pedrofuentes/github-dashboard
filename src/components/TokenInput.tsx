@@ -98,7 +98,7 @@ export function TokenInput(): ReactElement {
             disabled={isAuthenticating}
             aria-describedby={`${helpId} ${errorId}`}
             placeholder="github_pat_…"
-            className="w-full rounded border border-slate-400 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            className="w-full rounded border border-slate-500 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
           />
         </div>
 
