@@ -40,7 +40,83 @@ export interface SecurityAlertSummary {
 }
 
 /**
- * Fetches open Dependabot alerts and summarizes by severity.
+ * Hard ceiling on the number of alert pages followed per feed. At 100 alerts a
+ * page this covers 5,000 open alerts — far beyond any healthy repo — while
+ * guaranteeing pagination terminates even if a forged/looping `Link` header
+ * keeps advertising another on-origin "next" page (issue #63).
+ */
+export const MAX_ALERT_PAGES = 50;
+
+/**
+ * Parses the GitHub `Link` header to extract the URL for the next page.
+ * Returns null when there is no next page.
+ *
+ * Security: the returned URL is followed with the user's PAT attached, so a
+ * forged or MITM'd `Link` header must never redirect that PAT off-origin. Only
+ * URLs on the GitHub API origin are accepted; anything else (or an unparseable
+ * value) is treated as "no next page" so pagination simply stops.
+ */
+function parseNextPageUrl(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  if (!match) return null;
+
+  const next = match[1];
+  try {
+    if (new URL(next).origin !== new URL(GITHUB_API_BASE).origin) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return next;
+}
+
+/**
+ * Fetches every page of an alert feed, following `Link: rel="next"` until the
+ * feed is exhausted or {@link MAX_ALERT_PAGES} is reached. Returns the
+ * concatenated raw rows. A single `per_page=100` request silently undercounts
+ * any repo with more than 100 open alerts (issue #63), so both alert feeds
+ * enumerate every page before grading.
+ */
+async function fetchAllAlertPages<T>(
+  initialUrl: string,
+  schema: z.ZodType<T[]>,
+  token: string,
+  context: string,
+  owner: string,
+  repo: string,
+  signal?: AbortSignal,
+): Promise<T[]> {
+  const headers = buildHeaders(token);
+  const items: T[] = [];
+  let url: string | null = initialUrl;
+
+  for (let page = 0; url && page < MAX_ALERT_PAGES; page++) {
+    const response = await fetchWithRetry(url, { headers, signal }, context);
+
+    if (!response.ok) {
+      const rateLimitInfo = parseRateLimitHeaders(response.headers);
+      handleApiError(
+        response.status,
+        rateLimitInfo,
+        owner,
+        repo,
+        parseRetryAfter(response.headers),
+      );
+    }
+
+    const parsed = schema.parse(await response.json());
+    for (const item of parsed) items.push(item);
+
+    url = parseNextPageUrl(response.headers.get('link'));
+  }
+
+  return items;
+}
+
+/**
+ * Fetches open Dependabot alerts across every page and summarizes by severity.
  * Requires `Dependabot alerts: Read` permission.
  *
  * @param owner - Repository owner
@@ -56,23 +132,114 @@ export async function fetchDependabotAlerts(
   token: string,
   signal?: AbortSignal,
 ): Promise<SecurityAlertSummary> {
-  const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dependabot/alerts?state=open&per_page=100`;
-  const headers = buildHeaders(token);
-  const response = await fetchWithRetry(url, { headers, signal }, 'fetchDependabotAlerts');
+  const initialUrl =
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
+    `/dependabot/alerts?state=open&per_page=100`;
+  const alerts = await fetchAllAlertPages(
+    initialUrl,
+    z.array(DependabotAlertSchema),
+    token,
+    'fetchDependabotAlerts',
+    owner,
+    repo,
+    signal,
+  );
 
-  if (!response.ok) {
-    const rateLimitInfo = parseRateLimitHeaders(response.headers);
-    handleApiError(response.status, rateLimitInfo, owner, repo, parseRetryAfter(response.headers));
-  }
-
-  const alerts = z.array(DependabotAlertSchema).parse(await response.json());
   const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
   for (const alert of alerts) {
     const severity = alert.security_advisory?.severity ?? 'low';
-    if (severity in summary && severity !== 'total') {
-      summary[severity as AlertSeverity]++;
+    if (
+      severity === 'critical' ||
+      severity === 'high' ||
+      severity === 'medium' ||
+      severity === 'low'
+    ) {
+      summary[severity]++;
     }
     summary.total++;
+  }
+  return summary;
+}
+
+/** Code-scanning alert shape we care about: just the rule's severity sources. */
+const CodeScanningAlertSchema = z
+  .object({
+    rule: z
+      .object({
+        severity: z.string().nullable().optional(),
+        security_severity_level: z.string().nullable().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+type CodeScanningAlert = z.infer<typeof CodeScanningAlertSchema>;
+
+/**
+ * Buckets a code-scanning alert by its CVSS `security_severity_level`, falling
+ * back to the rule's lint-style `severity` (error→high, warning→medium,
+ * note→low). Returns null for anything unrecognized so it is ignored.
+ */
+function codeScanningSeverity(alert: CodeScanningAlert): AlertSeverity | null {
+  const level = alert.rule?.security_severity_level?.toLowerCase();
+  if (level === 'critical' || level === 'high' || level === 'medium' || level === 'low') {
+    return level;
+  }
+  switch (alert.rule?.severity?.toLowerCase()) {
+    case 'error':
+      return 'high';
+    case 'warning':
+      return 'medium';
+    case 'note':
+      return 'low';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Fetches open code-scanning alerts across every page and summarizes by
+ * severity. Requires `Code scanning alerts: Read` permission.
+ *
+ * Mirrors {@link fetchDependabotAlerts}: it follows `Link: rel="next"` so a
+ * repo with more than 100 open alerts is fully counted instead of being
+ * silently over-graded (issue #63). Uses {@link fetchWithRetry} (not the ETag
+ * cache) because following `Link` requires the response headers.
+ *
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param token - GitHub PAT
+ * @param signal - Optional signal to cancel the in-flight request
+ * @returns Alert summary with counts by severity
+ * @throws {GitHubApiError} on API errors
+ */
+export async function fetchCodeScanningAlerts(
+  owner: string,
+  repo: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<SecurityAlertSummary> {
+  const initialUrl =
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` +
+    `/code-scanning/alerts?state=open&per_page=100`;
+  const alerts = await fetchAllAlertPages(
+    initialUrl,
+    z.array(CodeScanningAlertSchema),
+    token,
+    'fetchCodeScanningAlerts',
+    owner,
+    repo,
+    signal,
+  );
+
+  const summary: SecurityAlertSummary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+  for (const alert of alerts) {
+    const severity = codeScanningSeverity(alert);
+    if (severity) {
+      summary[severity]++;
+      summary.total++;
+    }
   }
   return summary;
 }

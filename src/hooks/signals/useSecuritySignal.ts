@@ -10,43 +10,47 @@
  * error; when neither feed is accessible the slice is `ready` with no counts
  * (the cell renders "n/a"). A generation ref discards results from a superseded
  * token, and null token / empty fleet yield an empty map.
+ *
+ * Two concurrency-sensitive invariants are upheld here:
+ *  - Each repo issues two feed requests, and BOTH are scheduled as independent
+ *    tasks through {@link mapWithConcurrency}. The real in-flight ceiling is the
+ *    documented {@link SIGNAL_FETCH_CONCURRENCY} cap, not twice it as it would
+ *    be if each repo fired both feeds via `Promise.all` (issue #71).
+ *  - The effect re-runs only when the repo *key set* changes, not on every new
+ *    array identity, so a caller passing a non-memoized `repos` prop cannot spin
+ *    the populated render path into an infinite loop (issue #65).
  */
 import { useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
 
 import {
-  GITHUB_API_BASE,
   GitHubApiError,
   GitHubErrorCode,
+  type SecurityAlertSummary,
+  fetchCodeScanningAlerts,
   fetchDependabotAlerts,
-  fetchWithETag,
 } from '../../api/github';
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { isAbortError } from '../../lib/abort';
 import type { Repo, SecuritySignalSlice } from '../../types/fleet';
 import { computeGrade, computeSecurityScore, type SecurityCounts } from './securityGrade';
 
-type Severity = keyof SecurityCounts;
-
-/** Local Zod schema for the code-scanning alerts list (research-api §(c),(4)). */
-const CodeScanningAlertSchema = z
-  .object({
-    rule: z
-      .object({
-        severity: z.string().nullable().optional(),
-        security_severity_level: z.string().nullable().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
-const CodeScanningAlertsSchema = z.array(CodeScanningAlertSchema);
-type CodeScanningAlert = z.infer<typeof CodeScanningAlertSchema>;
+/** Shared stable identity for every empty result (no token / no repos). */
+const EMPTY: Map<string, SecuritySignalSlice> = new Map();
 
 /** Sentinel: a feed exists but is not accessible to this token/repo. */
 const NO_ACCESS = Symbol('security:no-access');
 type FeedResult = SecurityCounts | typeof NO_ACCESS;
+
+/** One alert feed for a repo: severity counts, or NO_ACCESS when unavailable. */
+type FeedLoader = (repo: Repo, token: string, signal?: AbortSignal) => Promise<FeedResult>;
+
+/** Raw summary fetcher shared by both feeds (Dependabot / code scanning). */
+type SummaryFetcher = (
+  owner: string,
+  repo: string,
+  token: string,
+  signal?: AbortSignal,
+) => Promise<SecurityAlertSummary>;
 
 function emptyCounts(): SecurityCounts {
   return { critical: 0, high: 0, medium: 0, low: 0 };
@@ -64,79 +68,29 @@ function isNoAccessError(error: unknown): boolean {
   );
 }
 
-async function loadDependabot(
-  repo: Repo,
-  token: string,
-  signal?: AbortSignal,
-): Promise<FeedResult> {
-  try {
-    const summary = await fetchDependabotAlerts(repo.owner, repo.name, token, signal);
-    return {
-      critical: summary.critical,
-      high: summary.high,
-      medium: summary.medium,
-      low: summary.low,
-    };
-  } catch (error) {
-    if (isNoAccessError(error)) return NO_ACCESS;
-    throw error;
-  }
-}
-
-/** Buckets a code-scanning alert by CVSS level, falling back to rule severity. */
-function codeScanningSeverity(alert: CodeScanningAlert): Severity | null {
-  const level = alert.rule?.security_severity_level?.toLowerCase();
-  if (level === 'critical' || level === 'high' || level === 'medium' || level === 'low') {
-    return level;
-  }
-  switch (alert.rule?.severity?.toLowerCase()) {
-    case 'error':
-      return 'high';
-    case 'warning':
-      return 'medium';
-    case 'note':
-      return 'low';
-    default:
-      return null;
-  }
-}
-
-async function loadCodeScanning(
-  repo: Repo,
-  token: string,
-  signal?: AbortSignal,
-): Promise<FeedResult> {
-  const url =
-    `${GITHUB_API_BASE}/repos/${encodeURIComponent(repo.owner)}/` +
-    `${encodeURIComponent(repo.name)}/code-scanning/alerts?state=open&per_page=100`;
-  try {
-    const alerts = await fetchWithETag(url, CodeScanningAlertsSchema, {
-      token,
-      context: 'fetchCodeScanningAlerts',
-      signal,
-    });
-    const counts = emptyCounts();
-    for (const alert of alerts) {
-      const severity = codeScanningSeverity(alert);
-      if (severity) counts[severity] += 1;
+/** Wraps a summary fetcher into a feed loader that maps "no access" to NO_ACCESS. */
+function feedLoader(fetcher: SummaryFetcher): FeedLoader {
+  return async (repo, token, signal) => {
+    try {
+      const summary = await fetcher(repo.owner, repo.name, token, signal);
+      return {
+        critical: summary.critical,
+        high: summary.high,
+        medium: summary.medium,
+        low: summary.low,
+      };
+    } catch (error) {
+      if (isNoAccessError(error)) return NO_ACCESS;
+      throw error;
     }
-    return counts;
-  } catch (error) {
-    if (isNoAccessError(error)) return NO_ACCESS;
-    throw error;
-  }
+  };
 }
 
-async function loadSecuritySlice(
-  repo: Repo,
-  token: string,
-  signal?: AbortSignal,
-): Promise<SecuritySignalSlice> {
-  const feeds = await Promise.all([
-    loadDependabot(repo, token, signal),
-    loadCodeScanning(repo, token, signal),
-  ]);
+const loadDependabot = feedLoader(fetchDependabotAlerts);
+const loadCodeScanning = feedLoader(fetchCodeScanningAlerts);
 
+/** Merges a repo's two feed results into its final slice. */
+function combineFeeds(feeds: FeedResult[]): SecuritySignalSlice {
   if (feeds.every((feed) => feed === NO_ACCESS)) {
     // Neither feed is available — surface "no data", not an error.
     return { status: 'ready' };
@@ -159,6 +113,18 @@ async function loadSecuritySlice(
   };
 }
 
+/** One scheduled unit of work: a single feed request for a single repo. */
+interface FeedTask {
+  repo: Repo;
+  load: FeedLoader;
+}
+
+/** Per-repo accumulator that collects both feeds before emitting one slice. */
+interface RepoAccumulator {
+  feeds: FeedResult[];
+  settled: boolean;
+}
+
 /**
  * Per-repo open security-alert signal keyed by `repo.nameWithOwner`.
  *
@@ -169,16 +135,23 @@ export function useSecuritySignal(
   repos: Repo[],
   token: string | null,
 ): Map<string, SecuritySignalSlice> {
-  const [slices, setSlices] = useState<Map<string, SecuritySignalSlice>>(() => new Map());
+  const [slices, setSlices] = useState<Map<string, SecuritySignalSlice>>(EMPTY);
   const generationRef = useRef(0);
+  // Mirror the latest repos into a ref so the effect can read them without
+  // depending on the array's identity (a caller passing a fresh array with the
+  // same repos each render must not trigger a refetch loop).
+  const reposRef = useRef(repos);
+  reposRef.current = repos;
+
+  // Re-run only when the *set* of repos changes, not on every new array.
+  const repoSignature = repos.map((repo) => repo.nameWithOwner).join('\n');
 
   useEffect(() => {
     const generation = (generationRef.current += 1);
+    const currentRepos = reposRef.current;
 
-    if (!token || repos.length === 0) {
-      // Bail out without churning identity (a fresh Map would re-render and, if
-      // the caller passes a new array each render, loop) — keep the same ref.
-      setSlices((prev) => (prev.size === 0 ? prev : new Map()));
+    if (!token || currentRepos.length === 0) {
+      setSlices(EMPTY);
       return;
     }
 
@@ -188,24 +161,49 @@ export function useSecuritySignal(
 
     setSlices(
       new Map(
-        repos.map((repo): [string, SecuritySignalSlice] => [
+        currentRepos.map((repo): [string, SecuritySignalSlice] => [
           repo.nameWithOwner,
           { status: 'loading' },
         ]),
       ),
     );
 
+    // One accumulator per repo: each of its two feed tasks reports here, and the
+    // repo's slice is emitted once both feeds settle (or the first hard error).
+    const accumulators = new Map<string, RepoAccumulator>(
+      currentRepos.map((repo) => [repo.nameWithOwner, { feeds: [], settled: false }]),
+    );
+
+    // Flatten to per-(repo,feed) tasks so EVERY request counts against the
+    // limiter — the true in-flight ceiling is SIGNAL_FETCH_CONCURRENCY, not 2×
+    // it as a per-repo `Promise.all([dependabot, codeScanning])` would allow.
+    const tasks: FeedTask[] = currentRepos.flatMap((repo) => [
+      { repo, load: loadDependabot },
+      { repo, load: loadCodeScanning },
+    ]);
+
     void mapWithConcurrency(
-      repos,
+      tasks,
       SIGNAL_FETCH_CONCURRENCY,
-      async (repo, signal) => {
+      async ({ repo, load }, signal) => {
+        const acc = accumulators.get(repo.nameWithOwner);
+        if (!acc) return;
         try {
-          const slice = await loadSecuritySlice(repo, token, signal);
-          if (generation !== generationRef.current) return;
-          setSlices((prev) => new Map(prev).set(repo.nameWithOwner, slice));
+          const feed = await load(repo, token, signal);
+          // Discard a superseded generation, or a sibling that already settled
+          // this repo (the other feed hit a hard error first).
+          if (generation !== generationRef.current || acc.settled) return;
+          acc.feeds.push(feed);
+          if (acc.feeds.length === 2) {
+            acc.settled = true;
+            setSlices((prev) => new Map(prev).set(repo.nameWithOwner, combineFeeds(acc.feeds)));
+          }
         } catch (err) {
           // A cancelled request is not a failure: stay quiet (no log, no error).
           if (signal?.aborted || isAbortError(err)) return;
+          // The first hard error settles the repo; its sibling feed is ignored.
+          if (acc.settled) return;
+          acc.settled = true;
           console.error(
             `useSecuritySignal: failed to fetch security alerts for ${repo.nameWithOwner}`,
             err,
@@ -218,7 +216,7 @@ export function useSecuritySignal(
     );
 
     return () => controller.abort();
-  }, [repos, token]);
+  }, [repoSignature, token]);
 
   return slices;
 }
