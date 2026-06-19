@@ -5,7 +5,13 @@ const GITHUB_API_VERSION = '2022-11-28';
 export interface ValidateTokenSuccess {
   ok: true;
   login: string;
-  avatarUrl: string;
+  /**
+   * Avatar URL, present only when it passed the GitHub-owned host allowlist
+   * (ADR-004). A value that is not an `https:` URL on `githubusercontent.com`
+   * (or a sub-domain of it) is dropped to `undefined` so the UI never issues a
+   * request to a non-GitHub origin.
+   */
+  avatarUrl?: string;
 }
 
 /** A validation failure carrying a human-friendly, token-free message. */
@@ -22,6 +28,41 @@ function readString(source: unknown, key: string): string | null {
     return typeof value === 'string' ? value : null;
   }
   return null;
+}
+
+const AVATAR_HOST = 'githubusercontent.com';
+
+/**
+ * Constrains the avatar URL to GitHub-owned image hosts (ADR-004) so the
+ * browser never fetches a `<img>` from a non-GitHub origin.
+ *
+ * Accepts only an absolute `https:` URL whose host is exactly
+ * `githubusercontent.com` or a sub-domain of it (e.g.
+ * `avatars.githubusercontent.com`), with no embedded userinfo. Every other
+ * shape — `http`/`data`/`blob`/`javascript` schemes, protocol-relative `//host`,
+ * `user@host` userinfo, suffix-confusion (`githubusercontent.com.evil.com`),
+ * lookalike, trailing-dot or otherwise unparseable values — yields `undefined`.
+ */
+function sanitizeAvatarUrl(raw: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+
+  if (url.protocol !== 'https:') {
+    return undefined;
+  }
+  if (url.username !== '' || url.password !== '') {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+  if (host === AVATAR_HOST || host.endsWith(`.${AVATAR_HOST}`)) {
+    return raw;
+  }
+  return undefined;
 }
 
 /**
@@ -78,5 +119,5 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
     return { ok: false, error: 'Unexpected response from GitHub. Please try again.' };
   }
 
-  return { ok: true, login, avatarUrl };
+  return { ok: true, login, avatarUrl: sanitizeAvatarUrl(avatarUrl) };
 }

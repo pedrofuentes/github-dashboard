@@ -46,7 +46,22 @@ interface AuthenticatedPanelProps {
 function AuthenticatedPanel({ user, onForget }: AuthenticatedPanelProps): ReactElement {
   return (
     <div className="flex items-center gap-4">
-      <img src={user.avatarUrl} alt="" width={40} height={40} className="h-10 w-10 rounded-full" />
+      {user.avatarUrl !== undefined ? (
+        <img
+          src={user.avatarUrl}
+          alt=""
+          width={40}
+          height={40}
+          className="h-10 w-10 rounded-full"
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600"
+        >
+          {user.login.slice(0, 1).toUpperCase()}
+        </span>
+      )}
       <p className="text-slate-700">{`Authenticated as ${user.login}`}</p>
       <button
         type="button"

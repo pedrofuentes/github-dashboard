@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 
 import { forgetToken, getToken, setToken } from '../lib/token-storage';
@@ -25,11 +25,23 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
   const [status, setStatus] = useState<AuthStatus>('idle');
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Monotonic id stamped on every validation operation (sign-in, mount
+   * revalidation, forget). A resolving validation only mutates state when its
+   * stamp is still the latest, so a slow operation can never clobber — or
+   * `forgetToken()` — the result of a newer one (the auth-state race).
+   */
+  const generationRef = useRef(0);
+
   const signIn = useCallback(async (candidate: string, mode: PersistenceMode): Promise<void> => {
+    const generation = (generationRef.current += 1);
     setStatus('authenticating');
     setError(null);
 
     const result = await validateToken(candidate);
+    if (generation !== generationRef.current) {
+      return;
+    }
     if (!result.ok) {
       forgetToken();
       setTokenState(null);
@@ -47,6 +59,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
   }, []);
 
   const forget = useCallback((): void => {
+    generationRef.current += 1;
     forgetToken();
     setTokenState(null);
     setUser(null);
@@ -60,10 +73,10 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
       return;
     }
 
-    let active = true;
+    const generation = (generationRef.current += 1);
     setStatus('authenticating');
     void validateToken(stored).then((result) => {
-      if (!active) {
+      if (generation !== generationRef.current) {
         return;
       }
       if (result.ok) {
@@ -75,10 +88,6 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
         setStatus('idle');
       }
     });
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

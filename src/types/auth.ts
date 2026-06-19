@@ -13,7 +13,8 @@ export type AuthStatus = 'idle' | 'authenticating' | 'authenticated' | 'error';
 /** Minimal GitHub identity captured from `GET /user`. */
 export interface AuthUser {
   login: string;
-  avatarUrl: string;
+  /** Absent when the avatar URL failed the GitHub-owned host allowlist (ADR-004). */
+  avatarUrl?: string;
 }
 
 /** Value exposed by the auth context and the `useAuth` hook. */
