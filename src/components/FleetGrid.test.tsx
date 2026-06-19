@@ -55,10 +55,14 @@ describe('FleetGrid structure & accessibility', () => {
   });
 
   it('does not expose aria-sort on non-sortable columns', () => {
-    render(<FleetGrid repos={REPOS} />);
-    expect(screen.getByRole('columnheader', { name: /^Security$/i })).not.toHaveAttribute(
-      'aria-sort',
-    );
+    // Every registered signal column is now sortable, so exercise the
+    // non-sortable a11y branch with a synthetic plain column.
+    const columns: FleetColumn[] = [
+      repoColumn,
+      { id: 'plain', header: 'Plain', render: () => <span>plain</span> },
+    ];
+    render(<FleetGrid repos={REPOS} columns={columns} />);
+    expect(screen.getByRole('columnheader', { name: /^Plain$/i })).not.toHaveAttribute('aria-sort');
   });
 });
 

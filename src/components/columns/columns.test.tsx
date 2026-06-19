@@ -75,30 +75,35 @@ describe('repo column', () => {
   });
 });
 
-describe('stub signal columns', () => {
-  // A column is a stub until its signal feature (#12-18) ships a sort model;
-  // filtering on `!sortable` keeps this suite correct as each real column lands.
-  // `ci`, `reviews`, `pullRequests` & `stale` (from main) and `issues` (this
-  // branch, #16) have shipped sortable descriptors — each covered by its own
-  // *Column/*Cell test file — so the filter excludes them and only the genuine
-  // stub (`security`, #13) remains.
-  const stubs = fleetColumns.filter((c) => c.id !== 'repo' && !c.sortable);
+describe('signal columns', () => {
+  // Every signal feature (#12-18) has now shipped, so no column is a stub: each
+  // non-repo column exposes a sortable descriptor backed by a getSortValue
+  // accessor — each covered by its own *Column/*Cell test file. The `!sortable`
+  // stub set is therefore empty, which this suite asserts directly. `repo` is
+  // excluded as the row-header column (its sortability is covered above).
+  const signalColumns = fleetColumns.filter((c) => c.id !== 'repo');
 
-  it('cover the signals still awaiting their feature (only security remains)', () => {
-    expect(stubs.map((c) => c.id)).toEqual(['security']);
+  it('cover CI, Security, Reviews, PRs, Issues, and Stale', () => {
+    expect(signalColumns.map((c) => c.id)).toEqual([
+      'ci',
+      'security',
+      'reviews',
+      'pullRequests',
+      'issues',
+      'stale',
+    ]);
   });
 
-  it('stay non-sortable until their signal feature lands (sorting lands per #12-18)', () => {
-    // Each remaining stub gains `sortable` + `getSortValue` only once its own
-    // signal feature ships; until then it stays non-sortable with no sort value.
-    for (const column of stubs) {
-      expect(column.sortable).toBeFalsy();
-      expect(column.getSortValue).toBeUndefined();
+  it('are all sortable with a getSortValue accessor — no stubs remain', () => {
+    expect(signalColumns.filter((c) => !c.sortable)).toHaveLength(0);
+    for (const column of signalColumns) {
+      expect(column.sortable).toBe(true);
+      expect(typeof column.getSortValue).toBe('function');
     }
   });
 
   it('render a neutral placeholder with an accessible label (icon/text + sr-only)', () => {
-    for (const column of stubs) {
+    for (const column of signalColumns) {
       const { container, unmount } = renderCell(column, repo('octo/any'));
       const dash = screen.getByText('—');
       expect(dash).toHaveAttribute('aria-hidden', 'true');
