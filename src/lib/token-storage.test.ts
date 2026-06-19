@@ -81,7 +81,7 @@ describe('token-storage', () => {
   });
 
   it('does not throw when writing to storage fails (e.g. private mode)', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
 
@@ -91,7 +91,10 @@ describe('token-storage', () => {
   });
 
   it('returns null when reading from storage throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    vi.spyOn(sessionStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
 
@@ -100,7 +103,10 @@ describe('token-storage', () => {
   });
 
   it('does not throw when clearing storage fails', () => {
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+    vi.spyOn(sessionStorage, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
       throw new DOMException('denied', 'SecurityError');
     });
 
