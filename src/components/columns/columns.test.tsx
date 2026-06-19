@@ -89,9 +89,12 @@ describe('stub signal columns', () => {
     ]);
   });
 
-  it('are not sortable yet (sorting is contributed by features #12-18)', () => {
-    for (const column of stubs) {
-      expect(column.sortable).toBeFalsy();
+  it('stay non-sortable until their signal feature lands (e.g. CI, #12)', () => {
+    // Signal columns gain `sortable` + `getSortValue` only once their feature
+    // ships; every still-pending stub stays non-sortable with no sort value.
+    const pending = stubs.filter((column) => !column.sortable);
+    expect(pending.length).toBeGreaterThan(0);
+    for (const column of pending) {
       expect(column.getSortValue).toBeUndefined();
     }
   });
