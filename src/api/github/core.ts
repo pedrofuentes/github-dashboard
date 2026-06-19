@@ -144,16 +144,57 @@ const RETRY_BASE_DELAY_MS = 1000;
 const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 
 /**
+ * A `setTimeout`-based delay that settles early when `signal` aborts.
+ *
+ * The retry loop's backoff must honour caller cancellation: when a token change
+ * or unmount aborts `options.signal` during a 1–4s (or `Retry-After`) sleep, we
+ * reject with an `AbortError` (the same shape `fetch` produces) the moment the
+ * signal fires and clear the pending timer — so a cancelled run never blocks for
+ * its full delay and never schedules another network request. With no signal (or
+ * an un-aborted one) it behaves exactly like `setTimeout`.
+ *
+ * @param ms - Delay in milliseconds.
+ * @param signal - Optional signal that rejects the sleep early on 'abort'.
+ * @returns A promise that resolves after `ms`, or rejects on abort.
+ */
+export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('The operation was aborted', 'AbortError'));
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout>;
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new DOMException('The operation was aborted', 'AbortError'));
+    };
+
+    timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
  * Fetch with automatic retry for transient failures.
  * Retries up to 3 times with exponential backoff (1s, 2s, 4s).
  * Only retries network errors, timeouts, and specific HTTP status codes (429, 502-504).
  * Non-retryable errors (401, 403, 404, 422) fail immediately.
+ *
+ * The backoff sleep is abort-aware (see {@link abortableSleep}): a caller-abort
+ * via `options.signal` during a backoff rejects with `AbortError` at once and
+ * short-circuits the loop, so no further request is made. A genuine 30s timeout
+ * (no external abort) remains retryable.
  */
 export async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
   context?: string,
 ): Promise<Response> {
+  const signal = options.signal ?? undefined;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -163,7 +204,7 @@ export async function fetchWithRetry(
       if (RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_RETRIES) {
         const retryAfter = parseRetryAfter(response.headers);
         const delay = retryAfter ? retryAfter * 1000 : RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await abortableSleep(delay, signal);
         continue;
       }
 
@@ -171,13 +212,19 @@ export async function fetchWithRetry(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
 
+      // A caller-abort (raw AbortError) — whether from the fetch itself or from
+      // an aborted backoff sleep — must stop the loop and propagate unchanged.
+      if (isAbortError(err)) {
+        throw err;
+      }
+
       if (
         err instanceof GitHubApiError &&
         (err.code === GitHubErrorCode.NETWORK_ERROR || err.code === GitHubErrorCode.TIMEOUT)
       ) {
         if (attempt < MAX_RETRIES) {
           const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await abortableSleep(delay, signal);
           continue;
         }
       }
