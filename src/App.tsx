@@ -4,6 +4,7 @@ import { FleetGrid } from './components/FleetGrid';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
 import { useAuth } from './hooks/useAuth';
+import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import type { AuthUser } from './types/auth';
 
@@ -44,10 +45,12 @@ function Shell(): ReactElement {
 
 function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
+  const { getRowData } = useRepoSignals(repos, token);
 
   return (
     <FleetGrid
       repos={repos}
+      getRowData={getRowData}
       loading={status === 'loading'}
       error={status === 'error' ? error : null}
       onRetry={reload}
