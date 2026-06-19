@@ -1,14 +1,17 @@
 import type { FleetColumn } from '../../types/fleet';
-import { StubCell } from './StubCell';
+import { StaleCell } from './StaleCell';
 
 /**
- * Stale signal — STUB. Replaced by issue #17 (stale branches / inactivity).
- * Populate `render` from `data.stale` and add sorting on `data.stale.score`.
- * See `columns/index.ts`.
+ * Stale column (issue #17) — open PRs and issues with no recent activity. Sorts
+ * by the slice `score` (the stale count), descending so the most-neglected
+ * repos surface first; repos with no slice or score sort last (`-1`).
  */
 export const staleColumn: FleetColumn = {
   id: 'stale',
   header: 'Stale',
   align: 'center',
-  render: () => <StubCell srLabel="Staleness not available yet" />,
+  sortable: true,
+  defaultSortDirection: 'desc',
+  getSortValue: (_, data) => data.stale?.score ?? -1,
+  render: (_, data) => <StaleCell slice={data.stale} />,
 };
