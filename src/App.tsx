@@ -24,7 +24,13 @@ function Shell(): ReactElement {
   const authenticated = status === 'authenticated' && user !== null;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:font-medium focus:text-slate-900 focus:shadow-lg focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-sky-600"
+      >
+        Skip to main content
+      </a>
       <header className="mx-auto max-w-5xl px-6 py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -36,13 +42,18 @@ function Shell(): ReactElement {
           {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
         </div>
       </header>
-      <section aria-labelledby="overview-heading" className="mx-auto max-w-5xl px-6 pb-12">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        aria-labelledby="overview-heading"
+        className="mx-auto max-w-5xl px-6 pb-12 outline-none"
+      >
         <h2 id="overview-heading" className="sr-only">
           Fleet overview
         </h2>
         {authenticated ? <FleetPanel token={token} /> : <TokenInput />}
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
