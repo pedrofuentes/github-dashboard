@@ -33,20 +33,37 @@ const TILE_WIDTH = 3;
 const TILE_HEIGHT = 2;
 const TILES_PER_ROW = GRID_COLUMNS / TILE_WIDTH;
 
+/**
+ * Defensive caps for the persisted layout. These bound corrupt/hostile storage
+ * so a malformed payload degrades to {@link DEFAULT_LAYOUT} instead of feeding
+ * absurd geometry or an unbounded array into react-grid-layout.
+ */
+/** Upper bound on the row index a tile may occupy (generous: ~MAX_TILES rows). */
+const MAX_GRID_ROWS = 1000;
+/** Hard cap on how many tiles a stored layout may contain. */
+export const MAX_TILES = 600;
+/** Cap on the length of the `i` / `repo` strings (GitHub names are far shorter). */
+export const MAX_STRING_LENGTH = 256;
+
 const TileSignalSchema = z.enum(['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale']);
 
-const DashboardTileSchema = z.object({
-  i: z.string(),
-  signal: TileSignalSchema,
-  repo: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  visible: z.boolean(),
-});
+const DashboardTileSchema = z
+  .object({
+    i: z.string().min(1).max(MAX_STRING_LENGTH),
+    signal: TileSignalSchema,
+    repo: z.string().min(1).max(MAX_STRING_LENGTH),
+    x: z.number().int().min(0).max(GRID_COLUMNS),
+    y: z.number().int().min(0).max(MAX_GRID_ROWS),
+    w: z.number().int().min(0).max(GRID_COLUMNS),
+    h: z.number().int().min(0).max(MAX_GRID_ROWS),
+    visible: z.boolean(),
+  })
+  .refine((tile) => tile.i === `${tile.repo}:${tile.signal}`, {
+    message: 'tile id must equal `${repo}:${signal}`',
+    path: ['i'],
+  });
 
-const DashboardLayoutSchema = z.array(DashboardTileSchema);
+const DashboardLayoutSchema = z.array(DashboardTileSchema).max(MAX_TILES);
 
 function safeGet(key: string): string | null {
   try {
@@ -143,8 +160,16 @@ export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
   return reconciled;
 }
 
-/** Persists the layout as JSON (best-effort). */
+/**
+ * Persists the layout as JSON (best-effort). Caller-supplied tiles are
+ * re-validated against {@link DashboardLayoutSchema} first; an invalid layout
+ * is skipped rather than written, so corrupt geometry never reaches storage.
+ * Never throws.
+ */
 export function saveDashboardLayout(tiles: DashboardTile[]): void {
+  if (!DashboardLayoutSchema.safeParse(tiles).success) {
+    return;
+  }
   safeSet(STORAGE_KEY, JSON.stringify(tiles));
 }
 

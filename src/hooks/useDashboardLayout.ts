@@ -81,7 +81,7 @@ export function useDashboardLayout(repos: Repo[]): UseDashboardLayoutResult {
     const flush = () => persist.flush();
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        persist.flush();
+        flush();
       }
     };
     window.addEventListener('beforeunload', flush);

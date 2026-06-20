@@ -203,6 +203,60 @@ describe('useDashboardLayout', () => {
     }
   });
 
+  it('flushes a pending debounced write on visibilitychange → hidden (#141)', () => {
+    vi.useFakeTimers();
+    try {
+      const repos = [makeRepo('octo/a')];
+      const { result } = renderHook(() => useDashboardLayout(repos));
+
+      const next = result.current.layout.map((t) => ({ ...t, visible: false }));
+      act(() => {
+        result.current.setLayout(next);
+      });
+      // Still pending — the debounce window has not elapsed.
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      // Backgrounding the tab fires `visibilitychange` with state `hidden`. React
+      // never unmounts, so only this listener can flush the pending write before
+      // the tab is frozen/discarded (#141).
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not flush a pending debounced write on visibilitychange → visible (#141)', () => {
+    vi.useFakeTimers();
+    try {
+      const repos = [makeRepo('octo/a')];
+      const { result } = renderHook(() => useDashboardLayout(repos));
+
+      const next = result.current.layout.map((t) => ({ ...t, visible: false }));
+      act(() => {
+        result.current.setLayout(next);
+      });
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      // A `visibilitychange` to `visible` (tab refocused) must NOT flush — only
+      // the `hidden` transition tears the page down. The write stays pending.
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('flushes a pending debounced write on unmount so the last change is not lost', () => {
     vi.useFakeTimers();
     try {
