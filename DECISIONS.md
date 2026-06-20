@@ -27,6 +27,14 @@
 > privacy → state → deploy). They are reflected in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 > Later, unrelated decisions are added above this set, most recent first.
 
+### ADR-008: Adopt autonomous-kickoff template v2.0.0
+**Date**: 2026-06-19
+**Status**: Accepted
+**Context**: The project ran an unversioned (pre-1.0) copy of the autonomous-kickoff prompt template. Template v2.0.0 is a breaking hardening release — tiered authorization, a required *distinct* agent identity with a fail-closed Phase-0 self-check, a working unattended-merge config, resilience/verification rigor, process-security guardrails, and resource governance.
+**Decision**: Upgraded the three generic docs (`docs/KICKOFF.md`, `docs/ORCHESTRATION.md`, `docs/CONTINUOUS-OPERATION.md`) + `docs/VERSION` to v2.0.0, and migrated `MISSION.md` to the v2.0.0 schema — §5 agent-egress allowlist, §7 distinct **machine-user** agent identity, §8 executable `AC-n` acceptance, §9 five-tier authorization matrix, §10 resource governance. Added the **Blocked** + **Pending Decision** board Status options and a `security` label.
+**Alternatives considered**: Stay on the unversioned template (rejected — misses the safety/autonomy hardening); a mid-run Migrate (unnecessary — the project is idle at its v1.0.0 milestone).
+**Consequences**: Unattended runs now require a **distinct agent identity** (a machine-user + fine-grained, single-repo PAT) — until it's provisioned, v2.0.0's Phase-0 self-check holds the decision channel behind a `BLOCKED:` gate. Merges require the Sentinel-in-CI status check + `required_approving_review_count: 0`. Production deploys are `human-required` per release. The full migration list is in the template's `CHANGELOG.md` (`[2.0.0]` MIGRATIONS).
+
 ### ADR-007: Conditional caching for the Link-paginated alert feeds (`sort=updated` 304 short-circuit)
 **Date**: 2026-06-19
 **Status**: Accepted

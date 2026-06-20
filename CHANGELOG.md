@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Adopted the **autonomous-kickoff template v2.0.0** (`docs/VERSION` → 2.0.0): upgraded the
+  generic operating docs and migrated `MISSION.md` to the tiered-authorization schema; added the
+  **Blocked** / **Pending Decision** board statuses and a `security` label. Unattended runs now
+  require a distinct agent identity (one-time setup). See ADR-008.
+
 ## [1.0.0] - 2026-06-19
 
 ### Added
