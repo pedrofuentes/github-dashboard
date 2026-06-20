@@ -52,7 +52,9 @@ Together that's the seven at-a-glance signals from the [mission brief](MISSION.m
 
 Prefer a spatial layout over a table? A **Grid / Dashboard** toggle (top-left of the overview, persisted in your browser under `fleet:view` and defaulting to the table grid) switches the fleet between the row-per-repo grid and an **at-a-glance Dashboard view**.
 
-<!-- TODO: dashboard screenshot — capture via the authenticated-fleet Playwright harness once a reusable fixture exists. -->
+<div align="center">
+  <img src="docs/screenshots/dashboard.png" alt="At-a-glance Dashboard view: a pinned fleet summary (6 repos — 2 need attention, 4 warning, 0 healthy — with per-signal rollups for failing CI, security risk, awaiting your review and stale) above a grid of glanceable per-repo, per-signal tiles showing failing CI, A–F security grades, review requests, open and new-contributor pull requests, open issues and stale items" width="920">
+</div>
 
 The Dashboard view is built for triage at a glance:
 

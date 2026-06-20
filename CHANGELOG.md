@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Dashboard view screenshot** (M10 finalization): the README's _Dashboard
+  view_ section now shows a real capture of the at-a-glance Dashboard — the
+  pinned fleet summary above the glanceable per-(repo, signal) tiles — rendered
+  against a mocked, entirely fictional fleet by a deterministic Playwright
+  capture spec (`e2e/dashboard-screenshot.spec.ts`). No real repository or token
+  is involved (#138).
 - **Fleet summary tile** (M10 — the final increment): a pinned, glanceable
   anchor at the top of the Dashboard view that rolls the whole fleet up into one
   line — total repos and the **need attention / warning / healthy** split — plus
