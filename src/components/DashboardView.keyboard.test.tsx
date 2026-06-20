@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,6 +89,56 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     await user.tab();
     await user.keyboard('{Enter}');
     expect(onRepoActivate).toHaveBeenCalledWith(repo);
+  });
+
+  it('prevents the default page scroll for an arrow key at a grid boundary', async () => {
+    const user = userEvent.setup();
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    // Focus the first (CI) tile at the top-left corner (x=0, y=0): ArrowLeft and
+    // ArrowUp have no spatial neighbour, so focus stays put — but the handler
+    // must still call preventDefault() so the page doesn't native-scroll.
+    await user.tab();
+    const ci = screen.getByRole('button', { name: /view ci details for octo\/a/i });
+    expect(ci).toHaveFocus();
+
+    // fireEvent returns false when a handler called event.preventDefault().
+    expect(fireEvent.keyDown(ci, { key: 'ArrowLeft' })).toBe(false);
+    expect(fireEvent.keyDown(ci, { key: 'ArrowUp' })).toBe(false);
+    // Focus is unchanged (the move was blocked), but default was still prevented.
+    expect(ci).toHaveFocus();
+  });
+
+  it('exposes aria-rowindex/aria-colindex matching each tile geometry (SC 1.3.1)', () => {
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    // The default layout flows 4 tiles per 12-column row (each tile 3 wide, 2
+    // tall): CI sits at x=0,y=0 → column 1, row 1; Security at x=3,y=0 → column
+    // 4, row 1; Stale at x=3,y=2 → column 4, row 3.
+    const cellFor = (name: RegExp): HTMLElement | null =>
+      screen.getByRole('button', { name }).closest('[role="gridcell"]');
+
+    const ci = cellFor(/view ci details for octo\/a/i);
+    expect(ci).toHaveAttribute('aria-colindex', '1');
+    expect(ci).toHaveAttribute('aria-rowindex', '1');
+
+    const security = cellFor(/view security details for octo\/a/i);
+    expect(security).toHaveAttribute('aria-colindex', '4');
+    expect(security).toHaveAttribute('aria-rowindex', '1');
+
+    const stale = cellFor(/view stale details for octo\/a/i);
+    expect(stale).toHaveAttribute('aria-colindex', '4');
+    expect(stale).toHaveAttribute('aria-rowindex', '3');
   });
 });
 

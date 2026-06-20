@@ -148,7 +148,10 @@ describe('announcements', () => {
 
   it('exposes a human-readable label for every signal', () => {
     expect(SIGNAL_LABELS.ci).toBe('CI');
+    expect(SIGNAL_LABELS.security).toBe('Security');
+    expect(SIGNAL_LABELS.reviews).toBe('Reviews');
     expect(SIGNAL_LABELS.pullRequests).toBe('Pull requests');
+    expect(SIGNAL_LABELS.issues).toBe('Issues');
     expect(SIGNAL_LABELS.stale).toBe('Stale');
   });
 });
