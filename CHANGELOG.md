@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Fleet summary tile** (M10 — the final increment): a pinned, glanceable
+  anchor at the top of the Dashboard view that rolls the whole fleet up into one
+  line — total repos and the **need attention / warning / healthy** split — plus
+  the non-zero per-signal rollups (failing CI, security risk, awaiting your
+  review, stale). A repo "needs attention" on any failing CI run, a D–F security
+  grade, or an over-threshold issue backlog; it's a "warning" on a C security
+  grade, a pending review request, or stale items. The card reuses the tile
+  anatomy (icon **and** text, never colour alone, WCAG 2.1 AA) and — unlike the
+  per-(repo, signal) tiles — is not draggable, resizable, or removable. The
+  README gains a **Dashboard view** section documenting the Grid/Dashboard
+  toggle, glanceable tiles, edit-mode drag/resize + keyboard reorder, and layout
+  persistence (#113).
 - **Keyboard-accessible reorder + resize** (M10 T4 — the WCAG 2.1 AA gate): the
   dashboard tile arrangement is now a `role="grid"` with **roving-tabindex arrow
   navigation** (a single tab stop; ←/→/↑/↓ move focus between tiles by their grid

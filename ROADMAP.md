@@ -71,6 +71,12 @@
 - **Depends on:** M2, M3, M5, M6, M7, M8.
 - **Exit:** every ✅ DoD item above is verified and checked off; v1 declared shippable.
 
+### M10 · At‑a‑glance Dashboard view  — ✅ delivered (post‑MVP enhancement)
+*A spatial, customisable alternative to the table grid (issue #113).*
+- **Issues:** `Dashboard layout model + persistence` (#109); `SignalTile + DashboardView + view toggle` (#110); `Edit mode: pointer drag + resize` (#111); `Keyboard‑accessible reorder + resize (WCAG‑AA gate)` (#112); `Fleet summary tile + M10 docs` (#113).
+- **Depends on:** M4 (signals + drill‑down) + M7 (a11y bar).
+- **Exit (all delivered):** a **Grid / Dashboard** toggle (persisted under `fleet:view`); one **glanceable tile per (repo, signal)** on react‑grid‑layout reusing the grid's icon+colour+text cells; an **edit mode** with pointer **drag/resize** and a **keyboard** Move/Resize equivalent following the WAI‑ARIA grid pattern (roving tabindex, arrow nav, `aria-live` announcements, reduced‑motion aware) — **WCAG 2.1 AA**; **layout persistence** (debounced `localStorage`, reconciled against the fleet); and a **pinned fleet summary** tile (broken / warning / healthy rollup, never colour alone). See ADR‑010/011.
+
 ---
 
 ## Milestone → issue map
@@ -86,6 +92,7 @@
 | M7 Polish | a11y pass · perf pass | a11y quality bar |
 | M8 Docs | README · LICENSE · CONTRIBUTING | ✅ README |
 | M9 Release | DoD verification checklist | ✅ gate |
+| M10 Dashboard view | layout model · tiles+toggle · drag/resize · keyboard a11y · summary+docs | ✅ delivered |
 
 ## Out of scope for v1 (post‑MVP backlog — `MISSION.md` §4)
 Release/version tracking · notifications inbox · discussions monitor · write

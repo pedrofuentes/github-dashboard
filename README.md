@@ -48,6 +48,19 @@ Click any row to open the **drill-down drawer** — the full signal breakdown fo
 
 Together that's the seven at-a-glance signals from the [mission brief](MISSION.md) — the fleet overview grid plus its six per-repo columns — and the row drill-down.
 
+## Dashboard view
+
+Prefer a spatial layout over a table? A **Grid / Dashboard** toggle (top-left of the overview, persisted in your browser under `fleet:view` and defaulting to the table grid) switches the fleet between the row-per-repo grid and an **at-a-glance Dashboard view**.
+
+<!-- TODO: dashboard screenshot — capture via the authenticated-fleet Playwright harness once a reusable fixture exists. -->
+
+The Dashboard view is built for triage at a glance:
+
+- **A pinned fleet summary** anchors the top: total repos and the split into **need attention** (failing CI, a D–F security grade, or an over-threshold issue backlog), **warning** (a C security grade, a pending review request, or stale items), and **healthy** — plus the non-zero per-signal rollups (failing CI, security risk, awaiting your review, stale). It's always there: not draggable, resizable, or removable.
+- **Glanceable tiles** — one card per (repo, signal) — reuse the same icon + colour + text encoding as the grid (never colour alone), with per-status states (loading / error / unknown / ready) and a status accent. Activate any tile (click or Enter/Space) to open the same drill-down drawer as the grid.
+- **Edit mode** — a **Customize layout** toggle (shown only in the Dashboard view) lets you rearrange and size tiles by **pointer drag + resize**, or with the keyboard via each tile's **Move / Resize** controls. Tile navigation follows the WAI-ARIA grid pattern (a single roving tab stop; ←/→/↑/↓ move focus between tiles), every keyboard change is announced via an `aria-live` region, and motion is suppressed under `prefers-reduced-motion` — WCAG 2.1 AA throughout.
+- **Layout persistence** — your tile arrangement is saved to `localStorage` (debounced) and restored on the next visit, reconciled against the current fleet so added/removed repos are handled gracefully.
+
 ## Privacy & security
 
 github-dashboard is **client-only**: there is no backend, and your data never touches a server anyone else controls.
