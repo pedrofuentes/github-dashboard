@@ -33,6 +33,7 @@
 **Consequences**: Edit mode is always opt-in per session and never persisted, keeping accidental drag risk at zero. The custom debounce is a well-tested, single-purpose utility; if a second debounce use-case appears it can be reused as-is. Any future migration to a utility library would replace this file and its import sites.
 
 
+### ADR-011: Import react-grid-layout's `Responsive` + `WidthProvider` from the `/legacy` subpath
 **Date**: 2026-06-20
 **Status**: Accepted
 **Context**: The M10 Dashboard view (T2) renders tiles on react-grid-layout using the width-measuring `WidthProvider` HOC and the flat-prop `Responsive` API (`layouts` / `breakpoints` / `cols` / `isDraggable` / `isResizable`). react-grid-layout `^2.2.3` is a rewrite: its package **root** export (resolved via the `exports` map under `moduleResolution: bundler` ESM) exposes only the new composable v2 API and **does not export `WidthProvider`** at all. The v1-compatible flat API (including `WidthProvider`) was moved to the `react-grid-layout/legacy` subpath. Importing `WidthProvider` from the root therefore fails both typecheck and runtime under our ESM/bundler resolution.
