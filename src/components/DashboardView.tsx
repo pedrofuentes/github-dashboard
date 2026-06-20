@@ -23,6 +23,7 @@ import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import { cn } from '../lib/cn';
 import { toRglLayout } from '../lib/dashboard-layout';
 import { mergeLayoutGeometry } from '../lib/dashboard-layout-merge';
+import { summarizeFleetHealth } from '../lib/fleet-summary';
 import {
   SIGNAL_LABELS,
   arrowDirection,
@@ -35,6 +36,7 @@ import {
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { DashboardTile } from '../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
+import { FleetSummaryTile } from './FleetSummaryTile';
 import { SignalTile } from './SignalTile';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
@@ -117,6 +119,10 @@ export function DashboardView({
   }, [layout, repoIndex]);
 
   const rglLayout = useMemo(() => toRglLayout(tiles.map((entry) => entry.tile)), [tiles]);
+
+  // Fleet-wide rollup for the pinned summary anchor. Reuses the per-repo data
+  // resolved above (never re-invokes getRowData) so it stays in sync and cheap.
+  const summary = useMemo(() => summarizeFleetHealth(repoData.values()), [repoData]);
 
   const layouts = useMemo<ResponsiveLayouts<string>>(
     () => ({
@@ -254,7 +260,8 @@ export function DashboardView({
   if (tiles.length === 0) {
     return (
       <section aria-label="Dashboard">
-        <p className="rounded-md border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-600">
+        <FleetSummaryTile summary={summary} />
+        <p className="mt-4 rounded-md border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-600">
           No repositories to display.
         </p>
       </section>
@@ -263,7 +270,14 @@ export function DashboardView({
 
   return (
     <section aria-label="Dashboard">
-      <div ref={gridRef} role="grid" aria-label="Dashboard tiles" onKeyDown={handleGridKeyDown}>
+      <FleetSummaryTile summary={summary} />
+      <div
+        ref={gridRef}
+        role="grid"
+        aria-label="Dashboard tiles"
+        onKeyDown={handleGridKeyDown}
+        className="mt-4"
+      >
         <ResponsiveGridLayout
           className={cn('layout', editing && 'dashboard-editing')}
           layouts={layouts}
