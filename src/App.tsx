@@ -95,6 +95,9 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
           getRowData={getRowData}
           onRepoActivate={handleRepoActivate}
           editing={editing}
+          loading={status === 'loading'}
+          error={status === 'error' ? error : null}
+          onRetry={reload}
         />
       ) : (
         <FleetGrid
