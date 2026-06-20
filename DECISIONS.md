@@ -27,6 +27,14 @@
 > privacy → state → deploy). They are reflected in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 > Later, unrelated decisions are added above this set, most recent first.
 
+### ADR-010: Adopt react-grid-layout for the M10 dashboard tile grid
+**Date**: 2026-06-20
+**Status**: Accepted
+**Context**: M10 ships an at-a-glance Dashboard view that renders one tile per (repo, signal) on a draggable, resizable grid. We need a battle-tested 12-column grid with drag/resize and per-item geometry (`{ i, x, y, w, h }`) rather than hand-building collision/compaction logic. The cofounder pre-approved the dependency on issue #108.
+**Decision**: Adopt **react-grid-layout** (`^2.2.3`, ships its own TypeScript types — no `@types/*`) as the grid engine for the dashboard's tile drag/resize. The persisted layout model (`DashboardTile`) mirrors react-grid-layout's layout-item geometry so tiles map to grid items with no transformation beyond field selection (`toRglLayout`), and the layout is persisted defensively to `localStorage` (validate-on-read, default-on-corrupt) like the existing fleet preferences.
+**Alternatives considered**: Hand-build a CSS-grid drag/resize engine (rejected — re-implements solved collision/compaction logic, higher bug surface, slower to ship); a generic dnd library such as dnd-kit without a grid model (rejected — still needs custom resize + 12-col placement math); a static, non-rearrangeable grid (rejected — M10's core value is a user-arrangeable at-a-glance view).
+**Consequences**: We get a proven 12-column drag/resize grid and a clean persistence seam. **react-grid-layout has no built-in keyboard accessibility, so a keyboard-accessible reorder/resize alternative MUST be hand-built (M10 T4) to keep WCAG 2.1 AA.** The library is the only approved new runtime dependency for M10; any further dependency requires separate approval. Its CSS is imported later by the view task (T2+), not by this model-only layer.
+
 ### ADR-009: Adopt autonomous-kickoff template v2.1.0 — attended single-operator mode
 **Date**: 2026-06-19
 **Status**: Accepted
