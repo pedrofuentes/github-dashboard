@@ -51,6 +51,35 @@ describe('useDashboardLayout', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
   });
 
+  it('reconciles the layout when the fleet loads after mount (#115)', () => {
+    const { result, rerender } = renderHook(({ repos }) => useDashboardLayout(repos), {
+      initialProps: { repos: [] as Repo[] },
+    });
+    // An empty fleet yields an empty default layout on first mount.
+    expect(result.current.layout).toEqual([]);
+
+    const repos = [makeRepo('octo/a')];
+    rerender({ repos });
+
+    // Once repos arrive asynchronously, the layout re-reconciles against them.
+    expect(result.current.layout).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('does not clobber the layout when the fleet identity is unchanged', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    const stored = DEFAULT_LAYOUT(repos).filter((t) => t.repo === 'octo/a');
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+
+    const { result, rerender } = renderHook(({ r }) => useDashboardLayout(r), {
+      initialProps: { r: repos },
+    });
+    expect(result.current.layout).toEqual(stored);
+
+    // A new array reference with the same repos must not trigger re-reconciliation.
+    rerender({ r: [...repos] });
+    expect(result.current.layout).toEqual(stored);
+  });
+
   it('reset restores the default layout and clears storage', () => {
     const repos = [makeRepo('octo/a')];
     const { result } = renderHook(() => useDashboardLayout(repos));
