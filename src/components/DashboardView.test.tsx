@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -170,6 +170,41 @@ describe('DashboardView', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('renders the pinned fleet summary above the grid', () => {
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    const summary = screen.getByRole('region', { name: /fleet summary/i });
+    expect(summary).toBeInTheDocument();
+    // The summary is not a draggable grid tile — it lives outside the grid.
+    expect(summary.closest('.react-grid-item')).toBeNull();
+  });
+
+  it('reflects the fleet health in the summary', () => {
+    const getRowData: GetRowData = (repo) =>
+      repo.nameWithOwner === 'octo/a' ? { ci: { status: 'ready', conclusion: 'failure' } } : {};
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a'), makeRepo('octo/b')]}
+        getRowData={getRowData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    const summary = screen.getByRole('region', { name: /fleet summary/i });
+    expect(summary).toHaveTextContent('2 repos');
+    expect(within(summary).getByText(/1\s+need attention/i)).toBeInTheDocument();
+  });
+
+  it('still renders the fleet summary in the empty state', () => {
+    render(<DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} />);
+    expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /fleet summary/i })).toBeInTheDocument();
   });
 
   it('computes each repo signal data once per render (no per-tile recomputation)', () => {
