@@ -57,6 +57,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Dashboard layout no longer snaps back or loses a last-second drag** (M10
+  finalization): when the fleet finished loading within the 300 ms persistence
+  debounce window right after a drag, the layout reconcile read `localStorage`
+  before the pending write landed and clobbered the just-dragged arrangement —
+  the hook now flushes the pending write before reconciling, so the drag is
+  committed and survives (#126). A hard page close/navigate (or backgrounding the
+  tab) within the same window also dropped the last change, because the React
+  unmount-flush never runs on a real page unload — the hook now flushes on
+  `beforeunload` and on `visibilitychange → hidden` as well (#127).
 - **Dashboard keyboard-grid a11y refinements** (M10 finalization): an arrow key
   pressed on a tile at a grid boundary now calls `preventDefault()` even when
   focus can't move, so the page no longer native-scrolls under the grid (#130).

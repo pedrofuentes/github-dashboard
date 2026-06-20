@@ -47,6 +47,11 @@ export function useDashboardLayout(repos: Repo[]): UseDashboardLayoutResult {
     [repos],
   );
 
+  // react-grid-layout fires onLayoutChange ~30-60x/s during a drag. Keep the
+  // in-memory layout immediate (responsive UI) but debounce the blocking
+  // localStorage write so a drag coalesces to a single persist (#116).
+  const persist = useMemo(() => debounce(saveDashboardLayout, PERSIST_DEBOUNCE_MS), []);
+
   // The lazy initializer above ran against the fleet present at mount, which is
   // often empty while repos load asynchronously. When the fleet identity changes
   // afterwards, re-run the persisted-layout reconciliation so tiles appear (and
@@ -57,17 +62,35 @@ export function useDashboardLayout(repos: Repo[]): UseDashboardLayoutResult {
       return;
     }
     previousFleetKey.current = fleetKey;
+    // Commit any pending debounced write before reloading from storage. The
+    // fleet can change within the 300 ms window right after a drag; reading
+    // storage first would see the stale baseline and clobber the just-dragged
+    // layout (tiles snap back). Flushing first makes the reload reflect it (#126).
+    persist.flush();
     setLayoutState(loadDashboardLayout(repos));
-  }, [fleetKey, repos]);
+  }, [fleetKey, repos, persist]);
 
-  // react-grid-layout fires onLayoutChange ~30-60x/s during a drag. Keep the
-  // in-memory layout immediate (responsive UI) but debounce the blocking
-  // localStorage write so a drag coalesces to a single persist (#116).
-  const persist = useMemo(() => debounce(saveDashboardLayout, PERSIST_DEBOUNCE_MS), []);
-
-  // Flush any pending write on unmount so the last change is never lost (e.g.
-  // the user switches views or closes the tab right after dragging a tile).
+  // Flush any pending write on React unmount so the last change is never lost
+  // when the user switches views right after dragging a tile.
   useEffect(() => () => persist.flush(), [persist]);
+
+  // A hard page close/navigate does NOT unmount React, so the unmount cleanup
+  // above never runs and a drag within the debounce window would be lost. Flush
+  // the pending write when the page is being torn down or backgrounded (#127).
+  useEffect(() => {
+    const flush = () => persist.flush();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persist.flush();
+      }
+    };
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [persist]);
 
   const setLayout = useCallback(
     (next: DashboardTile[]) => {

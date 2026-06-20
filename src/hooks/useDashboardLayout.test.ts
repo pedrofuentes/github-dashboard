@@ -145,6 +145,64 @@ describe('useDashboardLayout', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
+  it('flushes the pending debounced write before reconciling on a fleet change (#126)', () => {
+    vi.useFakeTimers();
+    try {
+      const repos = [makeRepo('octo/a')];
+      const { result, rerender } = renderHook(({ r }) => useDashboardLayout(r), {
+        initialProps: { r: repos },
+      });
+
+      // Simulate a drag: change the layout, scheduling a debounced persist.
+      const dragged = result.current.layout.map((t) => ({ ...t, y: t.y + 10 }));
+      act(() => {
+        result.current.setLayout(dragged);
+      });
+      // The write is still pending — the debounce window has not elapsed.
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      // The fleet identity changes within the debounce window (a new repo loads),
+      // triggering the reconcile effect. WITHOUT flushing first, reconcile would
+      // read stale (empty) storage and clobber the just-dragged layout (#126).
+      rerender({ r: [makeRepo('octo/a'), makeRepo('octo/b')] });
+
+      // The pending drag write must have been flushed before reconcile read storage,
+      // so the dragged layout is persisted (not lost) and survives reconciliation.
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(dragged);
+      expect(result.current.layout).toEqual(dragged);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes a pending debounced write on a hard page unload (#127)', () => {
+    vi.useFakeTimers();
+    try {
+      const repos = [makeRepo('octo/a')];
+      const { result } = renderHook(() => useDashboardLayout(repos));
+
+      const next = result.current.layout.map((t) => ({ ...t, visible: false }));
+      act(() => {
+        result.current.setLayout(next);
+      });
+      // Still pending — the debounce window has not elapsed.
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      // A hard page close/navigate fires `beforeunload`; React never unmounts, so
+      // only an explicit unload listener can flush the pending write before the
+      // JS context is torn down (#127).
+      act(() => {
+        window.dispatchEvent(new Event('beforeunload'));
+      });
+
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('flushes a pending debounced write on unmount so the last change is not lost', () => {
     vi.useFakeTimers();
     try {
