@@ -65,6 +65,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { getRowData } = useRepoSignals(repos, token);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [view, setView] = useState<FleetView>(loadViewPreference);
+  const [editing, setEditing] = useState(false);
 
   // Stable callbacks so the memoised grid rows keep shallow-equal props and do
   // not all re-render when the drawer opens or closes.
@@ -73,13 +74,28 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const handleViewChange = useCallback((next: FleetView) => {
     setView(next);
     saveViewPreference(next);
+    // Edit affordances only make sense on the dashboard; leave them when we go.
+    if (next !== 'dashboard') {
+      setEditing(false);
+    }
   }, []);
+  const handleToggleEditing = useCallback(() => setEditing((current) => !current), []);
 
   return (
     <div className="flex flex-col gap-4">
-      <ViewToggle view={view} onChange={handleViewChange} />
+      <div className="flex flex-wrap items-center gap-3">
+        <ViewToggle view={view} onChange={handleViewChange} />
+        {view === 'dashboard' ? (
+          <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+        ) : null}
+      </div>
       {view === 'dashboard' ? (
-        <DashboardView repos={repos} getRowData={getRowData} onRepoActivate={handleRepoActivate} />
+        <DashboardView
+          repos={repos}
+          getRowData={getRowData}
+          onRepoActivate={handleRepoActivate}
+          editing={editing}
+        />
       ) : (
         <FleetGrid
           repos={repos}
@@ -98,6 +114,28 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
         />
       ) : null}
     </div>
+  );
+}
+
+interface CustomizeLayoutToggleProps {
+  editing: boolean;
+  onToggle: () => void;
+}
+
+function CustomizeLayoutToggle({ editing, onToggle }: CustomizeLayoutToggleProps): ReactElement {
+  return (
+    <button
+      type="button"
+      aria-pressed={editing}
+      onClick={onToggle}
+      className={
+        editing
+          ? 'rounded-md border border-sky-600 bg-sky-600 px-3 py-1 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
+          : 'rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
+      }
+    >
+      {editing ? 'Done customizing' : 'Customize layout'}
+    </button>
   );
 }
 

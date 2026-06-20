@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Dashboard **edit mode** (M10 T3): a **Customize layout** toggle (shown only in
+  the dashboard view) enables react-grid-layout pointer **drag + resize** to
+  rearrange and size tiles, persisted across sessions. Resize handles stay
+  visible while editing with a slate-600 glyph that meets WCAG 1.4.11 non-text
+  contrast, and users who prefer reduced motion get instant top/left positioning
+  instead of the CSS-transform animation. Keyboard-accessible reorder/resize (the
+  WCAG-AA gate) follows in a later M10 task — existing keyboard tile activation is
+  unchanged (#111).
 - At-a-glance **Dashboard view** (M10): a new tile arrangement that renders one
   card per (repo, signal) on react-grid-layout, reusing the existing per-signal
   cells (icon + colour + text, never colour alone) with per-status states
@@ -26,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `useDashboardLayout` now updates the in-memory layout immediately but
+  **debounces** the `localStorage` write (~300 ms), so a react-grid-layout drag
+  (which fires `onLayoutChange` many times per second) coalesces to a single
+  persist and never janks the main thread; any pending write is flushed on
+  unmount (#116).
+- `DashboardView` resolves each repo's signal data once per render into a
+  referentially stable map (instead of once per tile), removing redundant
+  allocations and keeping tile `data` stable for memoisation (#121).
 - `useDashboardLayout` now re-reconciles the persisted layout against the fleet
   when the set of repos changes after mount (e.g. repos that load asynchronously),
   using a stable fleet key so unrelated re-renders don't churn the layout (#115).
