@@ -45,14 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   _"Resized CI · octo/a to 4 by 3"_), focus returns to the operated tile, and (as
   with pointer moves) keyboard moves don't animate under `prefers-reduced-motion`.
   Tile activation (Enter/Space → drill-down) is unchanged (#112).
-- Dashboard **edit mode** (M10 T3): a **Customize layout** toggle (shown only in
-  the dashboard view) enables react-grid-layout pointer **drag + resize** to
-  rearrange and size tiles, persisted across sessions. Resize handles stay
+- Dashboard **edit mode** (M10 T3, #111): a **Customize layout** toggle (shown
+  only in the dashboard view) enables react-grid-layout pointer **drag + resize**
+  to rearrange and size tiles, persisted across sessions. Resize handles stay
   visible while editing with a slate-600 glyph that meets WCAG 1.4.11 non-text
   contrast, and users who prefer reduced motion get instant top/left positioning
-  instead of the CSS-transform animation. Keyboard-accessible reorder/resize (the
-  WCAG-AA gate) follows in a later M10 task — existing keyboard tile activation is
-  unchanged (#111).
+  instead of the CSS-transform animation. Keyboard-accessible reorder/resize
+  (the WCAG 2.1 AA gate) was completed in M10 T4 — see the entry above.
 - At-a-glance **Dashboard view** (M10): a new tile arrangement that renders one
   card per (repo, signal) on react-grid-layout, reusing the existing per-signal
   cells (icon + colour + text, never colour alone) with per-status states

@@ -135,6 +135,12 @@ export function SignalTile({
         <SignalSummary signal={tile.signal} data={data} />
       </div>
       {editing ? (
+        // In edit mode the active tile exposes ~9 tabIndex=0 targets (activate
+        // button + 8 Move/Resize controls). This is intentional WCAG-AA design,
+        // not a roving-tabindex bug: each control is a distinct keyboard
+        // affordance that needs to be reachable via Tab within the tile. When
+        // the tile is inactive (rovingTabIndex === -1) all controls are removed
+        // from the tab order, leaving the grid's single roving tab stop intact.
         <TileControls
           tileId={tile.i}
           tileName={tileName}

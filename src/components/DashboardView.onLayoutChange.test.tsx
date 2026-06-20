@@ -61,6 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('DashboardView onLayoutChange wiring', () => {
