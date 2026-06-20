@@ -22,6 +22,16 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-011: Import react-grid-layout's `Responsive` + `WidthProvider` from the `/legacy` subpath
+**Date**: 2026-06-20
+**Status**: Accepted
+**Context**: The M10 Dashboard view (T2) renders tiles on react-grid-layout using the width-measuring `WidthProvider` HOC and the flat-prop `Responsive` API (`layouts` / `breakpoints` / `cols` / `isDraggable` / `isResizable`). react-grid-layout `^2.2.3` is a rewrite: its package **root** export (resolved via the `exports` map under `moduleResolution: bundler` ESM) exposes only the new composable v2 API and **does not export `WidthProvider`** at all. The v1-compatible flat API (including `WidthProvider`) was moved to the `react-grid-layout/legacy` subpath. Importing `WidthProvider` from the root therefore fails both typecheck and runtime under our ESM/bundler resolution.
+**Decision**: Import `{ Responsive, WidthProvider }` (and the `ResponsiveLayouts` type) from **`react-grid-layout/legacy`**, and the base CSS from `react-grid-layout/css/styles.css`. This keeps the intended T2 design (a static, width-measured responsive grid with flat props) while remaining compatible with the actually-installed v2.2.3. No new dependency is added — `/legacy` is a subpath of the already-approved package (ADR-010). `T1`'s `toRglLayout` returns the root `Layout` type, which is structurally identical to the legacy `Layout`, so the mapping is unchanged.
+**Alternatives considered**: Import from the package root as the original task text suggested (rejected — `WidthProvider` is not a root export in v2.2.3; would not compile or run). Rewrite T2 against the new v2 composable API without `WidthProvider` (rejected for this increment — larger surface change, diverges from the layout model T1 built around flat layout items, and width auto-measurement still needs wiring; can be revisited in T3/T4). Pin/downgrade react-grid-layout to a v1 line (rejected — changing a dependency is out of scope and requires separate approval).
+**Consequences**: T2 uses the stable, documented legacy compat layer. If a future task migrates to the new v2 API, the `DashboardView` import and prop shape change in one file. `WidthProvider` relies on `ResizeObserver`, which jsdom lacks, so a no-op `ResizeObserver` shim was added to `src/test/setup.ts` for component tests.
+
+
+
 > ADR-001 … ADR-006 are the **foundational architecture set** (all 2026-06-19), recorded
 > as one batch and presented in dependency order (structure → integration → auth →
 > privacy → state → deploy). They are reflected in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).

@@ -71,9 +71,7 @@ describe('SignalTile', () => {
     );
     expect(container.querySelector('[data-status="error"]')).not.toBeNull();
 
-    rerender(
-      <SignalTile tile={makeTile('ci')} repo={makeRepo()} data={{}} onActivate={vi.fn()} />,
-    );
+    rerender(<SignalTile tile={makeTile('ci')} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
     expect(container.querySelector('[data-status="unknown"]')).not.toBeNull();
 
     rerender(
@@ -137,10 +135,10 @@ describe('SignalTile', () => {
     ['issues', 'Issues'],
     ['stale', 'Stale'],
   ])('renders the %s signal with its label and cell', (signal, label) => {
-    render(
-      <SignalTile tile={makeTile(signal)} repo={makeRepo()} data={{}} onActivate={vi.fn()} />,
-    );
+    render(<SignalTile tile={makeTile(signal)} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
     expect(screen.getByText(label)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: new RegExp(`details for octo/a`, 'i') })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: new RegExp(`details for octo/a`, 'i') }),
+    ).toBeInTheDocument();
   });
 });

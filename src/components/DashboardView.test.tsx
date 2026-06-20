@@ -26,14 +26,22 @@ afterEach(() => {
 describe('DashboardView', () => {
   it('renders an accessible dashboard region', () => {
     render(
-      <DashboardView repos={[makeRepo('octo/a')]} getRowData={emptyData} onRepoActivate={vi.fn()} />,
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
     );
     expect(screen.getByRole('region', { name: /dashboard/i })).toBeInTheDocument();
   });
 
   it('renders one tile per visible signal for each repo', () => {
     render(
-      <DashboardView repos={[makeRepo('octo/a')]} getRowData={emptyData} onRepoActivate={vi.fn()} />,
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
     );
     // Six per-repo signals → six tiles for a single repo.
     expect(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })).toHaveLength(6);
@@ -43,7 +51,11 @@ describe('DashboardView', () => {
     const getRowData: GetRowData = (repo) =>
       repo.nameWithOwner === 'octo/a' ? { ci: { status: 'ready', conclusion: 'failure' } } : {};
     render(
-      <DashboardView repos={[makeRepo('octo/a')]} getRowData={getRowData} onRepoActivate={vi.fn()} />,
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={getRowData}
+        onRepoActivate={vi.fn()}
+      />,
     );
     expect(screen.getByText('Failing')).toBeInTheDocument();
   });
