@@ -55,6 +55,35 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
     );
   });
 
+  it('removes the tile and its Move/Resize controls from the tab order when editing but not active', () => {
+    render(
+      <SignalTile
+        tile={makeTile()}
+        repo={makeRepo()}
+        data={{}}
+        onActivate={vi.fn()}
+        onMove={vi.fn()}
+        onResize={vi.fn()}
+        editing
+        active={false}
+      />,
+    );
+    // The roving-tabindex invariant: only the grid's active tile is tabbable, so
+    // an inactive editing tile must have its activation overlay AND every
+    // Move/Resize control out of the tab order.
+    expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    );
+    const controls = within(
+      screen.getByRole('group', { name: /reorder and resize ci · octo\/a/i }),
+    ).getAllByRole('button');
+    expect(controls).toHaveLength(8);
+    for (const control of controls) {
+      expect(control).toHaveAttribute('tabindex', '-1');
+    }
+  });
+
   it('reports focus via onTileFocus so the grid can track the active tile', async () => {
     const onTileFocus = vi.fn();
     const user = userEvent.setup();
