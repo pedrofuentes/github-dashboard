@@ -313,4 +313,46 @@ describe('App', () => {
     expect(customize).toHaveAttribute('aria-pressed', 'true');
     expect(container.querySelector('.react-grid-item.react-draggable')).not.toBeNull();
   });
+
+  async function authenticate(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByText(/authenticated as octocat/i);
+  }
+
+  it('shows a loading skeleton in the dashboard view while repos load', async () => {
+    localStorage.setItem('fleet:view', 'dashboard');
+    mockUseRepos.mockReturnValue({
+      status: 'loading',
+      repos: [],
+      error: null,
+      reload: vi.fn(),
+    });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await authenticate(user);
+
+    expect(screen.getByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.queryByText(/no repositories to display/i)).toBeNull();
+  });
+
+  it('shows an error + retry in the dashboard view and calls reload on retry', async () => {
+    localStorage.setItem('fleet:view', 'dashboard');
+    const reload = vi.fn();
+    mockUseRepos.mockReturnValue({
+      status: 'error',
+      repos: [],
+      error: 'Could not load your repositories.',
+      reload,
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticate(user);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
 });

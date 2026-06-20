@@ -207,6 +207,51 @@ describe('DashboardView', () => {
     expect(screen.getByRole('region', { name: /fleet summary/i })).toBeInTheDocument();
   });
 
+  it('shows a reduced-motion-friendly loading skeleton while repos load', () => {
+    const { container } = render(
+      <DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} loading />,
+    );
+    // Announces loading and marks the region busy for assistive tech.
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    // Decorative pulse placeholders that respect prefers-reduced-motion.
+    const pulses = container.querySelectorAll('.animate-pulse');
+    expect(pulses.length).toBeGreaterThan(0);
+    pulses.forEach((pulse) => expect(pulse).toHaveClass('motion-reduce:animate-none'));
+    // The empty-state copy must NOT flash while loading.
+    expect(screen.queryByText(/no repositories to display/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /view .* details/i })).toBeNull();
+  });
+
+  it('renders an alert with a retry control when the fetch fails', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <DashboardView
+        repos={[]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        error="Could not load your dashboard."
+        onRetry={onRetry}
+      />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Could not load your dashboard.');
+    // Never strands the user on the empty state when there is an error.
+    expect(screen.queryByText(/no repositories to display/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefers the error state over the empty state even with no repos', () => {
+    render(
+      <DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} error="boom" />,
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/no repositories to display/i)).toBeNull();
+  });
+
   it('computes each repo signal data once per render (no per-tile recomputation)', () => {
     const getRowData = vi.fn<GetRowData>(() => ({}));
     render(

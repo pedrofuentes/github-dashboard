@@ -81,6 +81,30 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     expect(ci).toHaveAttribute('tabindex', '-1');
   });
 
+  it('moves roving focus even when a tile id contains characters unsafe for a CSS selector', async () => {
+    // Tile ids are `${nameWithOwner}:${signal}`, so a repo name with a double
+    // quote yields a selector-breaking id. focusTile must escape it (CSS.escape)
+    // rather than throwing a DOMException when restoring roving focus.
+    const user = userEvent.setup();
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a"b')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    await user.tab();
+    const ci = screen.getByRole('button', { name: /view ci details for octo\/a"b/i });
+    expect(ci).toHaveFocus();
+
+    // Without CSS.escape this querySelector throws and focus never moves.
+    await user.keyboard('{ArrowRight}');
+    const security = screen.getByRole('button', {
+      name: /view security details for octo\/a"b/i,
+    });
+    expect(security).toHaveFocus();
+  });
+
   it('keeps Enter activation working from a tile (no T2 regression)', async () => {
     const onRepoActivate = vi.fn();
     const repo = makeRepo('octo/a');
