@@ -10,8 +10,11 @@ import '@testing-library/jest-dom';
  * non-functional `{}` for each. Without this shim any browser-storage code is
  * untestable (`localStorage.setItem is not a function`).
  *
- * The shim is feature-detected, so a real (working) implementation is never
- * clobbered, and it is intentionally minimal and spec-faithful.
+ * The shim installs a plain-object memory `Storage` unconditionally. jsdom (and
+ * native Node ≥21) may already expose an *exotic* `Storage` whose named-property
+ * setter swallows `vi.spyOn(storage, 'setItem')` (the write succeeds but the spy
+ * records zero calls — see #124, LEARNINGS.md), so we always replace it with a
+ * spy-friendly plain object. The implementation is minimal and spec-faithful.
  */
 function createMemoryStorage(): Storage {
   const entries = new Map<string, string>();
@@ -39,11 +42,6 @@ function createMemoryStorage(): Storage {
 }
 
 function ensureWebStorage(name: 'localStorage' | 'sessionStorage'): void {
-  const current = (globalThis as Record<string, unknown>)[name] as Partial<Storage> | undefined;
-  if (current && typeof current.setItem === 'function') {
-    return;
-  }
-
   Object.defineProperty(globalThis, name, {
     value: createMemoryStorage(),
     configurable: true,
