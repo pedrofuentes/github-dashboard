@@ -4,9 +4,11 @@
  * Renders one {@link SignalTile} per *visible* tile from the persisted dashboard
  * layout, positioned on react-grid-layout. By default the grid is static; an
  * opt-in `editing` mode enables pointer drag + resize (T3). Keyboard-accessible
- * reorder/resize is the WCAG-AA gate that follows in T4 — until then the
- * arrangement is pointer-only. Both this view and the table grid open the same
- * drill-down drawer via `onRepoActivate`.
+ * reorder/resize (the WCAG-AA gate, T4) is implemented here: a roving-tabindex
+ * `role="grid"` with arrow-key navigation, per-tile Move/Resize controls, and a
+ * polite live region announcing each change. Each tile carries accurate
+ * `aria-rowindex`/`aria-colindex` derived from its grid geometry. Both this view
+ * and the table grid open the same drill-down drawer via `onRepoActivate`.
  *
  * Note: `Responsive` + `WidthProvider` (the width-measuring HOC, with the flat
  * v1-style `layouts` / `breakpoints` / `cols` / `isDraggable` / `isResizable`
@@ -124,6 +126,13 @@ export function DashboardView({
   // resolved above (never re-invokes getRowData) so it stays in sync and cheap.
   const summary = useMemo(() => summarizeFleetHealth(repoData.values()), [repoData]);
 
+  // Grid extent for SC 1.3.1 context: the grid is a fixed 12 columns wide; the
+  // row count is the deepest tile's bottom edge (1-based, in grid-row units).
+  const ariaRowCount = useMemo(
+    () => tiles.reduce((max, { tile }) => Math.max(max, tile.y + tile.h), 1),
+    [tiles],
+  );
+
   const layouts = useMemo<ResponsiveLayouts<string>>(
     () => ({
       lg: rglLayout,
@@ -184,6 +193,10 @@ export function DashboardView({
       if (direction === null) {
         return;
       }
+      // Claim the arrow key as soon as it's a recognized direction — even when
+      // focus can't move (the spatial neighbour is null at a grid edge) — so the
+      // page never native-scrolls under the grid.
+      event.preventDefault();
       const cells = tiles.map(({ tile }) => ({
         i: tile.i,
         x: tile.x,
@@ -195,7 +208,6 @@ export function DashboardView({
       if (nextId === null) {
         return;
       }
-      event.preventDefault();
       setActiveId(nextId);
       focusTile(nextId);
     },
@@ -275,6 +287,8 @@ export function DashboardView({
         ref={gridRef}
         role="grid"
         aria-label="Dashboard tiles"
+        aria-colcount={GRID_COLUMNS}
+        aria-rowcount={ariaRowCount}
         onKeyDown={handleGridKeyDown}
         className="mt-4"
       >
@@ -294,7 +308,7 @@ export function DashboardView({
           onLayoutChange={handleLayoutChange}
         >
           {tiles.map(({ tile, repo }) => (
-            <div key={tile.i} role="row">
+            <div key={tile.i} role="row" aria-rowindex={tile.y + 1}>
               <SignalTile
                 tile={tile}
                 repo={repo}
@@ -305,6 +319,8 @@ export function DashboardView({
                 onTileFocus={handleTileFocus}
                 onMove={handleMove}
                 onResize={handleResize}
+                rowIndex={tile.y + 1}
+                colIndex={tile.x + 1}
               />
             </div>
           ))}

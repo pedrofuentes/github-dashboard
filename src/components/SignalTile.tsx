@@ -48,6 +48,14 @@ export interface SignalTileProps {
   onMove?: (tileId: string, direction: MoveDirection) => void;
   /** Grows/shrinks this tile by one unit on a dimension (keyboard resize). */
   onResize?: (tileId: string, dimension: ResizeDimension, delta: number) => void;
+  /**
+   * 1-based grid column this tile occupies, surfaced as `aria-colindex` so the
+   * cell is announced at its true position (SC 1.3.1) instead of always
+   * "column 1". Omitted for standalone tiles outside a grid.
+   */
+  colIndex?: number;
+  /** 1-based grid row this tile occupies, surfaced as `aria-rowindex`. */
+  rowIndex?: number;
 }
 
 /** Left-accent colour per data lifecycle status (paired with `data-status`). */
@@ -92,6 +100,8 @@ export function SignalTile({
   onTileFocus,
   onMove,
   onResize,
+  colIndex,
+  rowIndex,
 }: SignalTileProps): ReactElement {
   const slice: SignalSlice | undefined = data[tile.signal];
   const status: SignalStatus = slice?.status ?? 'unknown';
@@ -106,6 +116,8 @@ export function SignalTile({
     <article
       role="gridcell"
       data-status={status}
+      aria-colindex={colIndex}
+      aria-rowindex={rowIndex}
       className={cn(
         'relative flex h-full flex-col gap-2 overflow-hidden rounded-md border border-l-4 border-slate-200 bg-white p-4 shadow-sm',
         STATUS_ACCENT[status],

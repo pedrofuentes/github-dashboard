@@ -55,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   validate-on-read and reconciliation against the current fleet (#109). Adds the
   pre-approved **react-grid-layout** dependency. See ADR-010.
 
+### Fixed
+
+- **Dashboard keyboard-grid a11y refinements** (M10 finalization): an arrow key
+  pressed on a tile at a grid boundary now calls `preventDefault()` even when
+  focus can't move, so the page no longer native-scrolls under the grid (#130).
+  Each tile also carries an accurate `aria-rowindex`/`aria-colindex` derived from
+  its grid geometry (and the grid exposes `aria-rowcount`/`aria-colcount`), so a
+  tile visually in column 2 is announced "column 2" instead of always "column 1"
+  (WCAG 2.1 SC 1.3.1) (#130, #132).
+
 ### Changed
 
 - The **Customize layout** toggle's active state now uses `sky-700` instead of
