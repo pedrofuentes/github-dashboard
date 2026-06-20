@@ -130,8 +130,8 @@ function CustomizeLayoutToggle({ editing, onToggle }: CustomizeLayoutToggleProps
       onClick={onToggle}
       className={
         editing
-          ? 'rounded-md border border-sky-600 bg-sky-600 px-3 py-1 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
-          : 'rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
+          ? 'rounded-md border border-sky-700 bg-sky-700 px-3 py-1 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700'
+          : 'rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700'
       }
     >
       {editing ? 'Done customizing' : 'Customize layout'}

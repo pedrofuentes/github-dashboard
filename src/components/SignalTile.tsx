@@ -13,6 +13,8 @@
 import type { ReactElement } from 'react';
 
 import { cn } from '../lib/cn';
+import { SIGNAL_LABELS } from '../lib/grid-keyboard';
+import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo, RepoSignalData, SignalSlice, SignalStatus } from '../types/fleet';
 import { CiCell } from './columns/CiCell';
@@ -31,17 +33,22 @@ export interface SignalTileProps {
   data: RepoSignalData;
   /** Opens the drill-down for the tile's repo. */
   onActivate: (repo: Repo) => void;
+  /**
+   * Whether this tile is the grid's single roving tab stop. When false the
+   * tile's controls are removed from the tab order (`tabindex="-1"`); arrow keys
+   * on the active tile move the roving focus (see {@link DashboardView}). Tiles
+   * rendered standalone default to active so they stay keyboard-reachable.
+   */
+  active?: boolean;
+  /** When true, render the keyboard Move/Resize controls (edit mode). */
+  editing?: boolean;
+  /** Notifies the grid which tile took focus, so it can track the tab stop. */
+  onTileFocus?: (tileId: string) => void;
+  /** Moves this tile by one grid unit (keyboard reorder). */
+  onMove?: (tileId: string, direction: MoveDirection) => void;
+  /** Grows/shrinks this tile by one unit on a dimension (keyboard resize). */
+  onResize?: (tileId: string, dimension: ResizeDimension, delta: number) => void;
 }
-
-/** Short, human-readable label for each signal. */
-const SIGNAL_LABELS: Record<TileSignalType, string> = {
-  ci: 'CI',
-  security: 'Security',
-  reviews: 'Reviews',
-  pullRequests: 'Pull requests',
-  issues: 'Issues',
-  stale: 'Stale',
-};
 
 /** Left-accent colour per data lifecycle status (paired with `data-status`). */
 const STATUS_ACCENT: Record<SignalStatus, string> = {
@@ -75,13 +82,29 @@ function SignalSummary({
   }
 }
 
-export function SignalTile({ tile, repo, data, onActivate }: SignalTileProps): ReactElement {
+export function SignalTile({
+  tile,
+  repo,
+  data,
+  onActivate,
+  active = true,
+  editing = false,
+  onTileFocus,
+  onMove,
+  onResize,
+}: SignalTileProps): ReactElement {
   const slice: SignalSlice | undefined = data[tile.signal];
   const status: SignalStatus = slice?.status ?? 'unknown';
   const signalLabel = SIGNAL_LABELS[tile.signal];
+  const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
+
+  // Roving tabindex: only the grid's active tile is in the tab order; the rest
+  // are reachable via the arrow keys handled by the grid (WAI-ARIA grid pattern).
+  const rovingTabIndex = active ? 0 : -1;
 
   return (
     <article
+      role="gridcell"
       data-status={status}
       className={cn(
         'relative flex h-full flex-col gap-2 overflow-hidden rounded-md border border-l-4 border-slate-200 bg-white p-4 shadow-sm',
@@ -99,12 +122,127 @@ export function SignalTile({ tile, repo, data, onActivate }: SignalTileProps): R
       <div className="relative z-10 text-sm text-slate-700">
         <SignalSummary signal={tile.signal} data={data} />
       </div>
+      {editing ? (
+        <TileControls
+          tileId={tile.i}
+          tileName={tileName}
+          tabIndex={rovingTabIndex}
+          onMove={onMove}
+          onResize={onResize}
+        />
+      ) : null}
       <button
         type="button"
+        data-tile-activate={tile.i}
+        tabIndex={rovingTabIndex}
         onClick={() => onActivate(repo)}
+        onFocus={() => onTileFocus?.(tile.i)}
         aria-label={`View ${signalLabel} details for ${repo.nameWithOwner}`}
         className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       />
     </article>
+  );
+}
+
+interface TileControlsProps {
+  tileId: string;
+  tileName: string;
+  tabIndex: number;
+  onMove?: (tileId: string, direction: MoveDirection) => void;
+  onResize?: (tileId: string, dimension: ResizeDimension, delta: number) => void;
+}
+
+/** Per-tile Move/Resize affordance — the keyboard equivalent of pointer drag. */
+function TileControls({
+  tileId,
+  tileName,
+  tabIndex,
+  onMove,
+  onResize,
+}: TileControlsProps): ReactElement {
+  return (
+    <div
+      role="group"
+      aria-label={`Reorder and resize ${tileName}`}
+      className="relative z-20 mt-auto flex flex-wrap gap-1 pt-2"
+    >
+      <ControlButton
+        label={`Move ${tileName} left`}
+        tabIndex={tabIndex}
+        onClick={() => onMove?.(tileId, 'left')}
+      >
+        ←
+      </ControlButton>
+      <ControlButton
+        label={`Move ${tileName} right`}
+        tabIndex={tabIndex}
+        onClick={() => onMove?.(tileId, 'right')}
+      >
+        →
+      </ControlButton>
+      <ControlButton
+        label={`Move ${tileName} up`}
+        tabIndex={tabIndex}
+        onClick={() => onMove?.(tileId, 'up')}
+      >
+        ↑
+      </ControlButton>
+      <ControlButton
+        label={`Move ${tileName} down`}
+        tabIndex={tabIndex}
+        onClick={() => onMove?.(tileId, 'down')}
+      >
+        ↓
+      </ControlButton>
+      <ControlButton
+        label={`Grow ${tileName} width`}
+        tabIndex={tabIndex}
+        onClick={() => onResize?.(tileId, 'width', 1)}
+      >
+        +W
+      </ControlButton>
+      <ControlButton
+        label={`Shrink ${tileName} width`}
+        tabIndex={tabIndex}
+        onClick={() => onResize?.(tileId, 'width', -1)}
+      >
+        −W
+      </ControlButton>
+      <ControlButton
+        label={`Grow ${tileName} height`}
+        tabIndex={tabIndex}
+        onClick={() => onResize?.(tileId, 'height', 1)}
+      >
+        +H
+      </ControlButton>
+      <ControlButton
+        label={`Shrink ${tileName} height`}
+        tabIndex={tabIndex}
+        onClick={() => onResize?.(tileId, 'height', -1)}
+      >
+        −H
+      </ControlButton>
+    </div>
+  );
+}
+
+interface ControlButtonProps {
+  label: string;
+  tabIndex: number;
+  onClick: () => void;
+  children: string;
+}
+
+function ControlButton({ label, tabIndex, onClick, children }: ControlButtonProps): ReactElement {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      tabIndex={tabIndex}
+      onClick={onClick}
+      className="dashboard-tile-control inline-flex h-7 min-w-7 items-center justify-center rounded border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+    >
+      <span aria-hidden="true">{children}</span>
+    </button>
   );
 }

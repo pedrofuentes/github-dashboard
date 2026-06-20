@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Keyboard-accessible reorder + resize** (M10 T4 — the WCAG 2.1 AA gate): the
+  dashboard tile arrangement is now a `role="grid"` with **roving-tabindex arrow
+  navigation** (a single tab stop; ←/→/↑/↓ move focus between tiles by their grid
+  position). In edit mode each tile exposes a **Move/Resize** control group — the
+  keyboard equivalent of T3's pointer drag — that nudges the tile one grid cell or
+  grows/shrinks it one unit, clamped to the 12-column grid and persisted
+  (debounced) like a pointer edit. Each change is announced via an
+  `aria-live="polite"` region (e.g. _"Moved CI · octo/a to column 4, row 1"_ /
+  _"Resized CI · octo/a to 4 by 3"_), focus returns to the operated tile, and (as
+  with pointer moves) keyboard moves don't animate under `prefers-reduced-motion`.
+  Tile activation (Enter/Space → drill-down) is unchanged (#112).
 - Dashboard **edit mode** (M10 T3): a **Customize layout** toggle (shown only in
   the dashboard view) enables react-grid-layout pointer **drag + resize** to
   rearrange and size tiles, persisted across sessions. Resize handles stay
@@ -34,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The **Customize layout** toggle's active state now uses `sky-700` instead of
+  `sky-600` so white label text meets the WCAG 2.1 AA 4.5:1 contrast minimum
+  (~5.93:1, up from ~4.1:1); its focus ring is bumped to `sky-700` to match
+  (#125).
 - `useDashboardLayout` now updates the in-memory layout immediately but
   **debounces** the `localStorage` write (~300 ms), so a react-grid-layout drag
   (which fires `onLayoutChange` many times per second) coalesces to a single
