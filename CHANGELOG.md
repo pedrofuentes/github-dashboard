@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Dashboard loading & error states**: the Dashboard view now mirrors the Grid
+  view's lifecycle handling — a reduced-motion-friendly **skeleton** of
+  placeholder tiles while your repositories load (instead of briefly flashing the
+  "No repositories to display." empty state), and an **error alert with a Retry
+  button** when the fetch fails (instead of stranding you on the empty state).
+  The states are threaded from the authenticated fleet panel and announced for
+  assistive tech (#120).
 - **Dashboard view screenshot** (M10 finalization): the README's _Dashboard
   view_ section now shows a real capture of the at-a-glance Dashboard — the
   pinned fleet summary above the glanceable per-(repo, signal) tiles — rendered
@@ -63,6 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Dashboard tile focus no longer throws on exotic ids**: restoring roving focus
+  to a tile interpolated the tile id (`owner/repo:signal`) straight into a
+  `querySelector`, so a repository name containing a CSS-selector metacharacter
+  (e.g. a quote) raised a `DOMException`. The lookup now wraps the id with
+  `CSS.escape` (#131).
 - **Dashboard layout no longer snaps back or loses a last-second drag** (M10
   finalization): when the fleet finished loading within the 300 ms persistence
   debounce window right after a drag, the layout reconcile read `localStorage`
