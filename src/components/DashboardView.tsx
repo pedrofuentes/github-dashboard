@@ -243,6 +243,9 @@ export function DashboardView({
         geometry.w === tile.w &&
         geometry.h === tile.h
       ) {
+        // Clamped geometry equals current — the tile is already at the grid
+        // boundary (or the delta was otherwise absorbed). Silently return: no
+        // layout update, no persistence write, no announcement.
         return;
       }
       setLayout(layout.map((entry) => (entry.i === tile.i ? { ...entry, ...geometry } : entry)));
