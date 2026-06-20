@@ -271,4 +271,46 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
   });
+
+  it('does not offer the customize-layout control in the grid view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /customize layout/i })).toBeNull();
+  });
+
+  it('offers an accessible customize-layout toggle only in the dashboard view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+
+    const customize = screen.getByRole('button', { name: /customize layout/i });
+    expect(customize).toHaveAttribute('aria-pressed', 'false');
+
+    // Returning to the grid hides the control again.
+    await user.click(screen.getByRole('button', { name: /grid/i }));
+    expect(screen.queryByRole('button', { name: /customize layout/i })).toBeNull();
+  });
+
+  it('enables drag + resize on the dashboard when customize layout is toggled on', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    // Static before editing.
+    expect(container.querySelector('.react-grid-item.react-draggable')).toBeNull();
+
+    const customize = screen.getByRole('button', { name: /customize layout/i });
+    await user.click(customize);
+
+    expect(customize).toHaveAttribute('aria-pressed', 'true');
+    expect(container.querySelector('.react-grid-item.react-draggable')).not.toBeNull();
+  });
 });
