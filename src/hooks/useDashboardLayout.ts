@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Repo } from '../types/fleet';
 import type { DashboardTile } from '../types/dashboard';
+import { debounce } from '../lib/debounce';
 import {
   DEFAULT_LAYOUT,
   loadDashboardLayout,
@@ -14,11 +15,14 @@ import {
   saveDashboardLayout,
 } from '../lib/dashboard-layout';
 
+/** Quiet period before a layout change is written to storage (drag-friendly). */
+const PERSIST_DEBOUNCE_MS = 300;
+
 /** Public shape returned by {@link useDashboardLayout}. */
 export interface UseDashboardLayoutResult {
   /** The current (loaded, validated, reconciled) tile layout. */
   layout: DashboardTile[];
-  /** Replaces the layout and persists it. */
+  /** Replaces the layout immediately and persists it (debounced). */
   setLayout: (next: DashboardTile[]) => void;
   /** Clears storage and restores the default layout. */
   reset: () => void;
@@ -56,15 +60,28 @@ export function useDashboardLayout(repos: Repo[]): UseDashboardLayoutResult {
     setLayoutState(loadDashboardLayout(repos));
   }, [fleetKey, repos]);
 
-  const setLayout = useCallback((next: DashboardTile[]) => {
-    setLayoutState(next);
-    saveDashboardLayout(next);
-  }, []);
+  // react-grid-layout fires onLayoutChange ~30-60x/s during a drag. Keep the
+  // in-memory layout immediate (responsive UI) but debounce the blocking
+  // localStorage write so a drag coalesces to a single persist (#116).
+  const persist = useMemo(() => debounce(saveDashboardLayout, PERSIST_DEBOUNCE_MS), []);
+
+  // Flush any pending write on unmount so the last change is never lost (e.g.
+  // the user switches views or closes the tab right after dragging a tile).
+  useEffect(() => () => persist.flush(), [persist]);
+
+  const setLayout = useCallback(
+    (next: DashboardTile[]) => {
+      setLayoutState(next);
+      persist(next);
+    },
+    [persist],
+  );
 
   const reset = useCallback(() => {
+    persist.cancel();
     resetDashboardLayout();
     setLayoutState(DEFAULT_LAYOUT(repos));
-  }, [repos]);
+  }, [persist, repos]);
 
   return { layout, setLayout, reset };
 }

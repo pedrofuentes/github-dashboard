@@ -17,3 +17,21 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Dashboard edit mode (M10 T3). When the layout is being customised, make the
+ * react-grid-layout resize handles persistently visible (not hover-only) and
+ * give the handle glyph a slate-600 stroke so the non-text affordance clears
+ * WCAG 1.4.11 (>=3:1) against the white tile surface — the library default
+ * (rgba(0,0,0,0.4) ~ 2.8:1, opacity 0 until hover) does not. Scoped under
+ * `.dashboard-editing` so it only applies while editing and always wins over
+ * the imported library stylesheet regardless of import order.
+ */
+.dashboard-editing .react-grid-item > .react-resizable-handle {
+  opacity: 1;
+}
+
+.dashboard-editing .react-grid-item > .react-resizable-handle::after {
+  border-right: 2px solid #475569;
+  border-bottom: 2px solid #475569;
+}
