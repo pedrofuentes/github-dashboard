@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Adopted **autonomous-kickoff template v2.1.0** (`docs/VERSION` → 2.1.0): upgraded the generic
+  operating docs and enabled **attended single-operator mode** (`MISSION.md` §7
+  `attended-single-operator: yes`) so the build runs now under the present operator without a
+  separate identity (Tier-1 only). See ADR-009.
 - Adopted the **autonomous-kickoff template v2.0.0** (`docs/VERSION` → 2.0.0): upgraded the
   generic operating docs and migrated `MISSION.md` to the tiered-authorization schema; added the
   **Blocked** / **Pending Decision** board statuses and a `security` label. Unattended runs now

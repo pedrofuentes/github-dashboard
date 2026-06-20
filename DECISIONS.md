@@ -27,6 +27,14 @@
 > privacy → state → deploy). They are reflected in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 > Later, unrelated decisions are added above this set, most recent first.
 
+### ADR-009: Adopt autonomous-kickoff template v2.1.0 — attended single-operator mode
+**Date**: 2026-06-19
+**Status**: Accepted
+**Context**: v2.0.0 made a distinct agent identity required (fail-closed Phase-0 self-check), which would otherwise block this solo project from running until a separate bot account/token is provisioned. Template v2.1.0 adds a guided identity walkthrough and an opt-in **attended single-operator mode**.
+**Decision**: Upgraded the three generic docs + `docs/VERSION` to v2.1.0 and set `MISSION.md` §7 `attended-single-operator: yes`, so the build can run **now** under @pedrofuentes while present — gate answers via the live CLI (the async board decision channel is untrusted), **Tier-1 only (no unattended Tier-2)**, all other v2 protections on. The machine-user identity (ADR-008) remains the documented upgrade path to fully-unattended operation.
+**Alternatives considered**: Provision the machine-user + token before resuming (deferred — heavier; not needed to run attended now); keep fail-closed and stay blocked (rejected — no reason to block an attended solo run).
+**Consequences**: Local, present-operator runs proceed without a second identity; overnight/unattended Tier-2 stays off until the distinct identity is provisioned. No change to merge config, authorization tiers, or untrusted-input rules.
+
 ### ADR-008: Adopt autonomous-kickoff template v2.0.0
 **Date**: 2026-06-19
 **Status**: Accepted
