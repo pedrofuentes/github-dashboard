@@ -61,11 +61,12 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  vi.clearAllTimers();
   vi.useRealTimers();
 });
 
 describe('DashboardView onLayoutChange wiring', () => {
-  it('persists a pointer layout change, debounced into a single write', () => {
+  it('persists a pointer layout change, debounced into a single write', async () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
     render(
@@ -81,8 +82,11 @@ describe('DashboardView onLayoutChange wiring', () => {
     // The write is deferred until the debounce settles.
     expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
 
-    act(() => {
-      vi.advanceTimersByTime(300);
+    // Async advance inside `act` so the debounced persist flushes
+    // deterministically before we assert (sync `advanceTimersByTime` can flake
+    // under parallel CI workers — see #122).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
     });
 
     const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
@@ -94,7 +98,7 @@ describe('DashboardView onLayoutChange wiring', () => {
     expect(first).toMatchObject({ x: 6, y: 4, w: 4, h: 3 });
   });
 
-  it('ignores a no-op onLayoutChange (no geometry change → no write)', () => {
+  it('ignores a no-op onLayoutChange (no geometry change → no write)', async () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
     render(
@@ -107,8 +111,8 @@ describe('DashboardView onLayoutChange wiring', () => {
     );
 
     fireEvent.click(screen.getByText('emit-unchanged'));
-    act(() => {
-      vi.advanceTimersByTime(300);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
     });
 
     expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());

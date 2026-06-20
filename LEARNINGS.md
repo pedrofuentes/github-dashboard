@@ -18,3 +18,8 @@
 ## Learnings
 
 <!-- Add new learnings below this line, most recent first -->
+
+### [2026-06-20] Fake timers + React 18 `act`: use `advanceTimersByTimeAsync` for debounced/async effects
+**Context**: PR #123 (M10 T3) opened green locally but its CI `quality` check failed: the #116 debounced-persist "coalesce" tests (`useDashboardLayout.test.ts`, `DashboardView.onLayoutChange.test.tsx`) asserted exactly one `localStorage` write after `act(() => { vi.advanceTimersByTime(300); })`, getting `expected [] to have a length of 1 but got 0`. They passed on the implementer's machine but flaked under Vitest's parallel CI workers (#122).
+**Learning**: Synchronously advancing fake timers (`vi.advanceTimersByTime`) inside a sync `act` does NOT reliably flush a debounced `setTimeout` callback (and any pending microtasks / React work it triggers) under React 18's scheduler — the timing is nondeterministic across machines and parallel workers. Use the async form inside an async act: `await act(async () => { await vi.advanceTimersByTimeAsync(MS); })`. Also balance and isolate fake-timer state per test (`vi.useFakeTimers()` in setup; `vi.clearAllTimers()` + `vi.useRealTimers()` in teardown/`finally`) so timer state never leaks across parallel workers. This is a test-determinism issue, not a product bug — the debounce semantics (300 ms, coalesce-to-one) were correct.
+**Impact**: For any test exercising a debounced or otherwise async effect through `act`, prefer `await act(async () => await vi.advanceTimersByTimeAsync(...))` over sync `advanceTimersByTime`. "Passes locally once" is not sufficient evidence — verify determinism by running `npm run test:coverage` several times consecutively and with `--sequence.shuffle`.

@@ -38,7 +38,7 @@ describe('useDashboardLayout', () => {
     expect(result.current.layout).toEqual(stored);
   });
 
-  it('updates layout state immediately but debounces the persisted write', () => {
+  it('updates layout state immediately but debounces the persisted write', async () => {
     vi.useFakeTimers();
     try {
       const repos = [makeRepo('octo/a')];
@@ -54,17 +54,21 @@ describe('useDashboardLayout', () => {
       // ...but the localStorage write is deferred until the debounce settles.
       expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
-      act(() => {
-        vi.advanceTimersByTime(300);
+      // Async advance inside `act` so the debounced persist and any pending
+      // React work flush deterministically before we assert (sync
+      // `advanceTimersByTime` can flake under parallel CI workers — see #122).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
       });
 
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
     } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
 
-  it('coalesces a burst of rapid setLayout calls into a single persisted write', () => {
+  it('coalesces a burst of rapid setLayout calls into a single persisted write', async () => {
     vi.useFakeTimers();
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
     try {
@@ -82,8 +86,11 @@ describe('useDashboardLayout', () => {
       // No write yet — every call restarted the debounce timer.
       expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
 
-      act(() => {
-        vi.advanceTimersByTime(300);
+      // Async advance inside `act` so the debounced persist flushes
+      // deterministically before we assert (sync `advanceTimersByTime` can flake
+      // under parallel CI workers — see #122).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
       });
 
       const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
@@ -92,6 +99,7 @@ describe('useDashboardLayout', () => {
       const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
       expect(persisted).toEqual(base.map((t) => ({ ...t, y: 10 })));
     } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
@@ -125,7 +133,7 @@ describe('useDashboardLayout', () => {
     expect(result.current.layout).toEqual(stored);
   });
 
-  it('reset restores the default layout and clears storage', () => {
+  it('reset restores the default layout and clears storage', async () => {
     vi.useFakeTimers();
     try {
       const repos = [makeRepo('octo/a')];
@@ -133,7 +141,9 @@ describe('useDashboardLayout', () => {
 
       act(() => {
         result.current.setLayout([]);
-        vi.advanceTimersByTime(300);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
       });
       expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
 
@@ -144,6 +154,7 @@ describe('useDashboardLayout', () => {
       expect(result.current.layout).toEqual(DEFAULT_LAYOUT(repos));
       expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
@@ -164,6 +175,7 @@ describe('useDashboardLayout', () => {
 
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
     } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
