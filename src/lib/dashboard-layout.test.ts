@@ -5,6 +5,8 @@ import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import {
   DEFAULT_LAYOUT,
   loadDashboardLayout,
+  MAX_STRING_LENGTH,
+  MAX_TILES,
   resetDashboardLayout,
   saveDashboardLayout,
   toRglLayout,
@@ -168,6 +170,121 @@ describe('loadDashboardLayout', () => {
     });
     expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
   });
+
+  it('falls back to the default on negative grid geometry', () => {
+    const repos = [makeRepo('octo/a')];
+    const tile: DashboardTile = {
+      i: 'octo/a:ci',
+      signal: 'ci',
+      repo: 'octo/a',
+      x: -1,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default on non-integer grid geometry', () => {
+    const repos = [makeRepo('octo/a')];
+    const tile = {
+      i: 'octo/a:ci',
+      signal: 'ci',
+      repo: 'octo/a',
+      x: 1.5,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default when grid geometry exceeds the grid bounds', () => {
+    const repos = [makeRepo('octo/a')];
+    const tile: DashboardTile = {
+      i: 'octo/a:ci',
+      signal: 'ci',
+      repo: 'octo/a',
+      x: 9999,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default when the stored array exceeds the tile cap', () => {
+    const repos = [makeRepo('octo/a')];
+    const oversized: DashboardTile[] = Array.from({ length: MAX_TILES + 1 }, (_, idx) => ({
+      i: `octo/a:ci`,
+      signal: 'ci',
+      repo: 'octo/a',
+      x: 0,
+      y: idx,
+      w: 3,
+      h: 2,
+      visible: true,
+    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(oversized));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default when a tile id does not equal `${repo}:${signal}`', () => {
+    const repos = [makeRepo('octo/a')];
+    const tile: DashboardTile = {
+      i: 'octo/a:security',
+      signal: 'ci',
+      repo: 'octo/a',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default when the repo string exceeds the length cap', () => {
+    const repos = [makeRepo('octo/a')];
+    const repo = `octo/${'a'.repeat(MAX_STRING_LENGTH)}`;
+    const tile: DashboardTile = {
+      i: `${repo}:ci`,
+      signal: 'ci',
+      repo,
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('preserves a stored tile with a non-default custom position through reconciliation', () => {
+    const repoA = makeRepo('octo/a');
+    const repoB = makeRepo('octo/b');
+    const stored = DEFAULT_LAYOUT([repoA, repoB]);
+    // Move repoA's first tile to a deliberately non-default slot so a
+    // "re-derive instead of preserve" regression would be detectable.
+    const customIndex = stored.findIndex((t) => t.repo === 'octo/a' && t.signal === 'ci');
+    const customTile: DashboardTile = { ...stored[customIndex], x: 6, y: 8 };
+    stored[customIndex] = customTile;
+    saveDashboardLayout(stored);
+
+    const reconciled = loadDashboardLayout([repoA, repoB]);
+    expect(reconciled).toEqual(stored);
+    const survived = reconciled.find((t) => t.i === customTile.i);
+    expect(survived).toEqual(customTile);
+    expect({ x: survived?.x, y: survived?.y }).toEqual({ x: 6, y: 8 });
+  });
 });
 
 describe('saveDashboardLayout', () => {
@@ -183,6 +300,14 @@ describe('saveDashboardLayout', () => {
       throw new Error('quota exceeded');
     });
     expect(() => saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]))).not.toThrow();
+  });
+
+  it('does not persist tiles that fail schema validation', () => {
+    const invalid: DashboardTile[] = [
+      { i: 'octo/a:ci', signal: 'ci', repo: 'octo/a', x: -5, y: 0, w: 3, h: 2, visible: true },
+    ];
+    saveDashboardLayout(invalid);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 
