@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard layout model + persistence (M10 foundation): a `DashboardTile` model,
+  a default one-tile-per-(repo, signal) layout on a 12-column grid, a
+  react-grid-layout mapping, and defensive `localStorage` persistence with
+  validate-on-read and reconciliation against the current fleet (#109). Adds the
+  pre-approved **react-grid-layout** dependency. See ADR-010.
+
 ### Changed
 
 - Adopted **autonomous-kickoff template v2.1.0** (`docs/VERSION` → 2.1.0): upgraded the generic
