@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Toolchain security upgrade**: bumped the dev/test/build toolchain to Vite
+  `^6.4.3` and Vitest `^3.2.6` (with `@vitest/coverage-v8` `^3.2.6` and
+  `@vitejs/plugin-react` `^4.7.0`), clearing the outstanding dev-only Dependabot
+  / `npm audit` advisories (the Vitest UI critical, the Vite `fs.deny`
+  path-traversal high/moderate, and the esbuild dev-server moderate). These are
+  build/test-time dependencies only — none ship in the static Pages bundle — and
+  `npm audit` now reports 0 vulnerabilities (#29).
+
 ### Added
 
 - **Dashboard loading & error states**: the Dashboard view now mirrors the Grid
