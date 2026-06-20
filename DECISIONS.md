@@ -22,7 +22,17 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
-### ADR-011: Import react-grid-layout's `Responsive` + `WidthProvider` from the `/legacy` subpath
+### ADR-012: Dashboard edit mode UX and custom `debounce` utility
+**Date**: 2026-06-20
+**Status**: Accepted
+**Context**: M10 T3 introduced a **Customize layout** toggle that enables react-grid-layout pointer drag + resize. Two design questions arose: (1) how to expose edit mode without polluting the main nav, and (2) how to prevent `localStorage` writes from janking the main thread during a drag (react-grid-layout fires `onLayoutChange` many times per second while dragging).
+**Decision**:
+- **Edit mode**: surfaced as a single `editing` boolean prop on `DashboardView`, controlled by a **Customize layout** toggle button rendered only when the Dashboard view is active (in `AuthenticatedFleetPanel`). The toggle is hidden in Grid/table view — editing is a dashboard-only concept. The edit state is intentionally **session-only** (not persisted): it defaults to off on every load so the dashboard is always read-only until the user explicitly enables editing, preventing accidental drags.
+- **Custom `debounce` utility** (`src/lib/debounce.ts`): a minimal trailing-edge debounce with `cancel` + `flush` controls was written in-house rather than pulling in lodash or a dedicated package. Reasons: (a) the project has a no-new-dependencies discipline for utility helpers — lodash is large and only `debounce` is needed; (b) the `flush` method is a first-class requirement (the hook must flush on unmount, `beforeunload`, and `visibilitychange → hidden` to survive a hard close); (c) a bespoke 70-line implementation is fully type-safe, tree-shaken to zero dead code, and covered by its own unit tests (`src/lib/debounce.test.ts`).
+**Alternatives considered**: `lodash.debounce` — rejected (new dependency, no flush in some versions, heavier); `useDeferredValue` / `useTransition` — rejected (React transitions are for rendering priorities, not for coalescing side-effect writes to storage); inline `setTimeout` in the hook — rejected (harder to test, no canonical flush/cancel surface).
+**Consequences**: Edit mode is always opt-in per session and never persisted, keeping accidental drag risk at zero. The custom debounce is a well-tested, single-purpose utility; if a second debounce use-case appears it can be reused as-is. Any future migration to a utility library would replace this file and its import sites.
+
+
 **Date**: 2026-06-20
 **Status**: Accepted
 **Context**: The M10 Dashboard view (T2) renders tiles on react-grid-layout using the width-measuring `WidthProvider` HOC and the flat-prop `Responsive` API (`layouts` / `breakpoints` / `cols` / `isDraggable` / `isResizable`). react-grid-layout `^2.2.3` is a rewrite: its package **root** export (resolved via the `exports` map under `moduleResolution: bundler` ESM) exposes only the new composable v2 API and **does not export `WidthProvider`** at all. The v1-compatible flat API (including `WidthProvider`) was moved to the `react-grid-layout/legacy` subpath. Importing `WidthProvider` from the root therefore fails both typecheck and runtime under our ESM/bundler resolution.
