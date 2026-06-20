@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -64,8 +64,12 @@ afterEach(() => {
 });
 
 describe('DashboardView onLayoutChange wiring', () => {
-  it('persists a pointer layout change, debounced into a single write', () => {
-    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+  it('persists a pointer layout change, debounced into a single write', async () => {
+    // Spy the persistence boundary (set up BEFORE render so the hook's debounced
+    // `saveDashboardLayout` reference resolves to the spy). Asserting the boundary
+    // is robust to platform differences in how `localStorage.setItem` is wrapped
+    // under the memory shim used on Node 20 CI (see #122, LEARNINGS.md).
+    const saveSpy = vi.spyOn(await import('../lib/dashboard-layout'), 'saveDashboardLayout');
     const { unmount } = render(
       <DashboardView
         repos={[makeRepo('octo/a')]}
@@ -77,21 +81,24 @@ describe('DashboardView onLayoutChange wiring', () => {
 
     fireEvent.click(screen.getByText('move-first-tile'));
     // The write is deferred until the debounce settles.
-    expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
+    expect(saveSpy).not.toHaveBeenCalled();
 
     // Unmount runs the hook's effect cleanup → `persist.flush()`, writing the
-    // single pending debounced change synchronously. This proves coalescing
-    // deterministically on every platform, without advancing fake timers inside
-    // `act` (that flaked on the Linux CI runner — see #122).
-    unmount();
+    // single pending debounced change. Await effects + microtasks so the flush
+    // settles deterministically under Node 20's async cleanup on CI as well as
+    // on newer local runtimes — never assert a synchronous spy count (see #122).
+    await act(async () => {
+      unmount();
+    });
 
-    const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
-    expect(writes).toHaveLength(1);
-    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-    const first = persisted.find(
-      (t: { i: string }) => t.i === DEFAULT_LAYOUT([makeRepo('octo/a')])[0].i,
-    );
-    expect(first).toMatchObject({ x: 6, y: 4, w: 4, h: 3 });
+    await waitFor(() => {
+      expect(saveSpy).toHaveBeenCalledTimes(1);
+      const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+      const first = persisted?.find(
+        (t: { i: string }) => t.i === DEFAULT_LAYOUT([makeRepo('octo/a')])[0].i,
+      );
+      expect(first).toMatchObject({ x: 6, y: 4, w: 4, h: 3 });
+    });
   });
 
   it('ignores a no-op onLayoutChange (no geometry change → no write)', () => {

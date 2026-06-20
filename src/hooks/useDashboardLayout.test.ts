@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Repo } from '../types/fleet';
@@ -61,8 +61,12 @@ describe('useDashboardLayout', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
   });
 
-  it('coalesces a burst of rapid setLayout calls into a single persisted write', () => {
-    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+  it('coalesces a burst of rapid setLayout calls into a single persisted write', async () => {
+    // Spy the persistence boundary (set up BEFORE render so the hook's debounced
+    // `saveDashboardLayout` reference resolves to the spy). Asserting the boundary
+    // is robust to platform differences in how `localStorage.setItem` is wrapped
+    // under the memory shim used on Node 20 CI (see #122, LEARNINGS.md).
+    const saveSpy = vi.spyOn(await import('../lib/dashboard-layout'), 'saveDashboardLayout');
     const repos = [makeRepo('octo/a')];
     const { result, unmount } = renderHook(() => useDashboardLayout(repos));
     const base = result.current.layout;
@@ -75,18 +79,24 @@ describe('useDashboardLayout', () => {
     });
 
     // No write yet — every call restarted the debounce timer.
-    expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
-    // Unmount flushes the single pending debounced write synchronously (effect
-    // cleanup → `persist.flush()`). This proves coalescing deterministically on
-    // every platform, without advancing fake timers inside `act` (see #122).
-    unmount();
+    // Unmount runs the effect cleanup → `persist.flush()`, writing the single
+    // pending debounced change. Await effects + microtasks so the flush settles
+    // deterministically under Node 20's async cleanup on CI as well as on newer
+    // local runtimes — never assert a synchronous spy count (see #122).
+    await act(async () => {
+      unmount();
+    });
 
-    const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
-    expect(writes).toHaveLength(1);
-    // The single write carries the final state.
-    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-    expect(persisted).toEqual(base.map((t) => ({ ...t, y: 10 })));
+    // Exactly one coalesced write, carrying the final state.
+    await waitFor(() => {
+      expect(saveSpy).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(
+        base.map((t) => ({ ...t, y: 10 })),
+      );
+    });
   });
 
   it('reconciles the layout when the fleet loads after mount (#115)', () => {
