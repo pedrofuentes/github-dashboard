@@ -62,12 +62,21 @@ export interface DashboardViewProps {
   onRepoActivate: (repo: Repo) => void;
   /** When true, the grid items can be dragged and resized with a pointer. */
   editing?: boolean;
+  /** True while the repo fetch is in flight (skeleton on first load). */
+  loading?: boolean;
+  /** Fetch error message; renders an alert + retry instead of the tiles. */
+  error?: string | null;
+  /** Retry handler for the error state. */
+  onRetry?: () => void;
 }
 
 interface ResolvedTile {
   tile: DashboardTile;
   repo: Repo;
 }
+
+/** Number of placeholder tiles shown while the fleet loads. */
+const SKELETON_TILES = 6;
 
 /** Reads the user's reduced-motion preference, defending against jsdom/SSR. */
 function prefersReducedMotion(): boolean {
@@ -82,6 +91,9 @@ export function DashboardView({
   getRowData,
   onRepoActivate,
   editing = false,
+  loading = false,
+  error = null,
+  onRetry,
 }: DashboardViewProps): ReactElement {
   const { layout, setLayout } = useDashboardLayout(repos);
 
@@ -174,7 +186,9 @@ export function DashboardView({
   // Restore roving focus to a tile by querying its activation control, avoiding
   // a ref map that would detach/re-attach (and drop focus) on every re-render.
   const focusTile = useCallback((tileId: string) => {
-    const control = gridRef.current?.querySelector<HTMLElement>(`[data-tile-activate="${tileId}"]`);
+    const control = gridRef.current?.querySelector<HTMLElement>(
+      `[data-tile-activate="${CSS.escape(tileId)}"]`,
+    );
     control?.focus();
   }, []);
 
@@ -268,6 +282,55 @@ export function DashboardView({
     },
     [layout, applyGeometry],
   );
+
+  if (error !== null) {
+    return (
+      <section aria-label="Dashboard" className="flex flex-col gap-3">
+        <div
+          role="alert"
+          className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          <p className="font-medium">Couldn’t load your dashboard.</p>
+          <p className="mt-1 text-red-700">{error}</p>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center rounded border border-red-300 px-3 py-1 text-sm font-medium text-red-800 hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (loading && tiles.length === 0) {
+    return (
+      <section aria-label="Dashboard">
+        <p role="status" aria-live="polite" className="sr-only">
+          Loading dashboard…
+        </p>
+        <div
+          aria-busy="true"
+          aria-hidden="true"
+          className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {Array.from({ length: SKELETON_TILES }, (_, index) => (
+            <div
+              key={`skeleton-${index}`}
+              className="flex h-40 flex-col gap-4 rounded-md border border-slate-200 bg-white p-4"
+            >
+              <span className="block h-3 w-24 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+              <span className="block h-8 w-16 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+              <span className="block h-3 w-32 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (tiles.length === 0) {
     return (
