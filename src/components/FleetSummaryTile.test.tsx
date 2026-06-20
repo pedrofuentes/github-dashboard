@@ -68,6 +68,7 @@ describe('FleetSummaryTile', () => {
     const region = screen.getByRole('region', { name: /fleet summary/i });
     expect(within(region).getByText(/2 failing CI/i)).toBeInTheDocument();
     expect(within(region).getByText(/1 security risk/i)).toBeInTheDocument();
+    expect(within(region).getByText(/1 over issue threshold/i)).toBeInTheDocument();
     expect(within(region).getByText(/3 awaiting your review/i)).toBeInTheDocument();
     expect(within(region).getByText(/1 stale/i)).toBeInTheDocument();
   });

@@ -116,6 +116,32 @@ describe('summarizeFleetHealth', () => {
     expect(summary.reviewRequested).toBe(5);
   });
 
+  it('buckets a repo with multiple broken signals exactly once', () => {
+    const rows: RepoSignalData[] = [
+      {
+        ci: { status: 'ready', conclusion: 'failure' },
+        security: { status: 'ready', grade: 'D' },
+      },
+    ];
+    const summary = summarizeFleetHealth(rows);
+    expect(summary.total).toBe(1);
+    expect(summary.broken).toBe(1);
+    expect(summary.failingCi).toBe(1);
+    expect(summary.securityRisk).toBe(1);
+  });
+
+  it('ignores a non-finite review/stale count (NaN never leaks into the rollup)', () => {
+    const rows: RepoSignalData[] = [
+      {
+        reviews: { status: 'ready', requestedCount: Number.NaN },
+        stale: { status: 'ready', staleCount: Number.NaN },
+      },
+    ];
+    const summary = summarizeFleetHealth(rows);
+    expect(summary.reviewRequested).toBe(0);
+    expect(summary.staleRepos).toBe(0);
+  });
+
   it('accepts any iterable of signal data (e.g. a Map values iterator)', () => {
     const map = new Map<string, RepoSignalData>([
       ['octo/a', { ci: { status: 'ready', conclusion: 'failure' } }],

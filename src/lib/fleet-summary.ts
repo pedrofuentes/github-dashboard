@@ -42,18 +42,19 @@ export interface FleetHealthSummary {
 }
 
 /** D–F grades are the "security risk" band (matches the SecurityCell styling). */
-const RISK_GRADES: ReadonlySet<NonNullable<RepoSignalData['security']>['grade']> = new Set([
-  'D',
-  'E',
-  'F',
-]);
+const RISK_GRADES: ReadonlySet<NonNullable<NonNullable<RepoSignalData['security']>['grade']>> =
+  new Set(['D', 'E', 'F']);
 
 function hasFailingCi(data: RepoSignalData): boolean {
   return data.ci?.status === 'ready' && data.ci.conclusion === 'failure';
 }
 
 function hasSecurityRisk(data: RepoSignalData): boolean {
-  return data.security?.status === 'ready' && RISK_GRADES.has(data.security.grade);
+  if (data.security?.status !== 'ready') {
+    return false;
+  }
+  const { grade } = data.security;
+  return grade !== undefined && RISK_GRADES.has(grade);
 }
 
 function hasIssuesOverThreshold(data: RepoSignalData): boolean {
@@ -65,11 +66,19 @@ function hasSecurityWarning(data: RepoSignalData): boolean {
 }
 
 function reviewRequestedCount(data: RepoSignalData): number {
-  return data.reviews?.status === 'ready' ? (data.reviews.requestedCount ?? 0) : 0;
+  if (data.reviews?.status !== 'ready') {
+    return 0;
+  }
+  const count = data.reviews.requestedCount;
+  return Number.isFinite(count) ? (count as number) : 0;
 }
 
 function staleCount(data: RepoSignalData): number {
-  return data.stale?.status === 'ready' ? (data.stale.staleCount ?? 0) : 0;
+  if (data.stale?.status !== 'ready') {
+    return 0;
+  }
+  const count = data.stale.staleCount;
+  return Number.isFinite(count) ? (count as number) : 0;
 }
 
 /** Buckets a single repo's signals into its worst-first health band. */
