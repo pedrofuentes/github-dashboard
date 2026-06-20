@@ -192,4 +192,83 @@ describe('App', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(trigger).toHaveFocus();
   });
+
+  async function authenticateWithRepos(
+    user: ReturnType<typeof userEvent.setup>,
+    repos: Repo[],
+  ): Promise<void> {
+    mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+    mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
+    await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByText(/authenticated as octocat/i);
+  }
+
+  it('offers an accessible Grid/Dashboard view toggle once authenticated', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    const toggle = screen.getByRole('group', { name: /view/i });
+    expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+  });
+
+  it('defaults to the grid (table) view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+  });
+
+  it('switches between the grid and dashboard views', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /grid/i }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+  });
+
+  it('persists the selected view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    expect(localStorage.getItem('fleet:view')).toBe('dashboard');
+  });
+
+  it('starts in the dashboard view when it was previously persisted', async () => {
+    localStorage.setItem('fleet:view', 'dashboard');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('opens the drill-down drawer from a dashboard tile', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    const tile = screen.getAllByRole('button', {
+      name: /view .* details for octo\/hello-world/i,
+    })[0];
+    await user.click(tile);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
 });

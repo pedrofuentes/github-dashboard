@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
 import { TokenInput } from './components/TokenInput';
@@ -8,6 +9,8 @@ import { AuthProvider } from './hooks/AuthProvider';
 import { useAuth } from './hooks/useAuth';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
+import { loadViewPreference, saveViewPreference } from './lib/view-preference';
+import type { FleetView } from './lib/view-preference';
 import type { AuthUser } from './types/auth';
 import type { Repo } from './types/fleet';
 
@@ -61,22 +64,32 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+  const [view, setView] = useState<FleetView>(loadViewPreference);
 
   // Stable callbacks so the memoised grid rows keep shallow-equal props and do
   // not all re-render when the drawer opens or closes.
   const handleRepoActivate = useCallback((repo: Repo) => setSelectedRepo(repo), []);
   const handleCloseDrawer = useCallback(() => setSelectedRepo(null), []);
+  const handleViewChange = useCallback((next: FleetView) => {
+    setView(next);
+    saveViewPreference(next);
+  }, []);
 
   return (
-    <>
-      <FleetGrid
-        repos={repos}
-        getRowData={getRowData}
-        loading={status === 'loading'}
-        error={status === 'error' ? error : null}
-        onRetry={reload}
-        onRepoActivate={handleRepoActivate}
-      />
+    <div className="flex flex-col gap-4">
+      <ViewToggle view={view} onChange={handleViewChange} />
+      {view === 'dashboard' ? (
+        <DashboardView repos={repos} getRowData={getRowData} onRepoActivate={handleRepoActivate} />
+      ) : (
+        <FleetGrid
+          repos={repos}
+          getRowData={getRowData}
+          loading={status === 'loading'}
+          error={status === 'error' ? error : null}
+          onRetry={reload}
+          onRepoActivate={handleRepoActivate}
+        />
+      )}
       {selectedRepo !== null ? (
         <DrillDownDrawer
           repo={selectedRepo}
@@ -84,7 +97,46 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
           onClose={handleCloseDrawer}
         />
       ) : null}
-    </>
+    </div>
+  );
+}
+
+interface ViewToggleProps {
+  view: FleetView;
+  onChange: (view: FleetView) => void;
+}
+
+const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
+  { value: 'grid', label: 'Grid' },
+  { value: 'dashboard', label: 'Dashboard' },
+];
+
+function ViewToggle({ view, onChange }: ViewToggleProps): ReactElement {
+  return (
+    <div
+      role="group"
+      aria-label="View mode"
+      className="inline-flex w-fit rounded-md border border-slate-300 bg-white p-0.5"
+    >
+      {VIEW_OPTIONS.map((option) => {
+        const isActive = view === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onChange(option.value)}
+            className={
+              isActive
+                ? 'rounded px-3 py-1 text-sm font-medium bg-slate-900 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
+                : 'rounded px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600'
+            }
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

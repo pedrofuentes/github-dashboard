@@ -53,3 +53,21 @@ function ensureWebStorage(name: 'localStorage' | 'sessionStorage'): void {
 
 ensureWebStorage('localStorage');
 ensureWebStorage('sessionStorage');
+
+/**
+ * `ResizeObserver` polyfill for the jsdom environment.
+ *
+ * jsdom does not implement `ResizeObserver`, but react-grid-layout's
+ * `WidthProvider` instantiates one to track its container width. The shim is a
+ * no-op observer (jsdom reports a 0px layout anyway), enough to let the grid
+ * mount in component tests without throwing.
+ */
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+if (typeof (globalThis as Record<string, unknown>).ResizeObserver === 'undefined') {
+  (globalThis as Record<string, unknown>).ResizeObserver = ResizeObserverStub;
+}

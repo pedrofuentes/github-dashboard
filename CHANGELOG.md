@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- At-a-glance **Dashboard view** (M10): a new tile arrangement that renders one
+  card per (repo, signal) on react-grid-layout, reusing the existing per-signal
+  cells (icon + colour + text, never colour alone) with per-status states
+  (loading / error / unknown / ready) and a status accent. Each tile is
+  keyboard-activatable and opens the same drill-down drawer as the grid. An
+  accessible **Grid / Dashboard** view toggle (persisted in `localStorage` under
+  `fleet:view`, defaulting to the table grid) switches between the two. This
+  increment is read-only — drag, resize and edit mode arrive in later M10 tasks
+  (#110). See ADR-011.
 - Dashboard layout model + persistence (M10 foundation): a `DashboardTile` model,
   a default one-tile-per-(repo, signal) layout on a 12-column grid, a
   react-grid-layout mapping, and defensive `localStorage` persistence with
@@ -17,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `useDashboardLayout` now re-reconciles the persisted layout against the fleet
+  when the set of repos changes after mount (e.g. repos that load asynchronously),
+  using a stable fleet key so unrelated re-renders don't churn the layout (#115).
 - Adopted **autonomous-kickoff template v2.1.0** (`docs/VERSION` → 2.1.0): upgraded the generic
   operating docs and enabled **attended single-operator mode** (`MISSION.md` §7
   `attended-single-operator: yes`) so the build runs now under the present operator without a
