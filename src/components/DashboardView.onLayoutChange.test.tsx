@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,15 +61,12 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
-  vi.clearAllTimers();
-  vi.useRealTimers();
 });
 
 describe('DashboardView onLayoutChange wiring', () => {
-  it('persists a pointer layout change, debounced into a single write', async () => {
-    vi.useFakeTimers();
+  it('persists a pointer layout change, debounced into a single write', () => {
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
-    render(
+    const { unmount } = render(
       <DashboardView
         repos={[makeRepo('octo/a')]}
         getRowData={emptyData}
@@ -82,12 +79,11 @@ describe('DashboardView onLayoutChange wiring', () => {
     // The write is deferred until the debounce settles.
     expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
 
-    // Async advance inside `act` so the debounced persist flushes
-    // deterministically before we assert (sync `advanceTimersByTime` can flake
-    // under parallel CI workers — see #122).
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
-    });
+    // Unmount runs the hook's effect cleanup → `persist.flush()`, writing the
+    // single pending debounced change synchronously. This proves coalescing
+    // deterministically on every platform, without advancing fake timers inside
+    // `act` (that flaked on the Linux CI runner — see #122).
+    unmount();
 
     const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
     expect(writes).toHaveLength(1);
@@ -98,10 +94,9 @@ describe('DashboardView onLayoutChange wiring', () => {
     expect(first).toMatchObject({ x: 6, y: 4, w: 4, h: 3 });
   });
 
-  it('ignores a no-op onLayoutChange (no geometry change → no write)', async () => {
-    vi.useFakeTimers();
+  it('ignores a no-op onLayoutChange (no geometry change → no write)', () => {
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
-    render(
+    const { unmount } = render(
       <DashboardView
         repos={[makeRepo('octo/a')]}
         getRowData={emptyData}
@@ -111,9 +106,10 @@ describe('DashboardView onLayoutChange wiring', () => {
     );
 
     fireEvent.click(screen.getByText('emit-unchanged'));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
-    });
+
+    // Even flushing on unmount writes nothing: a no-op change never scheduled a
+    // persist (deterministic; no fake-timer advance needed).
+    unmount();
 
     expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();

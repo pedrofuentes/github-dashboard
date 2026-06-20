@@ -38,70 +38,55 @@ describe('useDashboardLayout', () => {
     expect(result.current.layout).toEqual(stored);
   });
 
-  it('updates layout state immediately but debounces the persisted write', async () => {
-    vi.useFakeTimers();
-    try {
-      const repos = [makeRepo('octo/a')];
-      const { result } = renderHook(() => useDashboardLayout(repos));
+  it('updates layout state immediately but debounces the persisted write', () => {
+    const repos = [makeRepo('octo/a')];
+    const { result, unmount } = renderHook(() => useDashboardLayout(repos));
 
-      const next = result.current.layout.map((t) => ({ ...t, visible: false }));
-      act(() => {
-        result.current.setLayout(next);
-      });
+    const next = result.current.layout.map((t) => ({ ...t, visible: false }));
+    act(() => {
+      result.current.setLayout(next);
+    });
 
-      // State is responsive (synchronous) for the UI...
-      expect(result.current.layout).toEqual(next);
-      // ...but the localStorage write is deferred until the debounce settles.
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    // State is responsive (synchronous) for the UI...
+    expect(result.current.layout).toEqual(next);
+    // ...but the localStorage write is deferred until the debounce settles.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 
-      // Async advance inside `act` so the debounced persist and any pending
-      // React work flush deterministically before we assert (sync
-      // `advanceTimersByTime` can flake under parallel CI workers — see #122).
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(300);
-      });
+    // Unmount runs the effect cleanup → `persist.flush()`, which writes the
+    // pending change synchronously. Asserting via this flush path proves the
+    // debounced write eventually lands with the final state — without advancing
+    // fake timers inside `act` (that flaked on the Linux CI runner — see #122).
+    unmount();
 
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
   });
 
-  it('coalesces a burst of rapid setLayout calls into a single persisted write', async () => {
-    vi.useFakeTimers();
+  it('coalesces a burst of rapid setLayout calls into a single persisted write', () => {
     const setItemSpy = vi.spyOn(localStorage, 'setItem');
-    try {
-      const repos = [makeRepo('octo/a')];
-      const { result } = renderHook(() => useDashboardLayout(repos));
-      const base = result.current.layout;
+    const repos = [makeRepo('octo/a')];
+    const { result, unmount } = renderHook(() => useDashboardLayout(repos));
+    const base = result.current.layout;
 
-      // Simulate react-grid-layout firing onLayoutChange many times during a drag.
-      act(() => {
-        for (let y = 1; y <= 10; y += 1) {
-          result.current.setLayout(base.map((t) => ({ ...t, y })));
-        }
-      });
+    // Simulate react-grid-layout firing onLayoutChange many times during a drag.
+    act(() => {
+      for (let y = 1; y <= 10; y += 1) {
+        result.current.setLayout(base.map((t) => ({ ...t, y })));
+      }
+    });
 
-      // No write yet — every call restarted the debounce timer.
-      expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
+    // No write yet — every call restarted the debounce timer.
+    expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
 
-      // Async advance inside `act` so the debounced persist flushes
-      // deterministically before we assert (sync `advanceTimersByTime` can flake
-      // under parallel CI workers — see #122).
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(300);
-      });
+    // Unmount flushes the single pending debounced write synchronously (effect
+    // cleanup → `persist.flush()`). This proves coalescing deterministically on
+    // every platform, without advancing fake timers inside `act` (see #122).
+    unmount();
 
-      const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
-      expect(writes).toHaveLength(1);
-      // The single write carries the final state.
-      const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-      expect(persisted).toEqual(base.map((t) => ({ ...t, y: 10 })));
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
+    const writes = setItemSpy.mock.calls.filter(([key]) => key === STORAGE_KEY);
+    expect(writes).toHaveLength(1);
+    // The single write carries the final state.
+    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    expect(persisted).toEqual(base.map((t) => ({ ...t, y: 10 })));
   });
 
   it('reconciles the layout when the fleet loads after mount (#115)', () => {
@@ -133,30 +118,21 @@ describe('useDashboardLayout', () => {
     expect(result.current.layout).toEqual(stored);
   });
 
-  it('reset restores the default layout and clears storage', async () => {
-    vi.useFakeTimers();
-    try {
-      const repos = [makeRepo('octo/a')];
-      const { result } = renderHook(() => useDashboardLayout(repos));
+  it('reset restores the default layout and clears storage', () => {
+    const repos = [makeRepo('octo/a')];
+    // Simulate a previously persisted (non-default) layout in storage, so we can
+    // assert reset clears it — no fake-timer advance needed to set this up.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
 
-      act(() => {
-        result.current.setLayout([]);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(300);
-      });
-      expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    const { result } = renderHook(() => useDashboardLayout(repos));
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
 
-      act(() => {
-        result.current.reset();
-      });
+    act(() => {
+      result.current.reset();
+    });
 
-      expect(result.current.layout).toEqual(DEFAULT_LAYOUT(repos));
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
+    expect(result.current.layout).toEqual(DEFAULT_LAYOUT(repos));
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it('flushes a pending debounced write on unmount so the last change is not lost', () => {
