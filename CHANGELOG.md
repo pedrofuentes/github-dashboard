@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Notifications Inbox** (M11): a third top-level view — a single, **newest-first**,
+  triageable list that gathers everything across your fleet that needs attention
+  into one queue. It aggregates **five actionable signals** — failing CI runs,
+  pull requests awaiting **your** review, new outside-contributor PRs, new security
+  alerts, and stale PRs/issues — as discrete, recency-ordered items, so a red build
+  on one repo and a first-time-contributor PR on another are no longer buried in
+  per-repo cells. Full **per-device triage** rides on top: mark items read (open one
+  or "mark all"), **dismiss** / restore, a **"new since last visit"** highlight, and
+  an **unread badge** on the **Grid / Dashboard / Inbox** view toggle. **Filters**
+  (by repo, by kind, unread-only, show-dismissed) compose client-side, and the view
+  meets WCAG 2.1 AA in both themes (meaning never by colour alone, keyboard-operable
+  rows and dismiss controls, links gated to `github.com`). Crucially it is a **pure
+  transform of data the app already fetches** — it adds **no new GitHub token
+  permission, no new API request or datasource, and never writes back to GitHub** —
+  and triage is stored per-device in `localStorage` (`fleet:inbox-triage`,
+  Zod-validated, capped and pruned). See ADR-017, ADR-018, ADR-019.
 - **Dark theme + Light / Dark / System toggle** (dark-theme milestone): the whole
   app can now render in a GitHub-dark palette as well as the original light one.
   A segmented **Theme** control (`role="radiogroup"`, top-right of the header) lets
