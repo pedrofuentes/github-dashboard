@@ -237,4 +237,30 @@ describe('InboxView triage announcements (AC-14)', () => {
     expect(restore).toHaveBeenCalledWith('ci:octo/app:8');
     expect(screen.getByText('Restored')).toBeInTheDocument();
   });
+
+  it('re-announces a repeated triage action whose text is identical so screen readers hear it again (#245)', async () => {
+    const user = userEvent.setup();
+    const dismiss = vi.fn();
+    // Two already-read items: dismissing each announces the SAME "Dismissed"
+    // string, and because both are read the unread `role="status"` count never
+    // changes — so the polite triage region is the ONLY confirmation channel.
+    const items = [
+      makeItem({ id: 'ci:octo/app:1', title: 'First failure', read: true }),
+      makeItem({ id: 'ci:octo/app:2', title: 'Second failure', read: true }),
+    ];
+    render(<InboxView inbox={inboxResult({ items, unreadCount: 0, dismiss })} repos={REPOS} />);
+
+    await user.click(screen.getByRole('button', { name: /dismiss first failure/i }));
+    const liveRegion = screen.getByText('Dismissed');
+    const afterFirst = liveRegion.textContent;
+
+    await user.click(screen.getByRole('button', { name: /dismiss second failure/i }));
+    const afterSecond = liveRegion.textContent;
+
+    // The human-readable confirmation must still be present...
+    expect(liveRegion).toHaveTextContent('Dismissed');
+    // ...but the live region's text must actually MUTATE between the two
+    // identical announcements, or many screen readers skip the 2nd re-announce.
+    expect(afterSecond).not.toEqual(afterFirst);
+  });
 });
