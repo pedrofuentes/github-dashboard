@@ -19,11 +19,16 @@ interface Presentation {
 }
 
 const PRESENTATION: Record<Conclusion, Presentation> = {
-  success: { icon: '✓', text: 'Passing', label: 'CI passing', className: 'text-emerald-700' },
-  failure: { icon: '✗', text: 'Failing', label: 'CI failing', className: 'text-red-700' },
-  in_progress: { icon: '⟳', text: 'Running', label: 'CI running', className: 'text-amber-700' },
-  queued: { icon: '⟳', text: 'Queued', label: 'CI queued', className: 'text-amber-700' },
-  none: { icon: '–', text: 'No runs', label: 'CI no runs', className: 'text-slate-500' },
+  success: { icon: '✓', text: 'Passing', label: 'CI passing', className: 'text-accent-success' },
+  failure: { icon: '✗', text: 'Failing', label: 'CI failing', className: 'text-accent-failure' },
+  in_progress: {
+    icon: '⟳',
+    text: 'Running',
+    label: 'CI running',
+    className: 'text-accent-warning',
+  },
+  queued: { icon: '⟳', text: 'Queued', label: 'CI queued', className: 'text-accent-warning' },
+  none: { icon: '–', text: 'No runs', label: 'CI no runs', className: 'text-accent-neutral' },
 };
 
 /** True only for `https://github.com` or a `*.github.com` subdomain. */
@@ -42,7 +47,7 @@ function isGitHubUrl(url: string): boolean {
 /** Neutral placeholder: a decorative dash plus screen-reader-only text. */
 function Neutral({ srLabel, title }: { srLabel: string; title?: string }) {
   return (
-    <span className="inline-flex items-center justify-center text-slate-500" title={title}>
+    <span className="inline-flex items-center justify-center text-text-muted" title={title}>
       <span aria-hidden="true">—</span>
       <span className="sr-only">{srLabel}</span>
     </span>
@@ -64,7 +69,7 @@ export function CiCell({ slice }: CiCellProps) {
       <span className="inline-flex items-center justify-center">
         <span
           aria-hidden="true"
-          className="h-3 w-12 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          className="h-3 w-12 animate-pulse rounded bg-border motion-reduce:animate-none"
         />
         <span className="sr-only">Loading CI status</span>
       </span>
@@ -94,7 +99,7 @@ export function CiCell({ slice }: CiCellProps) {
         target="_blank"
         rel="noreferrer noopener"
         title="View latest CI run"
-        className="inline-flex rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+        className="inline-flex rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
       >
         {status}
       </a>
