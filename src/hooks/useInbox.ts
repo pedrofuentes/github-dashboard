@@ -21,7 +21,7 @@
  * Triage mutations persist through {@link saveInboxTriage}, pruned against the
  * live derived ids so storage cannot grow unbounded (§3.3).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { deriveInboxItems } from '../lib/inbox/derive';
 import {
@@ -111,58 +111,78 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
     [visitBaseline],
   );
 
-  // Prune against the live ids on every write so a resolved run / merged PR /
-  // fixed alert forgets its triage mark — storage stays bounded (§3.3).
-  const persistTriage = useCallback(
-    (next: InboxTriage) => {
-      const pruned = pruneTriage(next, liveIds);
-      saveInboxTriage(pruned);
-      setTriage(pruned);
+  // Apply a pure triage mutation through a functional state update so several
+  // actions batched into one React commit compose against the latest state
+  // instead of a shared pre-batch closure — no write can clobber another in the
+  // same commit. Each result is pruned against the live ids so a resolved run /
+  // merged PR / fixed alert forgets its triage mark and storage stays bounded
+  // (§3.3). A mutation that returns `prev` unchanged is a no-op: React bails out,
+  // so there is no re-render and no persist (preserving the dedupe guards).
+  const applyTriage = useCallback(
+    (mutate: (prev: InboxTriage) => InboxTriage) => {
+      setTriage((prev) => {
+        const next = mutate(prev);
+        return next === prev ? prev : pruneTriage(next, liveIds);
+      });
     },
     [liveIds],
   );
 
+  // Persist the committed (already-pruned) triage once per change, after render.
+  // Keeping the write out of the `setTriage` updater leaves the updater pure, so
+  // React StrictMode's double-invocation can't double-write. The mount run is
+  // skipped (the ref starts equal to the loaded value), so merely opening the
+  // Inbox never writes — only real triage actions persist (§3.1).
+  const lastPersisted = useRef(triage);
+  useEffect(() => {
+    if (triage === lastPersisted.current) {
+      return;
+    }
+    lastPersisted.current = triage;
+    saveInboxTriage(triage);
+  }, [triage]);
+
   const markRead = useCallback(
     (id: string) => {
-      if (triage.readIds.includes(id)) {
-        return;
-      }
-      persistTriage({ ...triage, readIds: [...triage.readIds, id] });
+      applyTriage((prev) =>
+        prev.readIds.includes(id) ? prev : { ...prev, readIds: [...prev.readIds, id] },
+      );
     },
-    [triage, persistTriage],
+    [applyTriage],
   );
 
   const dismiss = useCallback(
     (id: string) => {
-      if (triage.dismissedIds.includes(id)) {
-        return;
-      }
-      persistTriage({ ...triage, dismissedIds: [...triage.dismissedIds, id] });
+      applyTriage((prev) =>
+        prev.dismissedIds.includes(id)
+          ? prev
+          : { ...prev, dismissedIds: [...prev.dismissedIds, id] },
+      );
     },
-    [triage, persistTriage],
+    [applyTriage],
   );
 
   const restore = useCallback(
     (id: string) => {
-      if (!triage.dismissedIds.includes(id)) {
-        return;
-      }
-      persistTriage({
-        ...triage,
-        dismissedIds: triage.dismissedIds.filter((dismissedId) => dismissedId !== id),
-      });
+      applyTriage((prev) =>
+        prev.dismissedIds.includes(id)
+          ? { ...prev, dismissedIds: prev.dismissedIds.filter((dismissedId) => dismissedId !== id) }
+          : prev,
+      );
     },
-    [triage, persistTriage],
+    [applyTriage],
   );
 
   const markAllRead = useCallback(() => {
-    const newlyRead = liveIds.filter((id) => !triage.readIds.includes(id));
-    persistTriage({ ...triage, readIds: [...triage.readIds, ...newlyRead] });
-  }, [triage, liveIds, persistTriage]);
+    applyTriage((prev) => ({
+      ...prev,
+      readIds: [...prev.readIds, ...liveIds.filter((id) => !prev.readIds.includes(id))],
+    }));
+  }, [applyTriage, liveIds]);
 
   const markAllSeen = useCallback(() => {
-    persistTriage({ ...triage, lastVisitedAt: new Date().toISOString() });
-  }, [triage, persistTriage]);
+    applyTriage((prev) => ({ ...prev, lastVisitedAt: new Date().toISOString() }));
+  }, [applyTriage]);
 
   const setFilters = useCallback((patch: Partial<InboxFilters>) => {
     setFiltersState((previous) => ({ ...previous, ...patch }));
