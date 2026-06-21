@@ -124,6 +124,14 @@ export function DrillDownDrawer({ repo, data, onClose }: DrillDownDrawerProps) {
   const ci = data.ci;
   const ciRunHref = safeGitHubHref(ci?.latestRunUrl);
   const failingCount = ci?.failingCount ?? 0;
+  // GitHub exposes workflow conclusions beyond our 5-member enum (cancelled,
+  // skipped, timed_out, action_required, …). Guard the label lookup so an
+  // unexpected value falls back to the neutral "No runs" label instead of
+  // indexing to `undefined` (rendering "Conclusion: undefined") — the same
+  // unguarded `CONCLUSION[...]` lookup fixed for CiTileBody in #185 (#205).
+  const ciConclusion = ci?.conclusion ?? 'none';
+  const ciConclusionLabel =
+    ciConclusion in CONCLUSION_LABEL ? CONCLUSION_LABEL[ciConclusion] : CONCLUSION_LABEL.none;
 
   const security = data.security;
   const securityCounts = security?.counts;
@@ -183,7 +191,7 @@ export function DrillDownDrawer({ repo, data, onClose }: DrillDownDrawerProps) {
 
         <div className="mt-4 flex flex-col">
           <SignalDetail title="CI / Actions" status={ci?.status ?? 'unknown'}>
-            <p>{`Conclusion: ${CONCLUSION_LABEL[ci?.conclusion ?? 'none']}`}</p>
+            <p>{`Conclusion: ${ciConclusionLabel}`}</p>
             <p>{`${failingCount} failing ${pluralize(failingCount, 'workflow')}`}</p>
             {ciRunHref !== undefined ? (
               <a
