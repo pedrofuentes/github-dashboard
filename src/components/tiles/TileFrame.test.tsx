@@ -2,12 +2,24 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo } from '../../types/fleet';
 import { TileFrame } from './TileFrame';
 
 function makeRepo(nameWithOwner = 'octo/a'): Repo {
   const [owner, name] = nameWithOwner.split('/');
   return { nameWithOwner, owner, name, isPrivate: false };
+}
+
+function salience(overrides: Partial<TileSalience> = {}): TileSalience {
+  return {
+    tier: 'calm',
+    edgeTone: 'neutral',
+    tint: false,
+    glow: false,
+    actionableTab: false,
+    ...overrides,
+  };
 }
 
 function renderFrame(overrides: Partial<React.ComponentProps<typeof TileFrame>> = {}) {
@@ -39,11 +51,16 @@ describe('TileFrame — shell anatomy', () => {
     expect(screen.getByText('CI')).toBeInTheDocument();
   });
 
-  it('renders a top accent bar tinted with the resolved tone', () => {
+  it('paints the accent bar from the salience edge tone, not the lifecycle tone', () => {
+    // The bar is salience-driven now (redesign §3): a calm default leaves it
+    // neutral even when the lifecycle tone is `failure`; only an escalated
+    // salience colours + thickens it. This keeps the bar a redundant salience
+    // channel (colour + 5px/6px thickness) paired with `data-salience`.
     const { container } = renderFrame({ tone: 'failure' });
-    const bar = container.querySelector('[data-tone="failure"]');
-    expect(bar).not.toBeNull();
-    expect(bar?.className).toContain('bg-accent-failure');
+    const calmBar = container.querySelector('[data-tone="neutral"]');
+    expect(calmBar).not.toBeNull();
+    expect(calmBar?.className).toContain('bg-accent-neutral');
+    expect(calmBar?.className).toContain('h-[5px]');
   });
 
   it('renders the body slot children', () => {
@@ -164,5 +181,94 @@ describe('TileFrame — edit controls', () => {
     expect(screen.getByRole('button', { name: /move ci · octo\/a left/i })).toHaveClass(
       'dashboard-tile-control',
     );
+  });
+});
+
+describe('TileFrame — salience treatment', () => {
+  it('renders the PROBLEM tier with a 6px edge-toned bar, tint surface and glow', () => {
+    const { container } = renderFrame({
+      salience: salience({ tier: 'problem', edgeTone: 'failure', tint: true, glow: true }),
+    });
+    const cell = screen.getByRole('gridcell');
+    expect(cell).toHaveAttribute('data-salience', 'problem');
+    const bar = container.querySelector('[data-tone="failure"]');
+    expect(bar).not.toBeNull();
+    expect(bar?.className).toContain('h-[6px]');
+    expect(bar?.className).toContain('bg-accent-failure');
+    const glow = container.querySelector('[data-part="problem-glow"]');
+    expect(glow).not.toBeNull();
+    expect(glow).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('renders the ACTIONABLE tier with a persistent info tab and a calm neutral bar', () => {
+    const { container } = renderFrame({
+      salience: salience({ tier: 'actionable', edgeTone: 'info', actionableTab: true }),
+    });
+    const cell = screen.getByRole('gridcell');
+    expect(cell).toHaveAttribute('data-salience', 'actionable');
+    const tab = container.querySelector('[data-part="actionable-tab"]');
+    expect(tab).not.toBeNull();
+    expect(tab).toHaveAttribute('aria-hidden', 'true');
+    expect(tab?.className).toContain('bg-accent-info');
+    const bar = container.querySelector('[data-tone="neutral"]');
+    expect(bar?.className).toContain('h-[5px]');
+    expect(container.querySelector('[data-part="problem-glow"]')).toBeNull();
+  });
+
+  it('renders the CALM tier with a 5px neutral bar and an identity-toned header dot', () => {
+    const { container } = renderFrame({
+      salience: salience({ tier: 'calm' }),
+      identityTone: 'purple',
+    });
+    const cell = screen.getByRole('gridcell');
+    expect(cell).toHaveAttribute('data-salience', 'calm');
+    const bar = container.querySelector('[data-tone="neutral"]');
+    expect(bar?.className).toContain('h-[5px]');
+    expect(bar?.className).toContain('bg-accent-neutral');
+    // Identity colour moves to the header dot on calm tiles (redundant with the
+    // adjacent signal label + icon shape).
+    const header = container.querySelector('header');
+    expect(header?.querySelector('[data-tone="purple"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="problem-glow"]')).toBeNull();
+    expect(container.querySelector('[data-part="actionable-tab"]')).toBeNull();
+  });
+
+  it('defaults to the calm tier when no salience is supplied (current callers)', () => {
+    renderFrame();
+    expect(screen.getByRole('gridcell')).toHaveAttribute('data-salience', 'calm');
+  });
+});
+
+describe('TileFrame — alias and accessible summary', () => {
+  it('shows the alias as visible text with a visually-hidden real repo and a real title', () => {
+    renderFrame({ alias: 'api' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('api');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    const aliasNote = within(heading).getByText('(alias for octo/a)');
+    expect(aliasNote).toHaveClass('sr-only');
+  });
+
+  it('falls back to the real repo name when no alias is set', () => {
+    renderFrame();
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('octo/a');
+    expect(within(heading).queryByText(/alias for/i)).toBeNull();
+  });
+
+  it('uses accessibleSummary as the activate-button label when provided', () => {
+    renderFrame({ accessibleSummary: 'CI: 2 failing, problem — octo/a' });
+    expect(screen.getByRole('button', { name: 'CI: 2 failing, problem — octo/a' })).toHaveAttribute(
+      'data-tile-activate',
+      'octo/a:ci',
+    );
+    expect(screen.queryByRole('button', { name: /view ci details for octo\/a/i })).toBeNull();
+  });
+
+  it('keeps the legacy activate label when no accessibleSummary is provided', () => {
+    renderFrame();
+    expect(
+      screen.getByRole('button', { name: /view ci details for octo\/a/i }),
+    ).toBeInTheDocument();
   });
 });
