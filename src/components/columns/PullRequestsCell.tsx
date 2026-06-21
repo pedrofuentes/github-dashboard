@@ -99,7 +99,7 @@ export function PullRequestsCell({ slice }: PullRequestsCellProps) {
       </span>
       {externalCount > 0 ? (
         <span
-          className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--color-coral)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-coral ring-1 ring-accent-coral"
+          className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--color-coral)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-coral-ink ring-1 ring-accent-coral"
           title={`${externalCount} ${externalAbbrev} from new outside contributors`}
         >
           <NewContributorIcon />

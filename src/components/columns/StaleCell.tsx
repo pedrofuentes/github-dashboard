@@ -63,7 +63,7 @@ export function StaleCell({ slice }: StaleCellProps) {
         <span
           role="img"
           aria-label={label}
-          className="inline-flex items-center gap-1 rounded-full border border-accent-warning bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-warning"
+          className="inline-flex items-center gap-1 rounded-full border border-accent-warning bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-warning-ink"
         >
           <ClockIcon />
           <span aria-hidden="true">{count} stale</span>

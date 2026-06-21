@@ -36,11 +36,7 @@ function tokens(selector: string): Record<string, string> {
 
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 /** sRGB `color-mix(in srgb, a p%, b)` — gamma-space channel interpolation. */
@@ -119,9 +115,7 @@ describe('tinted-badge contrast (PR #171 AA regression guard)', () => {
   });
 
   it('PullRequestsCell external badge text uses the coral-ink token, not the raw accent', () => {
-    render(
-      <PullRequestsCell slice={{ status: 'ready', openCount: 4, externalCount: 2 }} />,
-    );
+    render(<PullRequestsCell slice={{ status: 'ready', openCount: 4, externalCount: 2 }} />);
     const badge = screen.getByTitle(/from new outside contributors/i);
     expect(badge.className).toContain('text-accent-coral-ink');
     expect(badge.className).not.toMatch(/text-accent-coral(?![\w-])/);

@@ -18,7 +18,7 @@ interface SecurityCellProps {
 const GRADE_BADGE_CLASS: Record<SecurityGrade, string> = {
   A: 'bg-[color-mix(in_srgb,var(--color-success)_10%,var(--color-surface))] text-accent-success ring-accent-success',
   B: 'bg-[color-mix(in_srgb,var(--color-success)_10%,var(--color-surface))] text-accent-success ring-accent-success',
-  C: 'bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] text-accent-warning ring-accent-warning',
+  C: 'bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] text-accent-warning-ink ring-accent-warning',
   D: 'bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] text-accent-failure ring-accent-failure',
   E: 'bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] text-accent-failure ring-accent-failure',
   F: 'bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] text-accent-failure ring-accent-failure',
