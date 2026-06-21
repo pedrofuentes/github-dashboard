@@ -329,6 +329,74 @@ describe('useInbox — triage state & actions (AC-11)', () => {
   });
 });
 
+describe('useInbox — batched triage actions in one commit all survive (regression)', () => {
+  // Two triage actions dispatched in the SAME React commit must each compose
+  // against the latest state — neither the persisted write nor the in-memory
+  // update may clobber the other. A render-scoped read-modify-write reads the
+  // same pre-batch snapshot twice, so the second action silently drops the
+  // first (§3.1 triage persistence). These lock that regression shut.
+
+  it('preserves both marks when two markRead calls share one commit', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markRead(ID_SECURITY);
+      result.current.markRead(ID_NEW_PR);
+    });
+
+    // The reloaded store must hold BOTH reads, not just the last writer.
+    const persisted = loadInboxTriage();
+    expect(persisted.readIds).toContain(ID_SECURITY);
+    expect(persisted.readIds).toContain(ID_NEW_PR);
+
+    // The live view agrees and the badge dropped by two (5 → 3).
+    expect(viewById(result.current.items, ID_SECURITY)?.read).toBe(true);
+    expect(viewById(result.current.items, ID_NEW_PR)?.read).toBe(true);
+    expect(result.current.unreadCount).toBe(3);
+  });
+
+  it('preserves a read and a dismiss batched into one commit', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markRead(ID_SECURITY);
+      result.current.dismiss(ID_NEW_PR);
+    });
+
+    const persisted = loadInboxTriage();
+    expect(persisted.readIds).toContain(ID_SECURITY);
+    expect(persisted.dismissedIds).toContain(ID_NEW_PR);
+
+    expect(viewById(result.current.items, ID_SECURITY)?.read).toBe(true);
+    expect(viewById(result.current.items, ID_NEW_PR)).toBeUndefined();
+    // One read + one dismissed removed from the unread badge (5 → 3).
+    expect(result.current.unreadCount).toBe(3);
+  });
+
+  it('keeps both the read-set and the advanced watermark when markAllRead and markAllSeen share one commit', () => {
+    saveInboxTriage({ readIds: [], dismissedIds: [], lastVisitedAt: '2024-03-11T12:00:00Z' });
+    const { result } = renderInbox();
+
+    const before = Date.now();
+    act(() => {
+      result.current.markAllRead();
+      result.current.markAllSeen();
+    });
+    const after = Date.now();
+
+    const persisted = loadInboxTriage();
+    // markAllRead survived: every derived id is read and the badge is zeroed.
+    expect(persisted.readIds).toEqual(expect.arrayContaining(NEWEST_FIRST));
+    expect(result.current.unreadCount).toBe(0);
+
+    // markAllSeen survived: the watermark advanced to ~now and persisted.
+    expect(persisted.lastVisitedAt).not.toBeNull();
+    const advanced = Date.parse(persisted.lastVisitedAt as string);
+    expect(advanced).toBeGreaterThanOrEqual(before);
+    expect(advanced).toBeLessThanOrEqual(after);
+  });
+});
+
 describe('useInbox — filters compose, zero API calls, not persisted (AC-12)', () => {
   it('filters by repository (OR within the category)', () => {
     const { result } = renderInbox();
