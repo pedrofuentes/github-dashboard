@@ -59,9 +59,49 @@ Prefer a spatial layout over a table? A **Grid / Dashboard** toggle (top-left of
 The Dashboard view is built for triage at a glance:
 
 - **A pinned fleet summary** anchors the top: total repos and the split into **need attention** (failing CI, a D–F security grade, or an over-threshold issue backlog), **warning** (a C security grade, a pending review request, or stale items), and **healthy** — plus the non-zero per-signal rollups (failing CI, security risk, over-threshold issues, awaiting your review, stale). It's always there: not draggable, resizable, or removable.
-- **Glanceable tiles** — one card per (repo, signal) — reuse the same icon + colour + text encoding as the grid (never colour alone), with per-status states (loading / error / unknown / ready) and a status accent. Activate any tile (click or Enter/Space) to open the same drill-down drawer as the grid.
+- **Glanceable, purpose-built tiles** — one card per (repo, signal), each
+  redesigned to use its full canvas instead of a shrunk-down table cell. Every
+  tile shares a common frame (status accent bar, header, body, footer) wrapping a
+  bespoke per-signal visual: the **CI** tile shows a big status glyph with an
+  ambient glow and the failing-run count; **Security** draws an arc gauge with
+  the **A–F grade** as its hero plus a per-severity breakdown; **Pull requests**
+  highlights new outside-contributor PRs; and **Reviews / Issues / Stale** scale
+  their accent with urgency. Encoding is always icon + colour + text (never
+  colour alone), with per-status states (loading / error / unknown / ready).
+  Activate any tile (click or Enter/Space) to open the same drill-down drawer as
+  the grid.
+- **An Activity tile** — a seventh signal, unique to the Dashboard view, that
+  charts each repo's recent commit cadence: a commit **sparkline** of weekly
+  totals (with the total as a hero number) that expands into a weeks × 7-day
+  contribution **heatmap** at larger tile sizes. It fetches lazily, only for the
+  repos shown.
 - **Edit mode** — a **Customize layout** toggle (shown only in the Dashboard view) lets you rearrange and size tiles by **pointer drag + resize**, or with the keyboard via each tile's **Move / Resize** controls. Tile navigation follows the WAI-ARIA grid pattern (a single roving tab stop; ←/→/↑/↓ move focus between tiles), every keyboard change is announced via an `aria-live` region, and motion is suppressed under `prefers-reduced-motion` — WCAG 2.1 AA throughout.
 - **Layout persistence** — your tile arrangement is saved to `localStorage` (debounced) and restored on the next visit, reconciled against the current fleet so added/removed repos are handled gracefully.
+
+## Appearance
+
+github-dashboard ships in **light** and **dark** themes. A segmented **Theme**
+control in the header — **Light · Dark · System** — switches between them; each
+option carries an icon and a text label, so the choice is never conveyed by
+colour alone.
+
+> A dark-theme dashboard screenshot is a tracked follow-up — the per-signal tile
+> surfaces are still being migrated onto the dark design tokens, so a capture
+> would not yet be representative.
+
+- **Three modes.** **Light** and **Dark** pin the theme; **System** follows your
+  operating system's `prefers-color-scheme` and updates live as the OS switches
+  between light and dark (e.g. on a day/night schedule).
+- **Persisted.** Your choice is saved in your browser under `fleet:theme` and
+  restored on the next visit. The default is **System**, so a first-time visitor
+  sees the theme their OS already prefers.
+- **No flash on load.** The saved theme is applied before the first paint, so the
+  page never flashes the wrong theme while loading — and it does so without any
+  inline script, staying within the app's strict `script-src 'self'` Content
+  Security Policy.
+- **Token-driven.** Colours are defined once as semantic design tokens (a light
+  set and a dark set) chosen to meet the WCAG 2.1 AA contrast minimums, so a
+  single class flip on `<html>` recolours the whole tree.
 
 ## Privacy & security
 

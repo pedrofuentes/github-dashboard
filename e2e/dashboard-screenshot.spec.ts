@@ -25,6 +25,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_PATH = resolve(__dirname, '..', 'docs/screenshots/dashboard.png');
+const OUT_PATH_DARK = resolve(__dirname, '..', 'docs/screenshots/dashboard-dark.png');
 const SHOULD_WRITE = process.env.CAPTURE_SCREENSHOTS === '1';
 
 /** A clearly-fake PAT used only to drive the authenticated view; never sent anywhere real. */
@@ -440,6 +441,25 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
     await page.screenshot({ path: OUT_PATH, fullPage: true, animations: 'disabled' });
   } else {
     // Still prove the capture path works without churning the committed asset.
+    await page.screenshot({ fullPage: true, animations: 'disabled' });
+  }
+
+  // Capture the same Dashboard in the dark theme for the README's Appearance
+  // section: switch the header Theme control to Dark and confirm the resolved
+  // theme is applied before re-shooting.
+  await page
+    .getByRole('radiogroup', { name: 'Theme' })
+    .getByRole('radio', { name: 'Dark' })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
+    .toBe(true);
+  await page.mouse.move(0, 0);
+
+  if (SHOULD_WRITE) {
+    await mkdir(dirname(OUT_PATH_DARK), { recursive: true });
+    await page.screenshot({ path: OUT_PATH_DARK, fullPage: true, animations: 'disabled' });
+  } else {
     await page.screenshot({ fullPage: true, animations: 'disabled' });
   }
 });

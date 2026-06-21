@@ -19,6 +19,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Dark theme + Light / Dark / System toggle** (dark-theme milestone): the whole
+  app can now render in a GitHub-dark palette as well as the original light one.
+  A segmented **Theme** control (`role="radiogroup"`, top-right of the header) lets
+  you pick **Light**, **Dark**, or **System** — each option carries a redundant
+  icon **and** text label (never colour alone) and meets WCAG 2.1 AA in both
+  themes. The choice persists to `localStorage['fleet:theme']` (default
+  `system`), and **System** follows your OS `prefers-color-scheme` live. Theming
+  is driven by Tailwind `darkMode: 'class'` plus CSS-variable-backed **semantic
+  tokens** (`bg` / `surface` / `text` / `border` / `accent-*`), so a single
+  `.dark` class flip on `<html>` recolours the entire tree — including the SVG
+  tile visuals. The persisted theme is applied **before first paint** from the
+  bundle entry (`main.tsx`), avoiding a flash of the wrong theme (FOUC) without
+  an inline script (the app's `<meta>` CSP is `script-src 'self'`). See
+  ADR-013, ADR-014.
+- **Redesigned, Stream-Deck-informed dashboard tiles** (tile-redesign milestone):
+  each (repo, signal) dashboard tile now uses its larger, resizable canvas for a
+  bespoke, glanceable visual instead of a table cell floating in white space. A
+  shared **`TileFrame`** (accent bar → header → body → footer, plus the existing
+  grid a11y/edit machinery) wraps a per-signal body built from a new
+  size-responsive primitive library (`StatusGlyph`, `BigValue`, `Chip`,
+  `SeverityBar`, `ArcGauge`, `Sparkline`, `Heatmap`, `AmbientGlow`, …):
+  - **CI / Actions** — a large status glyph with an ambient status **glow**, the
+    status word, and the failing-workflow count.
+  - **Security** — an **arc gauge** with the letter **grade** as its hero plus a
+    per-**severity** breakdown bar (the partial/`≥` indicator is preserved).
+  - **Pull requests** — the open-PR count with a prominent **new-contributor
+    highlight** chip when outside contributors have open PRs.
+  - **Reviews / Issues / Stale** — urgency-scaled counts (the accent escalates
+    with the backlog) with the triage / staleness wording spelled out.
+  - **Fleet summary** — the pinned anchor is reworked into a **health-split bar**
+    (need-attention / warning / healthy proportions) above the per-signal rollup
+    chips, each segment keeping its icon + count + word. See ADR-015.
+- **Activity dashboard tile** (the 7th grid tile): a new per-repo tile that
+  visualises recent commit cadence — a commit **sparkline** of weekly totals with
+  the total as a hero number, expanding to a weeks × 7-day contribution
+  **heatmap** at larger sizes. It is **self-fetching** and lazy: it reads weekly
+  commit activity via `useCommitActivity` only for the single repo it is mounted
+  with (not wired into the fleet poll), with redundant encoding throughout (an
+  sr-only weekly-totals table, per-cell counts, a stated total) and
+  meaning-bearing loading / computing / empty / error fallbacks. See ADR-016.
 - **Dashboard loading & error states**: the Dashboard view now mirrors the Grid
   view's lifecycle handling — a reduced-motion-friendly **skeleton** of
   placeholder tiles while your repositories load (instead of briefly flashing the
@@ -103,6 +143,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Dashboard tiles now render bespoke per-signal bodies** instead of reusing the
+  compact `*Cell` table atoms. `SignalTile` stops embedding the table cells and
+  instead composes `TileFrame` + a signal-specific body from the new `tiles/*`
+  primitive library, so a resizable tile fills its canvas with a purpose-built
+  visual. The table (Grid) view is unchanged — it keeps the `*Cell` atoms — and
+  the grading/scoring and URL-safety helpers are reused, not duplicated. The
+  tile `data-status`, roving-tabindex, `aria-colindex`/`aria-rowindex`,
+  activate-overlay, and keyboard Move/Resize behaviour are all preserved. See
+  ADR-015.
 - The **Customize layout** toggle's active state now uses `sky-700` instead of
   `sky-600` so white label text meets the WCAG 2.1 AA 4.5:1 contrast minimum
   (~5.93:1, up from ~4.1:1); its focus ring is bumped to `sky-700` to match
