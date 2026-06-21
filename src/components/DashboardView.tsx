@@ -323,11 +323,11 @@ export function DashboardView({
           {Array.from({ length: SKELETON_TILES }, (_, index) => (
             <div
               key={`skeleton-${index}`}
-              className="flex h-40 flex-col gap-4 rounded-md border border-slate-200 bg-white p-4"
+              className="flex h-40 flex-col gap-4 rounded-md border border-border bg-surface p-4"
             >
-              <span className="block h-3 w-24 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
-              <span className="block h-8 w-16 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
-              <span className="block h-3 w-32 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+              <span className="block h-3 w-24 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
+              <span className="block h-8 w-16 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
+              <span className="block h-3 w-32 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
             </div>
           ))}
         </div>
@@ -339,7 +339,7 @@ export function DashboardView({
     return (
       <section aria-label="Dashboard">
         <FleetSummaryTile summary={summary} />
-        <p className="mt-4 rounded-md border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-600">
+        <p className="mt-4 rounded-md border border-border bg-surface px-4 py-10 text-center text-sm text-text-muted">
           No repositories to display.
         </p>
       </section>
