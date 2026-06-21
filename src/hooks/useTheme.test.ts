@@ -129,4 +129,26 @@ describe('useTheme', () => {
     unmount();
     expect(media.removeEventListener).toHaveBeenCalled();
   });
+
+  it('does not throw when matchMedia is present but throws (sandboxed iframe / override)', () => {
+    // A present-but-hostile `matchMedia` (e.g. a sandboxed iframe or extension
+    // override) throws when invoked. An exception escaping the live-update
+    // effect would unmount the tree → blank dashboard (#197); the hook must
+    // swallow it and still render from the persisted/default choice.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => {
+        throw new Error('matchMedia blocked');
+      }),
+    );
+
+    let result: { current: ReturnType<typeof useTheme> } | undefined;
+    expect(() => {
+      result = renderHook(() => useTheme()).result;
+    }).not.toThrow();
+
+    // The app still renders: the hook resolves to a concrete, safe theme.
+    expect(result?.current.choice).toBe('system');
+    expect(result?.current.resolved).toBe('light');
+  });
 });
