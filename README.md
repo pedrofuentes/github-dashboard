@@ -50,7 +50,7 @@ Together that's the seven at-a-glance signals from the [mission brief](MISSION.m
 
 ## Dashboard view
 
-Prefer a spatial layout over a table? A **Grid / Dashboard** toggle (top-left of the overview, persisted in your browser under `fleet:view` and defaulting to the table grid) switches the fleet between the row-per-repo grid and an **at-a-glance Dashboard view**.
+Prefer a spatial layout over a table? A **Grid / Dashboard / Inbox** toggle (top-left of the overview, persisted in your browser under `fleet:view` and defaulting to the table grid) switches the fleet between the row-per-repo grid, an **at-a-glance Dashboard view**, and the **[Inbox](#inbox-view)**.
 
 <div align="center">
   <img src="docs/screenshots/dashboard.png" alt="At-a-glance Dashboard view: a pinned fleet summary (6 repos — 2 need attention, 4 warning, 0 healthy — with per-signal rollups for failing CI, security risk, awaiting your review and stale) above a grid of glanceable per-repo, per-signal tiles showing failing CI, A–F security grades, review requests, open and new-contributor pull requests, open issues and stale items" width="920">
@@ -77,6 +77,17 @@ The Dashboard view is built for triage at a glance:
   repos shown.
 - **Edit mode** — a **Customize layout** toggle (shown only in the Dashboard view) lets you rearrange and size tiles by **pointer drag + resize**, or with the keyboard via each tile's **Move / Resize** controls. Tile navigation follows the WAI-ARIA grid pattern (a single roving tab stop; ←/→/↑/↓ move focus between tiles), every keyboard change is announced via an `aria-live` region, and motion is suppressed under `prefers-reduced-motion` — WCAG 2.1 AA throughout.
 - **Layout persistence** — your tile arrangement is saved to `localStorage` (debounced) and restored on the next visit, reconciled against the current fleet so added/removed repos are handled gracefully.
+
+## Inbox view
+
+The **Inbox** is the third view on the **Grid / Dashboard / Inbox** toggle — a single, **newest-first** list that gathers everything across your fleet that needs attention into one triage queue, instead of scattering it across per-repo rows and cells.
+
+> An Inbox view screenshot is a tracked follow-up — to be captured against a mocked, fictional fleet (like the others above) and added here as `docs/screenshots/inbox.png`.
+
+- **Five actionable signals, as discrete items** — failing CI runs, pull requests awaiting **your** review, new outside-contributor PRs, new security alerts, and stale PRs/issues — each a row you can open on GitHub, ordered by recency. (One PR can appear under more than one kind — for example a new contributor's PR that _also_ requests your review — because each is separately actionable.)
+- **Per-device triage** — mark items read (open one, or "mark all"), **dismiss** and restore them, and spot a **"new since last visit"** highlight; an **unread badge** rides on the Inbox toggle. Your triage is saved in the browser under `fleet:inbox-triage` and is per-device, exactly like your theme and layout choices.
+- **Filters** — narrow by repository, by kind, to unread-only, or reveal dismissed items; the filters compose entirely client-side.
+- **No new access required** — the Inbox is a pure view over the data the dashboard **already fetches**: it adds **no new token permission, no new API request**, and **never writes back to GitHub** (your PAT stays read-only). It meets WCAG 2.1 AA in both themes, encoding every item with an icon and text — never colour alone.
 
 ## Appearance
 
