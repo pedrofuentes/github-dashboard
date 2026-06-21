@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DashboardView } from './components/DashboardView';
@@ -15,7 +15,7 @@ import { useRepos } from './hooks/useRepos';
 import { loadViewPreference, saveViewPreference } from './lib/view-preference';
 import type { FleetView } from './lib/view-preference';
 import type { AuthUser } from './types/auth';
-import type { Repo } from './types/fleet';
+import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
 export function App(): ReactElement {
   return (
@@ -66,6 +66,24 @@ function Shell(): ReactElement {
   );
 }
 
+/** The per-repo signal slots populated asynchronously after the repo list loads. */
+const SIGNAL_KEYS = ['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale'] as const;
+
+/** Signal statuses that mean a slice has finished loading (settled, not in-flight). */
+const RESOLVED_SIGNAL_STATUSES = new Set<SignalStatus>(['ready', 'error']);
+
+/**
+ * Whether a repo's signal data has settled — at least one slice has resolved
+ * (`ready`/`error`). Until then every slice is still absent or `loading`, so the
+ * derived inbox for that repo is only transiently empty (it has not loaded yet).
+ */
+function repoSignalsResolved(data: RepoSignalData): boolean {
+  return SIGNAL_KEYS.some((key) => {
+    const slice = data[key];
+    return slice !== undefined && RESOLVED_SIGNAL_STATUSES.has(slice.status);
+  });
+}
+
 function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
@@ -75,21 +93,31 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const [view, setView] = useState<FleetView>(loadViewPreference);
   const [editing, setEditing] = useState(false);
 
-  // Advance the "last visited" watermark once per Inbox visit, but only after
-  // the fleet has loaded so the hook's triage GC runs against the real live ids
-  // (never an empty set, which would drop every read/dismissed mark). Leaving
-  // the Inbox re-arms it so the next open re-stamps the watermark (AC-16).
+  // The per-repo signals load asynchronously after the repo list resolves, so a
+  // `status === 'success'` render can still have a transiently-empty derived inbox.
+  // Treat the fleet as settled only once every repo has at least one resolved
+  // signal slice, so the live ids the watermark GC runs against reflect real data.
+  const signalsResolved = useMemo(
+    () => repos.every((repo) => repoSignalsResolved(getRowData(repo))),
+    [repos, getRowData],
+  );
+
+  // Advance the "last visited" watermark once per Inbox visit, but only after the
+  // signals have settled so the hook's triage GC runs against the real live ids
+  // (never the transiently-empty set of the load window, which would drop every
+  // read/dismissed mark). Leaving the Inbox re-arms it so the next open re-stamps
+  // the watermark (AC-16).
   const inboxSeenRef = useRef(false);
   useEffect(() => {
     if (view !== 'inbox') {
       inboxSeenRef.current = false;
       return;
     }
-    if (status === 'success' && !inboxSeenRef.current) {
+    if (status === 'success' && signalsResolved && !inboxSeenRef.current) {
       inboxSeenRef.current = true;
       markAllSeen();
     }
-  }, [view, status, markAllSeen]);
+  }, [view, status, signalsResolved, markAllSeen]);
 
   // Stable callbacks so the memoised grid rows keep shallow-equal props and do
   // not all re-render when the drawer opens or closes.
