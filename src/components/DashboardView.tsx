@@ -291,7 +291,7 @@ export function DashboardView({
       <section aria-label="Dashboard" className="flex flex-col gap-3">
         <div
           role="alert"
-          className="rounded-md border border-[color-mix(in_srgb,var(--color-accent-failure)_30%,var(--color-surface))] bg-[color-mix(in_srgb,var(--color-accent-failure)_10%,var(--color-surface))] px-4 py-3 text-sm text-accent-failure"
+          className="rounded-md border border-[color-mix(in_srgb,var(--color-failure)_30%,var(--color-surface))] bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] px-4 py-3 text-sm text-accent-failure"
         >
           <p className="font-medium">Couldn’t load your dashboard.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
@@ -299,7 +299,7 @@ export function DashboardView({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 inline-flex items-center rounded border border-[color-mix(in_srgb,var(--color-accent-failure)_30%,var(--color-surface))] px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-accent-failure)_18%,var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              className="mt-3 inline-flex items-center rounded border border-[color-mix(in_srgb,var(--color-failure)_30%,var(--color-surface))] px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_18%,var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
               Retry
             </button>
