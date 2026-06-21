@@ -178,24 +178,53 @@ function collectStale(repo: Repo, data: RepoSignalData, items: InboxItem[]): voi
   }
 }
 
+/** An {@link InboxItem} paired with its timestamp parsed to an instant once. */
+interface TimedItem {
+  item: InboxItem;
+  /** `Date.parse(item.timestamp)`; `NaN` for an empty/non-ISO timestamp. */
+  instant: number;
+}
+
 /**
- * Newest-first by `timestamp`, with a deterministic ascending-`id` tie-break so
- * equal instants are stably ordered (§4.1, AC-7). Timestamps are compared as
- * instants; ids lexicographically.
+ * Ascending-`id` tie-break (ids lexicographically). Ids are unique and
+ * deterministic, so this yields a stable total order whenever two items share —
+ * or both lack — a comparable instant.
  */
-function compareNewestThenId(a: InboxItem, b: InboxItem): number {
-  const instantA = Date.parse(a.timestamp);
-  const instantB = Date.parse(b.timestamp);
-  if (instantA !== instantB) {
-    return instantB - instantA;
-  }
-  if (a.id < b.id) {
+function compareIds(a: string, b: string): number {
+  if (a < b) {
     return -1;
   }
-  if (a.id > b.id) {
+  if (a > b) {
     return 1;
   }
   return 0;
+}
+
+/**
+ * Newest-first by the precomputed `instant`, falling through to the
+ * deterministic ascending-`id` tie-break for equal OR non-finite instants
+ * (§4.1, AC-7).
+ *
+ * Upstream timestamps are `z.string()` (not `.datetime()`), so an empty/non-ISO
+ * value parses to `NaN`. A non-finite instant is treated as the **oldest**
+ * possible time, so such items sort *last* and then tie-break by `id` — never
+ * collapsing the order. (Comparing `NaN` directly returns `NaN`, which
+ * `Array.sort` treats as `0`: it silently skips the tie-break and strands the
+ * item at a wrong-but-deterministic position — #237.) Each instant is parsed
+ * once up front, not per comparison — #239.
+ */
+function compareTimed(a: TimedItem, b: TimedItem): number {
+  const aFinite = Number.isFinite(a.instant);
+  const bFinite = Number.isFinite(b.instant);
+  if (aFinite && bFinite && a.instant !== b.instant) {
+    return b.instant - a.instant;
+  }
+  if (aFinite !== bFinite) {
+    // Exactly one parseable: the finite (real) instant is newer → comes first.
+    return aFinite ? -1 : 1;
+  }
+  // Equal instants, or both non-finite (oldest) → deterministic id tie-break.
+  return compareIds(a.item.id, b.item.id);
 }
 
 /**
@@ -214,5 +243,10 @@ export function deriveInboxItems(repos: readonly Repo[], getRowData: GetRowData)
     collectSecurity(repo, data, items);
     collectStale(repo, data, items);
   }
-  return items.sort(compareNewestThenId);
+  // Decorate-sort-undecorate: parse each timestamp to an instant exactly once
+  // (not per comparison — #239), then order newest-first as a total order.
+  return items
+    .map((item) => ({ item, instant: Date.parse(item.timestamp) }))
+    .sort(compareTimed)
+    .map(({ item }) => item);
 }

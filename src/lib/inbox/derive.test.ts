@@ -259,6 +259,87 @@ describe('ordering: newest-first by timestamp, tie-break by id (AC-7)', () => {
   });
 });
 
+describe('ordering: unparseable timestamps keep a total order with id tie-break (#237, #239)', () => {
+  // CI `updatedAt` is `z.string()` upstream (not `.datetime()`) and derive's
+  // guard accepts `''`, so an empty/unparseable timestamp can reach the sort.
+  // `Date.parse('') → NaN`: the comparator must not let that collapse the
+  // deterministic order (NaN comparisons return NaN, which Array.sort treats
+  // as 0 → the item lands at a wrong position AND skips the id tie-break).
+  const failingCiRow = (nameWithOwner: string, updatedAt: string): RepoSignalData => ({
+    ci: {
+      status: 'ready',
+      conclusion: 'failure',
+      latestRunUrl: `https://github.com/${nameWithOwner}/actions/runs/1`,
+      runId: 1,
+      updatedAt,
+    },
+  });
+
+  it('sorts an item with an unparseable timestamp last, after every parseable instant', () => {
+    const bad = makeRepo('octocat/bad'); // '' → NaN instant
+    const older = makeRepo('octocat/older');
+    const newer = makeRepo('octocat/newer');
+    const rows = new Map<string, RepoSignalData>([
+      [bad.nameWithOwner, failingCiRow(bad.nameWithOwner, '')],
+      [older.nameWithOwner, failingCiRow(older.nameWithOwner, '2024-01-01T00:00:00Z')],
+      [newer.nameWithOwner, failingCiRow(newer.nameWithOwner, '2024-12-31T00:00:00Z')],
+    ]);
+
+    const items = deriveInboxItems([bad, older, newer], fixtureGetRowData(rows));
+
+    expect(items.map((item) => item.id)).toEqual([
+      'ci:octocat/newer:1',
+      'ci:octocat/older:1',
+      'ci:octocat/bad:1',
+    ]);
+  });
+
+  it('breaks ties between multiple unparseable timestamps by ascending id', () => {
+    const bbb = makeRepo('octocat/bbb');
+    const aaa = makeRepo('octocat/aaa');
+    const ccc = makeRepo('octocat/ccc');
+    // Shuffled input, every item carrying the same unparseable ('') timestamp.
+    const rows = new Map<string, RepoSignalData>([
+      [bbb.nameWithOwner, failingCiRow(bbb.nameWithOwner, '')],
+      [aaa.nameWithOwner, failingCiRow(aaa.nameWithOwner, '')],
+      [ccc.nameWithOwner, failingCiRow(ccc.nameWithOwner, '')],
+    ]);
+
+    const items = deriveInboxItems([bbb, aaa, ccc], fixtureGetRowData(rows));
+
+    expect(items.map((item) => item.id)).toEqual([
+      'ci:octocat/aaa:1',
+      'ci:octocat/bbb:1',
+      'ci:octocat/ccc:1',
+    ]);
+  });
+
+  it('keeps a total order: parseable (newest-first) precede unparseable, each id-tie-broken', () => {
+    const tie = '2024-06-01T00:00:00Z';
+    const parseB = makeRepo('octocat/parse-b');
+    const parseA = makeRepo('octocat/parse-a');
+    const unparseB = makeRepo('octocat/unparse-b');
+    const unparseA = makeRepo('octocat/unparse-a');
+    const rows = new Map<string, RepoSignalData>([
+      [parseB.nameWithOwner, failingCiRow(parseB.nameWithOwner, tie)],
+      [parseA.nameWithOwner, failingCiRow(parseA.nameWithOwner, tie)],
+      [unparseB.nameWithOwner, failingCiRow(unparseB.nameWithOwner, '')],
+      [unparseA.nameWithOwner, failingCiRow(unparseA.nameWithOwner, '')],
+    ]);
+
+    // Shuffled input must collapse to: equal parseable instants first
+    // (id-ascending), then the unparseable pair last (id-ascending).
+    const items = deriveInboxItems([parseB, unparseB, parseA, unparseA], fixtureGetRowData(rows));
+
+    expect(items.map((item) => item.id)).toEqual([
+      'ci:octocat/parse-a:1',
+      'ci:octocat/parse-b:1',
+      'ci:octocat/unparse-a:1',
+      'ci:octocat/unparse-b:1',
+    ]);
+  });
+});
+
 describe('loading/error/unknown slices contribute nothing (AC-7, §2.3)', () => {
   it('skips a slice whose status is not "ready" even with full data', () => {
     const repo = makeRepo('octocat/pending');
