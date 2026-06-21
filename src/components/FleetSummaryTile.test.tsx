@@ -37,9 +37,7 @@ describe('FleetSummaryTile', () => {
 
   it('renders a three-way health-split bar segment for each non-zero bucket', () => {
     const { container } = render(
-      <FleetSummaryTile
-        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
-      />,
+      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
     );
     // The coloured bar carries one proportional segment per non-zero bucket,
     // tinted with the health tone (failure / warning / success).
@@ -50,9 +48,7 @@ describe('FleetSummaryTile', () => {
 
   it('exposes the health split to assistive tech via labelled regions', () => {
     render(
-      <FleetSummaryTile
-        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
-      />,
+      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
     // SeverityBar emits an sr-only "Label: value" breakdown so meaning never
@@ -64,9 +60,7 @@ describe('FleetSummaryTile', () => {
 
   it('breaks the fleet down by health bucket with icon + count + word labels', () => {
     render(
-      <FleetSummaryTile
-        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
-      />,
+      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
     expect(within(region).getByText(/3\s+need attention/i)).toBeInTheDocument();
