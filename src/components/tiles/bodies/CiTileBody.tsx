@@ -96,7 +96,12 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
     };
   }
 
-  const conclusion: Conclusion = ci.conclusion ?? 'none';
+  // GitHub exposes conclusions beyond our 5-member enum (cancelled, skipped,
+  // timed_out, action_required, neutral, stale). Guard the lookup so an
+  // unexpected value falls back to the neutral 'none' render instead of
+  // throwing a TypeError → blank tile (#185).
+  const raw = ci.conclusion ?? 'none';
+  const conclusion: Conclusion = raw in CONCLUSION ? raw : 'none';
   const { glyph, word } = CONCLUSION[conclusion];
   const tone = iconKindTone(glyph);
   const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;

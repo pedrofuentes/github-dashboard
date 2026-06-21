@@ -97,21 +97,21 @@ export function TileFrame({
       data-tile-size={size}
       aria-colindex={colIndex}
       aria-rowindex={rowIndex}
-      className="relative flex h-full flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm"
+      className="relative flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface shadow-sm"
     >
       <AccentBar tone={tone} />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-4">
         <header className="flex items-baseline justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold text-slate-900" title={repo.nameWithOwner}>
+          <h3 className="truncate text-sm font-semibold text-text" title={repo.nameWithOwner}>
             {repo.nameWithOwner}
           </h3>
-          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-text-muted">
             {signalLabel}
             <StatusDot tone={tone} />
           </span>
         </header>
-        <div className="min-h-0 flex-1 text-sm text-slate-700">{children}</div>
-        {showFooter ? <footer className="text-xs text-slate-500">{footer}</footer> : null}
+        <div className="min-h-0 flex-1 text-sm text-text">{children}</div>
+        {showFooter ? <footer className="text-xs text-text-muted">{footer}</footer> : null}
         {editing ? (
           // In edit mode the active tile exposes ~9 tabIndex=0 targets (activate
           // button + 8 Move/Resize controls). This is intentional WCAG-AA design,
@@ -237,7 +237,7 @@ function ControlButton({ label, tabIndex, onClick, children }: ControlButtonProp
       aria-label={label}
       tabIndex={tabIndex}
       onClick={onClick}
-      className="dashboard-tile-control inline-flex h-7 min-w-7 items-center justify-center rounded border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+      className="dashboard-tile-control inline-flex h-7 min-w-7 items-center justify-center rounded border border-border-strong bg-surface px-1.5 text-xs font-medium text-text hover:bg-surface-raised focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     >
       <span aria-hidden="true">{children}</span>
     </button>

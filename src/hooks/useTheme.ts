@@ -43,18 +43,26 @@ export function useTheme(): UseThemeResult {
   }, [choice]);
 
   // While following the OS, re-apply when its colour scheme flips live. No-op
-  // for concrete choices and in environments without `matchMedia`.
+  // for concrete choices and in environments without `matchMedia`. A
+  // present-but-throwing `matchMedia` (sandboxed iframe / extension override)
+  // is caught so the exception never escapes the effect and unmounts the tree
+  // (#197), mirroring the guard in `theme-preference.ts`.
   useEffect(() => {
     if (choice !== 'system' || typeof matchMedia !== 'function') {
       return;
     }
-    const media = matchMedia(DARK_QUERY);
+    let media: MediaQueryList;
     const onChange = (event: MediaQueryListEvent): void => {
       const next: ResolvedTheme = event.matches ? 'dark' : 'light';
       setResolved(next);
       applyTheme(next);
     };
-    media.addEventListener('change', onChange);
+    try {
+      media = matchMedia(DARK_QUERY);
+      media.addEventListener('change', onChange);
+    } catch {
+      return;
+    }
     return () => media.removeEventListener('change', onChange);
   }, [choice]);
 

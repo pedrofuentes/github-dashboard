@@ -169,6 +169,22 @@ describe('loadDashboardLayout', () => {
     expect(loadDashboardLayout(repos)).toEqual(saved);
   });
 
+  it('round-trips a large fleet above the legacy ~85-repo cap (#200)', () => {
+    // 90 repos × 7 signals = 630 tiles — above the old MAX_TILES = 600 cap that
+    // silently dropped persistence past ~85 repos. The layout must persist and
+    // round-trip intact for the whole fleet.
+    const repos = Array.from({ length: 90 }, (_, idx) => makeRepo(`octo/repo-${idx}`));
+    const saved = DEFAULT_LAYOUT(repos);
+    expect(saved).toHaveLength(repos.length * SIGNALS.length);
+    expect(saved.length).toBeGreaterThan(600);
+
+    saveDashboardLayout(saved);
+
+    // Persistence actually wrote (not silently skipped by the schema cap).
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(loadDashboardLayout(repos)).toEqual(saved);
+  });
+
   it('falls back to the default on corrupt JSON', () => {
     const repos = [makeRepo('octo/a')];
     localStorage.setItem(STORAGE_KEY, '{not json');
