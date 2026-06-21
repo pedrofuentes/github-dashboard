@@ -27,6 +27,7 @@ export default {
         'accent-coral-ink': 'var(--color-coral-ink)',
         'accent-purple': 'var(--color-purple)',
         'accent-gold': 'var(--color-gold)',
+        'accent-ochre': 'var(--color-ochre)',
       },
     },
   },

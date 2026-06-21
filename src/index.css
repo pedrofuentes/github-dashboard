@@ -45,6 +45,9 @@
   --color-coral: #c2410c; /* orange-700 */
   --color-purple: #7e22ce; /* purple-700 */
   --color-gold: #a16207; /* yellow-700 */
+  /* Age-led Stale accent. #7c5e10 clears AA as text on white (~6.1:1) — the
+   * DESIGN-TILES #8a6d3b only reaches ~4.85:1, too close to the 4.5:1 floor. */
+  --color-ochre: #7c5e10;
 }
 
 .dark {
@@ -78,6 +81,9 @@
   --color-coral: #f78166;
   --color-purple: #a371f7;
   --color-gold: #e3b341;
+  /* Age-led Stale accent. #bfa05a clears AA as text on the dark surface
+   * (#161b22) at ~6.9:1. */
+  --color-ochre: #bfa05a;
 }
 
 /*

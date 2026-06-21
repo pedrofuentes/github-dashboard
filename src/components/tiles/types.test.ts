@@ -12,6 +12,7 @@ const TONES: AccentTone[] = [
   'coral',
   'purple',
   'gold',
+  'ochre',
 ];
 
 const ICON_KINDS: SignalIconKind[] = [
@@ -49,6 +50,10 @@ describe('toneTextClass', () => {
       expect(toneTextClass(tone)).toBe(`text-accent-${tone}`);
     }
   });
+
+  it('maps the ochre tone to its age-led Stale text token', () => {
+    expect(toneTextClass('ochre')).toBe('text-accent-ochre');
+  });
 });
 
 describe('toneBgClass', () => {
@@ -56,6 +61,10 @@ describe('toneBgClass', () => {
     for (const tone of TONES) {
       expect(toneBgClass(tone)).toBe(`bg-accent-${tone}`);
     }
+  });
+
+  it('maps the ochre tone to its age-led Stale background token', () => {
+    expect(toneBgClass('ochre')).toBe('bg-accent-ochre');
   });
 });
 

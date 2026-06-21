@@ -22,6 +22,14 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-020: Ochre accent token for age-led Stale tiles uses AA-corrected inks
+**Date**: 2026-06-21
+**Status**: Accepted
+**Context**: The tile redesign (T1) introduces an `ochre` `AccentTone` to distinguish age-led Stale tiles from amber `warning`. The DESIGN-TILES spec proposed `#8a6d3b`, but as text on white it only reaches ~4.85:1 — too close to the WCAG 2.1 AA 4.5:1 floor for small text to be safe.
+**Decision**: Define `--color-ochre` per theme with AA-verified inks: **light `#7c5e10`** (6.06:1 on white `#ffffff`) and **dark `#bfa05a`** (6.91:1 on surface `#161b22`), mapped to the `accent-ochre` Tailwind utility and consumed only via the `toneTextClass`/`toneBgClass` token helpers — no inline hex in components.
+**Alternatives considered**: The spec's `#8a6d3b` (rejected — ~4.85:1 as text leaves no AA margin); reusing `warning` amber (rejected — fails to visually separate age-led Stale from threshold warnings).
+**Consequences**: Stale tiles get a distinct, AA-compliant accent in both themes. The light/dark hexes diverge from the spec value and are documented here as the source of truth; the CSS carries inline comments noting the measured ratios.
+
 ### ADR-019: Advance the Inbox "last visited" watermark only after all fleet signals settle
 **Date**: 2026-06-21
 **Status**: Accepted

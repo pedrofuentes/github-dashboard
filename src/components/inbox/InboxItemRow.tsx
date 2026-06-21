@@ -68,6 +68,7 @@ const TONE_TEXT_CLASS: Record<AccentTone, string> = {
   coral: 'text-accent-coral-ink',
   purple: 'text-accent-purple',
   gold: 'text-accent-gold',
+  ochre: 'text-accent-ochre',
 };
 
 function kindLabel(item: InboxItemView): string {
