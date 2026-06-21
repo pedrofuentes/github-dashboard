@@ -98,12 +98,12 @@ export function TokenInput(): ReactElement {
             disabled={isAuthenticating}
             aria-describedby={`${helpId} ${errorId}`}
             placeholder="github_pat_…"
-            className="w-full rounded border border-slate-500 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            className="w-full rounded border border-border-strong px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           />
         </div>
 
         <fieldset disabled={isAuthenticating} className="space-y-2">
-          <legend className="text-sm font-medium text-slate-700">Remember this token</legend>
+          <legend className="text-sm font-medium text-text-muted">Remember this token</legend>
           {PERSISTENCE_OPTIONS.map((option) => (
             <label key={option.value} className="flex items-start gap-2">
               <input
@@ -117,8 +117,8 @@ export function TokenInput(): ReactElement {
                 className="mt-1"
               />
               <span>
-                <span className="font-medium text-slate-800">{option.label}</span>
-                <span className="block text-sm text-slate-500">{option.hint}</span>
+                <span className="font-medium text-text">{option.label}</span>
+                <span className="block text-sm text-text-muted">{option.hint}</span>
               </span>
             </label>
           ))}
@@ -127,24 +127,24 @@ export function TokenInput(): ReactElement {
         <button
           type="submit"
           disabled={isAuthenticating}
-          className="rounded bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+          className="rounded bg-text px-4 py-2 font-medium text-surface disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           {isAuthenticating ? 'Connecting…' : 'Connect to GitHub'}
         </button>
 
-        <p id={errorId} role="alert" className="min-h-[1.25rem] text-sm text-red-700">
+        <p id={errorId} role="alert" className="min-h-[1.25rem] text-sm text-accent-failure">
           {message}
         </p>
       </form>
 
-      <div id={helpId} className="mt-6 text-sm text-slate-600">
+      <div id={helpId} className="mt-6 text-sm text-text-muted">
         <p>
           Paste a{' '}
           <a
             href={PAT_CREATE_URL}
             target="_blank"
             rel="noreferrer noopener"
-            className="rounded font-medium text-slate-900 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            className="rounded font-medium text-text underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             fine-grained personal access token
           </a>{' '}
@@ -153,7 +153,7 @@ export function TokenInput(): ReactElement {
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {READ_ONLY_PERMISSIONS.map((permission) => (
             <li key={permission}>
-              {permission} <span className="text-slate-500">(read-only)</span>
+              {permission} <span className="text-text-muted">(read-only)</span>
             </li>
           ))}
         </ul>
