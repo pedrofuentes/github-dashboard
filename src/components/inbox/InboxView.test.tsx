@@ -237,4 +237,37 @@ describe('InboxView triage announcements (AC-14)', () => {
     expect(restore).toHaveBeenCalledWith('ci:octo/app:8');
     expect(screen.getByText('Restored')).toBeInTheDocument();
   });
+
+  it('marks the polite triage region atomic so a repeated identical message is re-announced in full (#245)', async () => {
+    const user = userEvent.setup();
+    const dismiss = vi.fn();
+    // Two already-read items: dismissing each announces the SAME "Dismissed"
+    // string, and because both are read the unread `role="status"` count never
+    // changes — so the polite triage region is the ONLY confirmation channel.
+    const items = [
+      makeItem({ id: 'ci:octo/app:1', title: 'First failure', read: true }),
+      makeItem({ id: 'ci:octo/app:2', title: 'Second failure', read: true }),
+    ];
+    render(<InboxView inbox={inboxResult({ items, unreadCount: 0, dismiss })} repos={REPOS} />);
+
+    await user.click(screen.getByRole('button', { name: /dismiss first failure/i }));
+    const liveRegion = screen.getByText('Dismissed');
+    const afterFirst = liveRegion.textContent;
+
+    // (a) MECHANISM that proves re-announcement: the region must be atomic. A
+    // non-atomic polite region lets many screen readers announce only the
+    // *changed* node — here the invisible nonce marker — so the unchanged
+    // "Dismissed" words are silently dropped on a repeat. aria-atomic="true"
+    // forces the WHOLE region to be re-read on every change, words included.
+    expect(liveRegion).toHaveAttribute('aria-atomic', 'true');
+
+    await user.click(screen.getByRole('button', { name: /dismiss second failure/i }));
+    const afterSecond = liveRegion.textContent;
+
+    // (b) ...and the region's announced content must actually MUTATE between the
+    // two identical announcements, or no live-region change fires for the atomic
+    // re-read to act on — the nonce marker guarantees that mutation.
+    expect(liveRegion).toHaveTextContent('Dismissed');
+    expect(afterSecond).not.toEqual(afterFirst);
+  });
 });
