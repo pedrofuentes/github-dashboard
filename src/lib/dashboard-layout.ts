@@ -41,8 +41,12 @@ const TILES_PER_ROW = GRID_COLUMNS / TILE_WIDTH;
  */
 /** Upper bound on the row index a tile may occupy (generous: ~MAX_TILES rows). */
 const MAX_GRID_ROWS = 1000;
-/** Hard cap on how many tiles a stored layout may contain. */
-export const MAX_TILES = 600;
+/**
+ * Hard cap on how many tiles a stored layout may contain. Sized with headroom
+ * above the fleet ceiling: 7 signals × 100 repos = 700 tiles, so a large fleet
+ * persists rather than silently failing the schema cap (#200).
+ */
+export const MAX_TILES = 700;
 /** Cap on the length of the `i` / `repo` strings (GitHub names are far shorter). */
 export const MAX_STRING_LENGTH = 256;
 
