@@ -75,7 +75,7 @@ const FleetRow = memo(function FleetRow({
 }: FleetRowProps) {
   const data = getRowData(repo);
   return (
-    <tr className="border-b border-slate-200 last:border-0 hover:bg-slate-100">
+    <tr className="border-b border-border last:border-0 hover:bg-bg">
       {columns.map((column) => {
         const content = column.render(repo, data);
         if (column.isRowHeader) {
@@ -83,14 +83,14 @@ const FleetRow = memo(function FleetRow({
             <th
               key={column.id}
               scope="row"
-              className={cn('px-3 py-2 font-normal text-slate-900', alignClass(column))}
+              className={cn('px-3 py-2 font-normal text-text', alignClass(column))}
             >
               {onRepoActivate ? (
                 <button
                   type="button"
                   onClick={() => onRepoActivate(repo)}
                   aria-label={`View details for ${repo.nameWithOwner}`}
-                  className="block w-full text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+                  className="block w-full text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
                   {content}
                 </button>
@@ -101,7 +101,7 @@ const FleetRow = memo(function FleetRow({
           );
         }
         return (
-          <td key={column.id} className={cn('px-3 py-2 text-slate-700', alignClass(column))}>
+          <td key={column.id} className={cn('px-3 py-2 text-text-muted', alignClass(column))}>
             {content}
           </td>
         );
@@ -148,15 +148,15 @@ export function FleetGrid({
       <section aria-label="Repository fleet" className="flex flex-col gap-3">
         <div
           role="alert"
-          className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-md border border-accent-failure bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] px-4 py-3 text-sm text-accent-failure"
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
-          <p className="mt-1 text-red-700">{error}</p>
+          <p className="mt-1 text-accent-failure">{error}</p>
           {onRetry ? (
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 inline-flex items-center rounded border border-red-300 px-3 py-1 text-sm font-medium text-red-800 hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+              className="mt-3 inline-flex items-center rounded border border-accent-failure px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-failure"
             >
               Retry
             </button>
@@ -189,21 +189,21 @@ export function FleetGrid({
             value={filter}
             onChange={handleFilterChange}
             placeholder="Filter repositories…"
-            className="w-full rounded-md border border-slate-500 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            className="w-full rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-text placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           />
         </div>
-        <p role="status" aria-live="polite" className="text-sm text-slate-600">
+        <p role="status" aria-live="polite" className="text-sm text-text-muted">
           {statusMessage}
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-slate-200">
+      <div className="overflow-x-auto rounded-md border border-border">
         <table
           className="w-full border-collapse text-left text-sm"
           aria-label="Repository fleet health"
         >
           <thead>
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-border">
               {columns.map((column) => {
                 const isActive = sort.columnId === column.id;
                 const ariaSort: 'ascending' | 'descending' | 'none' | undefined = column.sortable
@@ -219,7 +219,7 @@ export function FleetGrid({
                     scope="col"
                     aria-sort={ariaSort}
                     className={cn(
-                      'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600',
+                      'px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted',
                       alignClass(column),
                     )}
                   >
@@ -227,7 +227,7 @@ export function FleetGrid({
                       <button
                         type="button"
                         onClick={() => handleSortActivate(column.id)}
-                        className="inline-flex items-center gap-1 rounded text-inherit hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+                        className="inline-flex items-center gap-1 rounded text-inherit hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                       >
                         <span>{column.header}</span>
                         {isActive ? (
@@ -248,12 +248,12 @@ export function FleetGrid({
                 <tr
                   key={`skeleton-${rowIndex}`}
                   aria-hidden="true"
-                  className="border-b border-slate-200 last:border-0"
+                  className="border-b border-border last:border-0"
                 >
                   {columns.map((column) => (
                     <td key={column.id} className="px-3 py-2.5">
                       <span
-                        className="block h-3 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+                        className="block h-3 animate-pulse rounded bg-border motion-reduce:animate-none"
                         style={{ width: column.isRowHeader ? '14rem' : '2.5rem' }}
                       />
                     </td>
@@ -264,7 +264,7 @@ export function FleetGrid({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-3 py-10 text-center text-sm text-slate-600"
+                  className="px-3 py-10 text-center text-sm text-text-muted"
                 >
                   {emptyMessage}
                 </td>
