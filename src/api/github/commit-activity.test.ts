@@ -103,9 +103,7 @@ function week(total: number, weekStart: number, days: number[]): unknown {
 /** Builds a full 52-week fixture so the "last 52 weeks" parse is exercised. */
 function fiftyTwoWeeks(): unknown[] {
   const base = 1700000000;
-  return Array.from({ length: 52 }, (_, i) =>
-    week(i, base + i * 604800, [0, 1, 0, 2, 0, 1, 0]),
-  );
+  return Array.from({ length: 52 }, (_, i) => week(i, base + i * 604800, [0, 1, 0, 2, 0, 1, 0]));
 }
 
 /** Reads the headers a given fetch call was issued with. */
