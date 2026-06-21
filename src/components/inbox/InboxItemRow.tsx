@@ -1,0 +1,208 @@
+/**
+ * InboxItemRow — one actionable Inbox entry (DESIGN-INBOX §5, §6).
+ *
+ * Presentational: it renders a single {@link InboxItemView} and reports triage
+ * intent through callbacks; it owns no state and issues no requests. Each row
+ * encodes its meaning on multiple channels so it never relies on colour alone
+ * (§6.2, SC 1.4.1 / 1.4.11):
+ * - the **accent** (§5) paints a decorative left bar (`aria-hidden`);
+ * - a **glyph + text label** names the kind/severity;
+ * - **unread** is an explicit dot **and** an `sr-only` "Unread" word **and**
+ *   bold weight — colour is only the last, enhancing layer.
+ *
+ * The title is an origin-gated GitHub link (`safeGitHubHref`, §6.2): a value
+ * that fails the guard degrades to inert text instead of an off-origin link.
+ * Opening the link (pointer, Enter, or Space) marks the item read. Dismiss /
+ * Restore are real, labelled buttons reachable in tab order with a visible
+ * `focus-visible` ring. All colour comes from semantic theme tokens so the row
+ * recolours with a single `.dark` flip and stays within the AA budget in both
+ * themes — warning/coral text uses the `-ink` variants (DESIGN-TILES §1.5).
+ */
+import type { KeyboardEvent, ReactElement } from 'react';
+
+import { cn } from '../../lib/cn';
+import { formatRelativeTime } from '../../lib/format';
+import { safeGitHubHref } from '../../lib/github-url';
+import type { InboxItemView } from '../../hooks/useInbox';
+import type { InboxKind } from '../../types/inbox';
+import { StatusGlyph } from '../tiles/StatusGlyph';
+import type { AccentTone, SignalIconKind } from '../tiles/types';
+import { toneBgClass } from '../tiles/types';
+import { KIND_LABELS } from './labels';
+
+/** Status glyph drawn beside each kind label (DESIGN-TILES §2.1). */
+const KIND_GLYPHS: Record<InboxKind, SignalIconKind> = {
+  ci: 'failure',
+  review: 'review',
+  'new-pr': 'external',
+  security: 'warning',
+  stale: 'stale',
+};
+
+/** Security severity → glyph so the (decorative) glyph colour tracks the accent (§5). */
+const SECURITY_GLYPHS: Record<NonNullable<InboxItemView['severity']>, SignalIconKind> = {
+  critical: 'failure',
+  high: 'warning',
+  medium: 'info',
+  low: 'neutral',
+};
+
+function itemGlyph(item: InboxItemView): SignalIconKind {
+  if (item.kind === 'security' && item.severity !== undefined) {
+    return SECURITY_GLYPHS[item.severity];
+  }
+  return KIND_GLYPHS[item.kind];
+}
+
+/**
+ * Accent → text-colour class. Warning and coral use their `-ink` variants
+ * (amber-800 / orange-800 in light) so accent text clears AA on tints + white;
+ * the other accents already pass as normal text (DESIGN-TILES §1.5).
+ */
+const TONE_TEXT_CLASS: Record<AccentTone, string> = {
+  success: 'text-accent-success',
+  failure: 'text-accent-failure',
+  warning: 'text-accent-warning-ink',
+  info: 'text-accent-info',
+  neutral: 'text-accent-neutral',
+  coral: 'text-accent-coral-ink',
+  purple: 'text-accent-purple',
+  gold: 'text-accent-gold',
+};
+
+function kindLabel(item: InboxItemView): string {
+  if (item.kind === 'security' && item.severity !== undefined) {
+    return `${KIND_LABELS.security} · ${item.severity}`;
+  }
+  return KIND_LABELS[item.kind];
+}
+
+export interface InboxItemRowProps {
+  /** The decorated item to render. */
+  item: InboxItemView;
+  /** Marks the item read (fired on open/click). */
+  onMarkRead: (id: string) => void;
+  /** Dismisses (archives) the item. */
+  onDismiss: (id: string) => void;
+  /** Restores a previously dismissed item. */
+  onRestore: (id: string) => void;
+}
+
+export function InboxItemRow({
+  item,
+  onMarkRead,
+  onDismiss,
+  onRestore,
+}: InboxItemRowProps): ReactElement {
+  const href = safeGitHubHref(item.url);
+  const label = kindLabel(item);
+
+  function activate(): void {
+    onMarkRead(item.id);
+  }
+
+  // Keep the row keyboard-operable: Enter keeps the anchor's native open (and
+  // also marks read via the activation click); Space marks read and is stopped
+  // from scrolling the page.
+  function handleKeyDown(event: KeyboardEvent<HTMLAnchorElement>): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (event.key === ' ') {
+        event.preventDefault();
+      }
+      activate();
+    }
+  }
+
+  const titleClass = cn('min-w-0 truncate text-text', !item.read && 'font-semibold');
+
+  return (
+    <li
+      data-kind={item.kind}
+      className={cn(
+        'flex items-stretch gap-3 rounded-md border border-border bg-surface p-3 motion-safe:transition-colors hover:bg-surface-raised',
+        item.dismissed && 'opacity-70',
+        item.isNew &&
+          'bg-[color-mix(in_srgb,var(--color-info)_8%,var(--color-surface))] border-border-strong',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        data-tone={item.accent}
+        className={cn('w-1 shrink-0 self-stretch rounded-full', toneBgClass(item.accent))}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-center gap-2">
+          {!item.read ? (
+            <>
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent-info" />
+              <span className="sr-only">Unread</span>
+            </>
+          ) : null}
+          {href !== undefined ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={activate}
+              onKeyDown={handleKeyDown}
+              className={cn(
+                titleClass,
+                'rounded hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+              )}
+            >
+              {item.title}
+            </a>
+          ) : (
+            <span className={titleClass}>{item.title}</span>
+          )}
+          {item.isNew ? (
+            <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--color-info)_14%,transparent)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-info">
+              New
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-muted">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 font-medium',
+              TONE_TEXT_CLASS[item.accent],
+            )}
+          >
+            <span aria-hidden="true" className="inline-flex">
+              <StatusGlyph status={itemGlyph(item)} size={14} />
+            </span>
+            <span>{label}</span>
+          </span>
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{item.repo.nameWithOwner}</span>
+          <span aria-hidden="true">·</span>
+          <time dateTime={item.timestamp}>{formatRelativeTime(item.timestamp)}</time>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-start">
+        {item.dismissed ? (
+          <button
+            type="button"
+            onClick={() => onRestore(item.id)}
+            aria-label={`Restore ${item.title}`}
+            className="rounded border border-border-strong px-2 py-1 text-xs font-medium text-text-muted hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Restore
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onDismiss(item.id)}
+            aria-label={`Dismiss ${item.title}`}
+            className="rounded border border-border-strong px-2 py-1 text-xs font-medium text-text-muted hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Dismiss
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
