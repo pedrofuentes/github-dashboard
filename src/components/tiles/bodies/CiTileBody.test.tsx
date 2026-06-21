@@ -45,7 +45,8 @@ describe('CiTileBody', () => {
         );
         expect(glyph(container, glyphStatus)).not.toBeNull();
         expect(screen.getByText(word, { selector: 'span' })).toBeInTheDocument();
-        // Ambient glow carries the matching tone.
+        // The RunStrip cell carries the matching tone (redundant colour layer);
+        // the body no longer paints an AmbientGlow (the frame owns PROBLEM glow).
         expect(
           container.querySelector(`[data-tone="${toneClass.replace('accent-', '')}"]`),
         ).not.toBeNull();
@@ -112,7 +113,7 @@ describe('CiTileBody', () => {
       latestRunUrl: 'https://github.com/octocat/hello-world/actions/runs/1',
     };
 
-    it('compact: glyph present, status word hidden, no run link', () => {
+    it('compact: glyph present, status word hidden, no run link, no run-strip', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data(fullSlice)} size="compact" />,
       );
@@ -120,15 +121,18 @@ describe('CiTileBody', () => {
       // The hero status word (BigValue span) is not rendered in the compact tier.
       expect(screen.queryByText('Failing', { selector: 'span' })).toBeNull();
       expect(screen.queryByRole('link')).toBeNull();
+      // Compact = hero only; the micro-viz (RunStrip) is omitted.
+      expect(container.querySelector('[data-shape]')).toBeNull();
     });
 
-    it('standard: glyph + status word + failing count, but no run link', () => {
+    it('standard: glyph + status word + failing count + run-strip, but no run link', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data(fullSlice)} size="standard" />,
       );
       expect(glyph(container, 'failure')).not.toBeNull();
       expect(screen.getByText('Failing', { selector: 'span' })).toBeInTheDocument();
       expect(screen.getByText(/1 failing/i)).toBeInTheDocument();
+      expect(container.querySelector('[data-shape="notch"]')).not.toBeNull();
       expect(screen.queryByRole('link')).toBeNull();
     });
 
@@ -248,6 +252,65 @@ describe('CiTileBody', () => {
       );
       expect(glyph(container, 'success')).not.toBeNull();
       expect(screen.getByText('Passing', { selector: 'span' })).toBeInTheDocument();
+    });
+  });
+
+  describe('latest-run cell (RunStrip) + recency', () => {
+    it('standard renders the RunStrip with the slice conclusion (success → solid)', () => {
+      const { container } = render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="standard"
+        />,
+      );
+      expect(container.querySelector('[data-shape="solid"]')).not.toBeNull();
+    });
+
+    it('expanded renders the RunStrip with the slice conclusion (failure → notch)', () => {
+      const { container } = render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'failure', failingCount: 1 })}
+          size="expanded"
+        />,
+      );
+      expect(container.querySelector('[data-shape="notch"]')).not.toBeNull();
+    });
+
+    it('shows the latest-run recency (formatRelativeTime(updatedAt)) at standard tier', () => {
+      const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'failure', failingCount: 2, updatedAt })}
+          size="standard"
+        />,
+      );
+      expect(screen.getByText(/5 minutes ago/i)).toBeInTheDocument();
+    });
+
+    it('omits recency when updatedAt is absent', () => {
+      render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="standard"
+        />,
+      );
+      expect(screen.queryByText(/ago$/i)).toBeNull();
+    });
+
+    it('does not render an AmbientGlow tint (the frame owns the PROBLEM glow now)', () => {
+      const { container } = render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'failure', failingCount: 1 })}
+          size="standard"
+        />,
+      );
+      // The old body painted a full-bleed `absolute inset-0` glow; it is gone.
+      expect(container.querySelector('.pointer-events-none.absolute.inset-0')).toBeNull();
     });
   });
 
