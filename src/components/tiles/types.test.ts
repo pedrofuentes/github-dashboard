@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import type { TileSignalType } from '../../types/dashboard';
 import type { AccentTone, SignalIconKind, TileTier } from './types';
-import { iconKindTone, toneBgClass, toneTextClass, toneToVar } from './types';
+import {
+  SIGNAL_IDENTITY_TONE,
+  iconKindTone,
+  toneBgClass,
+  toneTextClass,
+  toneToVar,
+} from './types';
 
 const TONES: AccentTone[] = [
   'success',
@@ -100,5 +107,28 @@ describe('TileTier', () => {
   it('accepts the three documented density tiers', () => {
     const tiers: TileTier[] = ['compact', 'standard', 'expanded'];
     expect(tiers).toHaveLength(3);
+  });
+});
+
+describe('SIGNAL_IDENTITY_TONE', () => {
+  it('maps every signal to its calm-header identity accent (DESIGN-TILES §3, §5)', () => {
+    const expected: Record<TileSignalType, AccentTone> = {
+      ci: 'neutral',
+      security: 'neutral',
+      pullRequests: 'info',
+      reviews: 'info',
+      issues: 'neutral',
+      stale: 'ochre',
+      activity: 'purple',
+    };
+    const signals = Object.keys(expected) as TileSignalType[];
+    for (const signal of signals) {
+      expect(SIGNAL_IDENTITY_TONE[signal]).toBe(expected[signal]);
+    }
+  });
+
+  it('paints Stale ochre and Activity purple as their header identity', () => {
+    expect(SIGNAL_IDENTITY_TONE.stale).toBe('ochre');
+    expect(SIGNAL_IDENTITY_TONE.activity).toBe('purple');
   });
 });
