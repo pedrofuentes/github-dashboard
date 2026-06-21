@@ -5,9 +5,9 @@
  * a top accent bar reflecting the slice's data lifecycle status, a header, the
  * per-signal body, and the cross-cutting grid machinery (the `data-status`
  * attribute, roving tabindex, the whole-tile activate overlay, and the
- * edit-mode Move/Resize controls). For now the body reuses the existing
- * per-signal `*Cell` atoms via {@link SignalSummary}; the bespoke per-signal
- * bodies replace it in later tile tasks (DESIGN-TILES §6).
+ * edit-mode Move/Resize controls). The body dispatches to the bespoke
+ * per-signal bodies in {@link SignalBody} (DESIGN-TILES §4, §6); the table view
+ * keeps the compact `*Cell` atoms.
  *
  * The accent moved from the old left band to the frame's top bar: the slice
  * lifecycle status maps to a `SignalIconKind` and then, via `iconKindTone`, to
@@ -20,14 +20,14 @@ import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo, RepoSignalData, SignalSlice, SignalStatus } from '../types/fleet';
-import { CiCell } from './columns/CiCell';
-import { IssuesCell } from './columns/IssuesCell';
-import { PullRequestsCell } from './columns/PullRequestsCell';
-import { ReviewsCell } from './columns/ReviewsCell';
-import { SecurityCell } from './columns/SecurityCell';
-import { StaleCell } from './columns/StaleCell';
+import { CiTileBody } from './tiles/bodies/CiTileBody';
+import { IssuesTileBody } from './tiles/bodies/IssuesTileBody';
+import { PrsTileBody } from './tiles/bodies/PrsTileBody';
+import { ReviewsTileBody } from './tiles/bodies/ReviewsTileBody';
+import { SecurityTileBody } from './tiles/bodies/SecurityTileBody';
+import { StaleTileBody } from './tiles/bodies/StaleTileBody';
 import { TileFrame } from './tiles/TileFrame';
-import type { AccentTone, SignalIconKind } from './tiles/types';
+import type { AccentTone, SignalIconKind, TileTier } from './tiles/types';
 import { iconKindTone } from './tiles/types';
 import { useTileSize } from './tiles/useTileSize';
 
@@ -77,27 +77,36 @@ const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
   ready: 'info',
 };
 
-/** Renders the matching signal cell, reusing the grid's presentational atoms. */
-function SignalSummary({
+/** Renders the matching bespoke per-signal body (DESIGN-TILES §4, §6). */
+function SignalBody({
   signal,
+  repo,
   data,
+  size,
 }: {
   signal: TileSignalType;
+  repo: Repo;
   data: RepoSignalData;
+  size: TileTier;
 }): ReactElement {
   switch (signal) {
     case 'ci':
-      return <CiCell slice={data.ci} />;
+      return <CiTileBody repo={repo} data={data} size={size} />;
     case 'security':
-      return <SecurityCell slice={data.security} />;
-    case 'reviews':
-      return <ReviewsCell slice={data.reviews} />;
+      return <SecurityTileBody repo={repo} data={data} size={size} />;
     case 'pullRequests':
-      return <PullRequestsCell slice={data.pullRequests} />;
+      return <PrsTileBody repo={repo} data={data} size={size} />;
+    case 'reviews':
+      return <ReviewsTileBody repo={repo} data={data} size={size} />;
     case 'issues':
-      return <IssuesCell slice={data.issues} />;
+      return <IssuesTileBody repo={repo} data={data} size={size} />;
     case 'stale':
-      return <StaleCell slice={data.stale} />;
+      return <StaleTileBody repo={repo} data={data} size={size} />;
+    default:
+      // The switch is exhaustive over `TileSignalType`; this guards a malformed
+      // runtime signal so the tile degrades to a neutral, labelled state rather
+      // than throwing or rendering blank (DESIGN-TILES §3.6).
+      return <span className="text-sm text-text-muted">Unknown signal</span>;
   }
 }
 
@@ -140,7 +149,7 @@ export function SignalTile({
       colIndex={colIndex}
       rowIndex={rowIndex}
     >
-      <SignalSummary signal={tile.signal} data={data} />
+      <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} />
     </TileFrame>
   );
 }
