@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
+import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
 import { useAuth } from './hooks/useAuth';
@@ -42,7 +43,10 @@ function Shell(): ReactElement {
               Fleet health for your GitHub repositories, at a glance.
             </p>
           </div>
-          {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <ThemeToggle />
+            {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
+          </div>
         </div>
       </header>
       <main
