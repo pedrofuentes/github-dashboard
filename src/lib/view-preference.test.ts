@@ -29,6 +29,11 @@ describe('loadViewPreference', () => {
     expect(loadViewPreference()).toBe('grid');
   });
 
+  it('reads a stored "inbox" preference', () => {
+    localStorage.setItem(VIEW_KEY, 'inbox');
+    expect(loadViewPreference()).toBe('inbox');
+  });
+
   it('defaults to "grid" for an unrecognised value', () => {
     localStorage.setItem(VIEW_KEY, 'cards');
     expect(loadViewPreference()).toBe('grid');
@@ -51,6 +56,12 @@ describe('saveViewPreference', () => {
   it('round-trips through loadViewPreference', () => {
     saveViewPreference('dashboard');
     expect(loadViewPreference()).toBe('dashboard');
+  });
+
+  it('persists and round-trips the inbox view', () => {
+    saveViewPreference('inbox');
+    expect(localStorage.getItem(VIEW_KEY)).toBe('inbox');
+    expect(loadViewPreference()).toBe('inbox');
   });
 
   it('swallows localStorage.setItem throwing', () => {

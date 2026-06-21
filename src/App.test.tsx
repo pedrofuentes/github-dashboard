@@ -6,7 +6,7 @@ import { forgetToken } from './lib/token-storage';
 import { validateToken } from './lib/validate-token';
 import { useRepos } from './hooks/useRepos';
 import { useRepoSignals } from './hooks/useRepoSignals';
-import type { GetRowData, Repo } from './types/fleet';
+import type { GetRowData, Repo, RepoSignalData } from './types/fleet';
 import { App } from './App';
 
 vi.mock('./lib/validate-token', () => ({
@@ -25,6 +25,20 @@ const mockValidate = vi.mocked(validateToken);
 const mockUseRepos = vi.mocked(useRepos);
 const mockUseRepoSignals = vi.mocked(useRepoSignals);
 const getRowData: GetRowData = () => ({});
+
+const CI_TIMESTAMP = '2026-06-20T12:00:00.000Z';
+
+// A fleet seam that yields exactly one (unread) failing-CI inbox item per repo,
+// so the lifted useInbox produces a deterministic fleet-wide unread count.
+const getRowDataWithFailingCi: GetRowData = (target: Repo): RepoSignalData => ({
+  ci: {
+    status: 'ready',
+    conclusion: 'failure',
+    runId: 42,
+    updatedAt: CI_TIMESTAMP,
+    latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/42`,
+  },
+});
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -354,5 +368,107 @@ describe('App', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
     await user.click(screen.getByRole('button', { name: /retry/i }));
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  function viewToggle(): HTMLElement {
+    return screen.getByRole('group', { name: /view/i });
+  }
+
+  function inboxToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /inbox/i });
+  }
+
+  it('offers a third Inbox option in the view toggle (AC-15)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    const toggle = viewToggle();
+    expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /inbox/i })).toBeInTheDocument();
+  });
+
+  it('renders the inbox view and hides the grid when Inbox is selected (AC-15)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(inboxToggleButton());
+
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
+  });
+
+  it('persists the inbox view selection under fleet:view (AC-15)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    await user.click(inboxToggleButton());
+    expect(localStorage.getItem('fleet:view')).toBe('inbox');
+  });
+
+  it('starts in the inbox view when it was previously persisted (AC-15)', async () => {
+    localStorage.setItem('fleet:view', 'inbox');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('surfaces the fleet-wide unread count as an accessible badge on the Inbox toggle (AC-16)', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+
+    // Two repos, one failing-CI item each → 2 unread, shown as a number (not colour alone).
+    const inboxButton = inboxToggleButton();
+    expect(inboxButton).toHaveTextContent('2');
+    expect(inboxButton).toHaveAccessibleName(/unread/i);
+  });
+
+  it('shares a single inbox instance so dismissing in the view updates the toggle badge (AC-16)', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+    await screen.findByRole('table');
+
+    expect(inboxToggleButton()).toHaveTextContent('2');
+
+    await user.click(inboxToggleButton());
+    const dismissButtons = await screen.findAllByRole('button', { name: /dismiss/i });
+    await user.click(dismissButtons[0]);
+
+    // One shared useInbox: dismissing an item in the view drops the badge 2 → 1.
+    await waitFor(() => expect(inboxToggleButton()).toHaveTextContent('1'));
+  });
+
+  it('advances the last-visited watermark when the inbox is opened (AC-16)', async () => {
+    const seeded = '2024-01-01T00:00:00.000Z';
+    localStorage.setItem(
+      'fleet:inbox-triage',
+      JSON.stringify({ readIds: [], dismissedIds: [], lastVisitedAt: seeded }),
+    );
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/one')]);
+    await screen.findByRole('table');
+
+    await user.click(inboxToggleButton());
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('fleet:inbox-triage') ?? '{}') as {
+        lastVisitedAt: string | null;
+      };
+      expect(typeof stored.lastVisitedAt).toBe('string');
+      expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
+    });
   });
 });
