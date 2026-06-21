@@ -16,7 +16,8 @@ export type AccentTone =
   | 'neutral'
   | 'coral'
   | 'purple'
-  | 'gold';
+  | 'gold'
+  | 'ochre';
 
 /** Density tier a tile renders at (DESIGN-TILES §3.4). */
 export type TileTier = 'compact' | 'standard' | 'expanded';
@@ -58,6 +59,7 @@ const TONE_TEXT_CLASS: Record<AccentTone, string> = {
   coral: 'text-accent-coral',
   purple: 'text-accent-purple',
   gold: 'text-accent-gold',
+  ochre: 'text-accent-ochre',
 };
 
 /** Tailwind text-colour class for a tone. */
@@ -74,6 +76,7 @@ const TONE_BG_CLASS: Record<AccentTone, string> = {
   coral: 'bg-accent-coral',
   purple: 'bg-accent-purple',
   gold: 'bg-accent-gold',
+  ochre: 'bg-accent-ochre',
 };
 
 /** Tailwind background-colour class for a tone (solid, non-text fills). */
