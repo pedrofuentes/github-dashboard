@@ -93,6 +93,13 @@ describe('App', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
+  it('exposes the density toggle beside the theme toggle', () => {
+    render(<App />);
+
+    expect(screen.getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+  });
+
   it('exposes a top-level banner landmark that holds the dashboard heading', () => {
     render(<App />);
 
