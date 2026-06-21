@@ -107,15 +107,15 @@ describe('SignalTile', () => {
         onActivate={vi.fn()}
       />,
     );
-    expect(screen.getByText(/couldn.t load ci/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/couldn.t load ci/i).length).toBeGreaterThan(0);
   });
 
   it('renders a neutral empty state for a missing slice', () => {
     render(<SignalTile tile={makeTile('ci')} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
-    expect(screen.getByText(/ci status unknown/i)).toBeInTheDocument();
+    expect(screen.getByText(/ci status unavailable for octo\/a/i)).toBeInTheDocument();
   });
 
-  it('renders the glanceable value for a ready slice, reusing the signal cell', () => {
+  it('renders the glanceable value for a ready slice via the bespoke body', () => {
     render(
       <SignalTile
         tile={makeTile('ci')}
@@ -124,21 +124,25 @@ describe('SignalTile', () => {
         onActivate={vi.fn()}
       />,
     );
-    expect(screen.getByText('Failing')).toBeInTheDocument();
+    expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
   });
 
-  it.each<[TileSignalType, string]>([
-    ['ci', 'CI'],
-    ['security', 'Security'],
-    ['reviews', 'Reviews'],
-    ['pullRequests', 'Pull requests'],
-    ['issues', 'Issues'],
-    ['stale', 'Stale'],
-  ])('renders the %s signal with its label and cell', (signal, label) => {
+  it.each<[TileSignalType, string, RegExp]>([
+    ['ci', 'CI', /ci status unavailable for octo\/a/i],
+    ['security', 'Security', /security status unavailable/i],
+    ['reviews', 'Reviews', /review queue not loaded/i],
+    ['pullRequests', 'Pull requests', /no pull request data for octo\/a/i],
+    ['issues', 'Issues', /issue count not available/i],
+    ['stale', 'Stale', /stale activity not loaded/i],
+  ])('renders the %s signal with its label and bespoke body', (signal, label, bodyMarker) => {
     render(<SignalTile tile={makeTile(signal)} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: new RegExp(`details for octo/a`, 'i') }),
     ).toBeInTheDocument();
+    // The bespoke per-signal body (DESIGN-TILES §6) renders its own redundant
+    // sr-text — proof the tile now dispatches to the bodies, not the `*Cell`
+    // atoms (which the table view keeps).
+    expect(screen.getAllByText(bodyMarker).length).toBeGreaterThan(0);
   });
 });

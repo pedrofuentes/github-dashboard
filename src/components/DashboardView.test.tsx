@@ -57,7 +57,7 @@ describe('DashboardView', () => {
         onRepoActivate={vi.fn()}
       />,
     );
-    expect(screen.getByText('Failing')).toBeInTheDocument();
+    expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
   });
 
   it('calls onRepoActivate when a tile is activated (opens the drill-down)', async () => {
