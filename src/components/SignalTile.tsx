@@ -18,6 +18,9 @@ import type { ReactElement } from 'react';
 
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
+import { resolveSalience } from '../lib/tile-salience';
+import type { TileSalience } from '../lib/tile-salience';
+import { signalHeroSummary } from '../lib/tile-summary';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo, RepoSignalData, SignalSlice, SignalStatus } from '../types/fleet';
 import { CiTileBody } from './tiles/bodies/CiTileBody';
@@ -29,7 +32,7 @@ import { SecurityTileBody } from './tiles/bodies/SecurityTileBody';
 import { StaleTileBody } from './tiles/bodies/StaleTileBody';
 import { TileFrame } from './tiles/TileFrame';
 import type { AccentTone, SignalIconKind, TileTier } from './tiles/types';
-import { iconKindTone } from './tiles/types';
+import { SIGNAL_IDENTITY_TONE, iconKindTone } from './tiles/types';
 import { useTileSize } from './tiles/useTileSize';
 
 export interface SignalTileProps {
@@ -79,14 +82,13 @@ const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
 };
 
 /**
- * Frame accent for the Activity tile. Activity has no lifecycle slice in
- * {@link RepoSignalData} — the {@link ActivityTileBody} owns its own load states
- * — so the frame shows a stable identity rather than a data-driven status: a
- * `ready`-equivalent status and the `success` accent that matches the body's
- * activity ink (DESIGN-TILES §4.7).
+ * Stable lifecycle status for the Activity tile. Activity has no lifecycle slice
+ * in {@link RepoSignalData} — the {@link ActivityTileBody} owns its own load
+ * states via `useCommitActivity` — so the frame shows a `ready`-equivalent
+ * status. Its identity colour comes from {@link SIGNAL_IDENTITY_TONE} (purple),
+ * not a data-driven tone (DESIGN-TILES §5; redesign R2).
  */
 const ACTIVITY_STATUS: SignalStatus = 'ready';
-const ACTIVITY_TONE: AccentTone = 'success';
 
 /** Renders the matching bespoke per-signal body (DESIGN-TILES §4, §6). */
 function SignalBody({
@@ -148,7 +150,17 @@ export function SignalTile({
   const slice: SignalSlice | undefined = tile.signal === 'activity' ? undefined : data[tile.signal];
   const status: SignalStatus = isActivity ? ACTIVITY_STATUS : (slice?.status ?? 'unknown');
   const signalLabel = SIGNAL_LABELS[tile.signal];
-  const tone: AccentTone = isActivity ? ACTIVITY_TONE : iconKindTone(STATUS_ICON_KIND[status]);
+  const tone: AccentTone = iconKindTone(STATUS_ICON_KIND[status]);
+
+  // Salience escalation + identity (DESIGN-TILES §3, §5). The bar/surface
+  // treatment comes from `resolveSalience`; the calm-tier header dot uses the
+  // signal's identity tone (purple for Activity, ochre for Stale, etc.). The
+  // activate button gets a scope + metric + tier + repo accessible summary so a
+  // screen-reader user hears the headline without entering the tile (§8).
+  const salience: TileSalience = resolveSalience(tile.signal, data);
+  const identityTone: AccentTone = SIGNAL_IDENTITY_TONE[tile.signal];
+  const heroSummary = signalHeroSummary(tile.signal, data);
+  const accessibleSummary = `${signalLabel}: ${heroSummary}, ${salience.tier} — ${repo.nameWithOwner}`;
 
   // The frame measures its own box to pick a density tier (DESIGN-TILES §3.4).
   const { ref, tier } = useTileSize<HTMLElement>();
@@ -170,6 +182,9 @@ export function SignalTile({
       onResize={onResize}
       colIndex={colIndex}
       rowIndex={rowIndex}
+      salience={salience}
+      identityTone={identityTone}
+      accessibleSummary={accessibleSummary}
     >
       <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} />
     </TileFrame>
