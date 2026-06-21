@@ -1,11 +1,13 @@
 /**
  * InboxView — the Notifications Inbox container (DESIGN-INBOX §6, §7).
  *
- * Owns the Inbox presentation: it consumes {@link useInbox} over the same fleet
- * `repos` + `getRowData` seam the grid and dashboard use (passed as props so
- * `App` can supply them in INBOX-7), renders the header (filter-independent
- * unread count + the §4.2 repo/kind/unread-only/show-dismissed filters), and
- * switches the body between the four §6.1 states and the list:
+ * Owns the Inbox presentation. It is driven by a {@link UseInboxResult}
+ * view-model passed in as a prop: `App` lifts a single {@link useInbox} instance
+ * (over the same fleet `repos` + `getRowData` seam the grid and dashboard use)
+ * to the panel level so the toggle's unread badge and this view share one triage
+ * state, then hands the result here. The view renders the header (filter-
+ * independent unread count + the §4.2 repo/kind/unread-only/show-dismissed
+ * filters), and switches the body between the four §6.1 states and the list:
  *
  * - **error** (inherited from the fleet load) → a shared alert + retry;
  * - **loading** (inherited) → a reduced-motion-friendly skeleton + `aria-busy`;
@@ -22,8 +24,8 @@
 import { useCallback, useId, useState } from 'react';
 import type { ChangeEvent, ReactElement } from 'react';
 
-import { useInbox } from '../../hooks/useInbox';
-import type { GetRowData, Repo } from '../../types/fleet';
+import type { UseInboxResult } from '../../hooks/useInbox';
+import type { Repo } from '../../types/fleet';
 import type { InboxKind } from '../../types/inbox';
 import { InboxList } from './InboxList';
 import { KIND_LABELS } from './labels';
@@ -41,10 +43,10 @@ const CHECKBOX_CLASS =
   'h-4 w-4 rounded border-border-strong text-accent-info focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
 
 export interface InboxViewProps {
-  /** Fleet repositories (drive the repo filter + feed the hook). */
+  /** The lifted inbox view-model (one shared {@link useInbox} instance). */
+  inbox: UseInboxResult;
+  /** Fleet repositories (drive the repo filter dropdown). */
   repos: Repo[];
-  /** Resolves each repo's already-fetched signal data; no fetch. */
-  getRowData: GetRowData;
   /** True while the fleet fetch is in flight (skeleton on first load). */
   loading?: boolean;
   /** Fleet fetch error message; renders an alert + retry instead of the inbox. */
@@ -54,16 +56,13 @@ export interface InboxViewProps {
 }
 
 export function InboxView({
+  inbox,
   repos,
-  getRowData,
   loading = false,
   error = null,
   onRetry,
 }: InboxViewProps): ReactElement {
-  const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = useInbox(
-    repos,
-    getRowData,
-  );
+  const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
 
   const repoFilterId = useId();
   const kindFilterId = useId();

@@ -5,8 +5,8 @@
  * degrades to the default rather than throwing.
  */
 
-/** The two ways the authenticated fleet can be presented. */
-export type FleetView = 'grid' | 'dashboard';
+/** The ways the authenticated fleet can be presented. */
+export type FleetView = 'grid' | 'dashboard' | 'inbox';
 
 const VIEW_KEY = 'fleet:view';
 
@@ -30,7 +30,7 @@ function safeSet(key: string, value: string): void {
 }
 
 function isFleetView(value: string | null): value is FleetView {
-  return value === 'grid' || value === 'dashboard';
+  return value === 'grid' || value === 'dashboard' || value === 'inbox';
 }
 
 /** Reads the stored view, defaulting to `'grid'` on any problem. */
