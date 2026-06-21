@@ -37,11 +37,19 @@ export interface SignalSlice {
  * CI slice — owned by issue #12 (failing GitHub Actions). Carries the latest
  * workflow conclusion, how many workflows are currently failing, and a deep
  * link to the most recent run.
+ *
+ * `runId` and `updatedAt` un-project the latest run's identity already present
+ * in the same `?per_page=1` response (the Notifications Inbox keys a
+ * `ci:<repo>:<run-id>` item off them and orders it by `updatedAt`).
  */
 export interface CiSignalSlice extends SignalSlice {
   conclusion?: 'success' | 'failure' | 'in_progress' | 'queued' | 'none';
   failingCount?: number;
   latestRunUrl?: string;
+  /** The latest run's numeric id (GitHub Actions run id). */
+  runId?: number;
+  /** ISO-8601 timestamp of when the latest run was last updated. */
+  updatedAt?: string;
 }
 
 /**
@@ -59,15 +67,51 @@ export interface SecuritySignalSlice extends SignalSlice {
   truncated?: boolean;
 }
 
+/**
+ * A pull request awaiting the viewer's review, as un-projected from the
+ * cross-repo `review-requested:@me` Search results (no extra request). One
+ * `review:<repo>:#<number>` Inbox item is emitted per entry, ordered by
+ * `created_at`.
+ */
+export interface ReviewRequestedPullRequest {
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  /** PR author login (empty string when GitHub returns a null author). */
+  user_login: string;
+}
+
 /** Reviews slice — owned by issue #14 (review requests assigned to the viewer). */
 export interface ReviewsSignalSlice extends SignalSlice {
   requestedCount?: number;
+  /** Per-PR identity for the Inbox; omitted when the repo has none awaiting. */
+  requests?: ReviewRequestedPullRequest[];
+}
+
+/**
+ * A new outside-contributor pull request, un-projected from the same
+ * `/pulls?state=open` response (no extra request). Already filtered to
+ * non-draft PRs from a new outside contributor; one `new-pr:<repo>:#<number>`
+ * Inbox item is emitted per entry, ordered by `created_at`.
+ */
+export interface ExternalPullRequest {
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  /** PR author login (empty string when GitHub returns a null author). */
+  user_login: string;
+  /** GitHub `author_association`, e.g. `FIRST_TIME_CONTRIBUTOR` or `NONE`. */
+  author_association: string;
 }
 
 /** Pull-requests slice — owned by issue #15 (open / external-contributor PRs). */
 export interface PullRequestsSignalSlice extends SignalSlice {
   openCount?: number;
   externalCount?: number;
+  /** External, non-draft PR identity for the Inbox; omitted when there are none. */
+  externalPullRequests?: ExternalPullRequest[];
 }
 
 /** Issues slice — owned by issue #16 (open issue counts / triage threshold). */
@@ -76,9 +120,26 @@ export interface IssuesSignalSlice extends SignalSlice {
   overThreshold?: boolean;
 }
 
+/**
+ * A stale open PR or issue, un-projected from the same per-repo Search call
+ * (its `per_page` widened and `sort=updated&order=desc` appended — no extra
+ * request). One `stale:<repo>:<pr|issue>:#<number>` Inbox item is emitted per
+ * entry, ordered by `updatedAt`.
+ */
+export interface StaleItem {
+  number: number;
+  title: string;
+  html_url: string;
+  updated_at: string;
+  /** `pr` when the Search item carried a `pull_request` field, else `issue`. */
+  type: 'pr' | 'issue';
+}
+
 /** Stale slice — owned by issue #17 (stale branches / inactivity). */
 export interface StaleSignalSlice extends SignalSlice {
   staleCount?: number;
+  /** Per-item identity for the Inbox (bounded page); omitted when none stale. */
+  staleItems?: StaleItem[];
 }
 
 /**

@@ -105,9 +105,15 @@ describe('staleSearchUrl', () => {
     expect(queryOf(url)).toBe('repo:octo/a is:open updated:<2024-01-01');
   });
 
-  it('only needs the total count, so it requests a single result', () => {
-    const perPage = new URL(staleSearchUrl('octo', 'a', '2024-01-01')).searchParams.get('per_page');
-    expect(Number(perPage)).toBe(1);
+  it('requests a bounded newest-first page of items (same single call), not just the count', () => {
+    const params = new URL(staleSearchUrl('octo', 'a', '2024-01-01')).searchParams;
+    const perPage = Number(params.get('per_page'));
+    // §1.5: the same Search call now widens `per_page` (bounded, ≤ 30) and sorts
+    // newest-stale first so `items[]` can be parsed — still one call per repo.
+    expect(perPage).toBeGreaterThan(1);
+    expect(perPage).toBeLessThanOrEqual(30);
+    expect(params.get('sort')).toBe('updated');
+    expect(params.get('order')).toBe('desc');
   });
 });
 
@@ -165,7 +171,10 @@ describe('useStaleSignal', () => {
     const [url, , options] = mockFetchWithETag.mock.calls[0];
     expect((url as string).startsWith('https://api.github.com/search/issues?q=')).toBe(true);
     expect(queryOf(url as string)).toMatch(/^repo:octo\/a is:open updated:<\d{4}-\d{2}-\d{2}$/);
-    expect(new URL(url as string).searchParams.get('per_page')).toBe('1');
+    const params = new URL(url as string).searchParams;
+    expect(Number(params.get('per_page'))).toBeGreaterThan(1);
+    expect(params.get('sort')).toBe('updated');
+    expect(params.get('order')).toBe('desc');
     expect(options).toMatchObject({ token: 'ghp_token' });
   });
 
@@ -178,6 +187,66 @@ describe('useStaleSignal', () => {
       expect(result.current.get('octo/a')?.status).toBe('ready');
     });
     expect(result.current.get('octo/a')).toEqual({ status: 'ready', staleCount: 7, score: 7 });
+  });
+
+  it('exposes per-item stale identity (number/title/url/updated_at + pr|issue) from the same call (AC-4)', async () => {
+    mockFetchWithETag.mockResolvedValue({
+      total_count: 2,
+      items: [
+        {
+          number: 11,
+          title: 'Old PR',
+          html_url: 'https://github.com/octo/a/pull/11',
+          updated_at: '2023-01-01T00:00:00Z',
+          pull_request: { url: 'https://api.github.com/repos/octo/a/pulls/11' },
+        },
+        {
+          number: 9,
+          title: 'Old issue',
+          html_url: 'https://github.com/octo/a/issues/9',
+          updated_at: '2023-01-02T00:00:00Z',
+        },
+      ],
+    } as never);
+
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    const slice = result.current.get('octo/a');
+    // total_count still drives the tally; the same page now also yields the
+    // per-item identity the Inbox needs (`pull_request` present ⇒ PR else issue).
+    expect(slice?.staleCount).toBe(2);
+    expect(slice?.staleItems).toEqual([
+      {
+        number: 11,
+        title: 'Old PR',
+        html_url: 'https://github.com/octo/a/pull/11',
+        updated_at: '2023-01-01T00:00:00Z',
+        type: 'pr',
+      },
+      {
+        number: 9,
+        title: 'Old issue',
+        html_url: 'https://github.com/octo/a/issues/9',
+        updated_at: '2023-01-02T00:00:00Z',
+        type: 'issue',
+      },
+    ]);
+  });
+
+  it('keeps the stale search to a single call per repo on the same endpoint (AC-5)', async () => {
+    mockFetchWithETag.mockResolvedValue({ total_count: 0, items: [] } as never);
+
+    renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    });
+    expect(mockFetchWithETag.mock.calls[0][0]).toMatch(
+      /^https:\/\/api\.github\.com\/search\/issues\?q=/,
+    );
   });
 
   it('marks a repo as error when its search rejects', async () => {

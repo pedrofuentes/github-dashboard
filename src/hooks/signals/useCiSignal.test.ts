@@ -29,10 +29,12 @@ function manyRepos(count: number): Repo[] {
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 interface RawRun {
+  id?: number;
   status?: string | null;
   conclusion?: string | null;
   html_url?: string;
   name?: string;
+  updated_at?: string;
 }
 
 /** Builds a `GET /actions/runs` response body with zero or one run. */
@@ -109,6 +111,49 @@ describe('useCiSignal', () => {
       failingCount: 1,
       latestRunUrl: 'https://github.com/octo/a/actions/runs/1',
     });
+  });
+
+  it('exposes the failing run id and updated_at as per-item identity (AC-4)', async () => {
+    fetchMock.mockResolvedValue(
+      runs({
+        id: 42,
+        status: 'completed',
+        conclusion: 'failure',
+        html_url: 'https://github.com/octo/a/actions/runs/42',
+        updated_at: '2024-05-01T10:00:00Z',
+      }),
+    );
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    // The Inbox keys a `ci:<repo>:<run-id>` item off the run id and orders it by
+    // the run's `updated_at`; both already ride the same `?per_page=1` response
+    // and must survive validation rather than being stripped by the schema.
+    expect(result.current.get('octo/a')).toMatchObject({
+      conclusion: 'failure',
+      runId: 42,
+      updatedAt: '2024-05-01T10:00:00Z',
+    });
+  });
+
+  it('enriches identity without adding any request (same single per_page=1 call) (AC-5)', async () => {
+    fetchMock.mockResolvedValue(
+      runs({
+        id: 7,
+        status: 'completed',
+        conclusion: 'failure',
+        updated_at: '2024-05-01T10:00:00Z',
+      }),
+    );
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    // Identity is un-projected from data already in flight: the call count and
+    // the `?per_page=1` probe URL are unchanged — no new endpoint or page.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain('/repos/octo/a/actions/runs?per_page=1');
+    expect(url).not.toContain('per_page=100');
   });
 
   it('treats timed-out runs as failures', async () => {

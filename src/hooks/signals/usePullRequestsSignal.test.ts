@@ -21,6 +21,8 @@ function pull(number: number, authorAssociation: string, draft = false): unknown
     author_association: authorAssociation,
     draft,
     html_url: `https://github.com/octo/a/pull/${number}`,
+    title: `PR ${number}`,
+    created_at: `2024-03-${String(number).padStart(2, '0')}T00:00:00Z`,
   };
 }
 
@@ -144,6 +146,61 @@ describe('usePullRequestsSignal', () => {
     const slice = result.current.get('octo/a');
     expect(slice?.openCount).toBe(2);
     expect(slice?.externalCount).toBe(1);
+  });
+
+  it('exposes the filtered external-contributor PR list as per-item identity (AC-4)', async () => {
+    mockFetchWithETag.mockResolvedValue([
+      pull(1, 'MEMBER'), // internal → excluded
+      pull(2, 'NONE'), // new outside contributor, non-draft → included
+      pull(3, 'FIRST_TIMER', true), // external but draft → excluded
+      pull(4, 'FIRST_TIME_CONTRIBUTOR'), // new outside contributor, non-draft → included
+    ]);
+
+    const { result } = renderHook(() => usePullRequestsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    const slice = result.current.get('octo/a');
+    expect(slice?.externalCount).toBe(2);
+    // The Inbox emits one `new-pr:<repo>:#<n>` item per external, non-draft PR,
+    // ordered by `created_at`; the list un-projects fields already in the
+    // `/pulls?state=open` payload (no extra request) and matches the predicate.
+    expect(slice?.externalPullRequests).toEqual([
+      {
+        number: 2,
+        title: 'PR 2',
+        html_url: 'https://github.com/octo/a/pull/2',
+        created_at: '2024-03-02T00:00:00Z',
+        user_login: 'user-2',
+        author_association: 'NONE',
+      },
+      {
+        number: 4,
+        title: 'PR 4',
+        html_url: 'https://github.com/octo/a/pull/4',
+        created_at: '2024-03-04T00:00:00Z',
+        user_login: 'user-4',
+        author_association: 'FIRST_TIME_CONTRIBUTOR',
+      },
+    ]);
+  });
+
+  it('omits the external list (and adds no request) when there are no external PRs (AC-5)', async () => {
+    mockFetchWithETag.mockResolvedValue([pull(1, 'MEMBER'), pull(2, 'OWNER')]);
+
+    const { result } = renderHook(() => usePullRequestsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    // Enrichment is a pure un-projection: same single `/pulls?state=open&per_page=100`
+    // call, and no external list when the predicate matches nothing.
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    expect(mockFetchWithETag.mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/octo/a/pulls?state=open&per_page=100',
+    );
+    expect(result.current.get('octo/a')?.externalPullRequests).toBeUndefined();
   });
 
   it('reports zero counts for a repo with no open PRs', async () => {
