@@ -24,7 +24,7 @@ function EyeIcon() {
 /**
  * Reviews column cell: how many open PRs await the viewer's review.
  *
- * - `> 0` → a prominent rose badge "N awaiting you", labelled for screen
+ * - `> 0` → a prominent amber badge "N awaiting you", labelled for screen
  *   readers and paired with an eye icon so urgency never rests on colour alone
  *   (WCAG 2.1 AA, colourblind-safe).
  * - `0` → a muted dash with an accessible "none awaiting" label.
@@ -37,7 +37,7 @@ export function ReviewsCell({ slice }: ReviewsCellProps) {
       <span className="inline-flex items-center justify-center">
         <span
           aria-hidden="true"
-          className="block h-3 w-16 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          className="block h-3 w-16 animate-pulse rounded bg-border motion-reduce:animate-none"
         />
         <span className="sr-only">Loading review requests…</span>
       </span>
@@ -56,7 +56,7 @@ export function ReviewsCell({ slice }: ReviewsCellProps) {
         <span
           role="img"
           aria-label={label}
-          className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-900"
+          className="inline-flex items-center gap-1 rounded-full border border-accent-warning bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-warning"
         >
           <EyeIcon />
           <span aria-hidden="true">{count} awaiting you</span>

@@ -40,7 +40,7 @@ function TriageAlertIcon() {
 /** Neutral em-dash placeholder (icon + screen-reader text, never colour alone). */
 function Placeholder({ srLabel }: { srLabel: string }) {
   return (
-    <span className="inline-flex items-center justify-center text-slate-500">
+    <span className="inline-flex items-center justify-center text-text-muted">
       <span aria-hidden="true">—</span>
       <span className="sr-only">{srLabel}</span>
     </span>
@@ -63,7 +63,7 @@ export function IssuesCell({ slice }: IssuesCellProps) {
       <span className="inline-flex items-center justify-center">
         <span
           aria-hidden="true"
-          className="inline-block h-3 w-10 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          className="inline-block h-3 w-10 animate-pulse rounded bg-border motion-reduce:animate-none"
         />
         <span className="sr-only">Loading issue count…</span>
       </span>
@@ -86,13 +86,16 @@ export function IssuesCell({ slice }: IssuesCellProps) {
       aria-label={label}
       className={cn(
         'inline-flex items-center justify-center gap-1 tabular-nums',
-        overThreshold ? 'font-semibold text-amber-800' : 'text-slate-700',
+        overThreshold ? 'font-semibold text-accent-warning' : 'text-text-muted',
       )}
     >
       <IssueOpenedIcon />
       <span aria-hidden="true">{openCount} open</span>
       {overThreshold ? (
-        <span title="over the triage threshold" className="inline-flex items-center text-amber-700">
+        <span
+          title="over the triage threshold"
+          className="inline-flex items-center text-accent-warning"
+        >
           <TriageAlertIcon />
         </span>
       ) : null}

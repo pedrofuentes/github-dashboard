@@ -44,7 +44,7 @@ export function StaleCell({ slice }: StaleCellProps) {
       <span className="inline-flex items-center justify-center">
         <span
           aria-hidden="true"
-          className="block h-3 w-12 animate-pulse rounded bg-slate-200 motion-reduce:animate-none"
+          className="block h-3 w-12 animate-pulse rounded bg-border motion-reduce:animate-none"
         />
         <span className="sr-only">Loading stale items…</span>
       </span>
@@ -63,7 +63,7 @@ export function StaleCell({ slice }: StaleCellProps) {
         <span
           role="img"
           aria-label={label}
-          className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900"
+          className="inline-flex items-center gap-1 rounded-full border border-accent-warning bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--color-surface))] px-2 py-0.5 text-xs font-semibold text-accent-warning"
         >
           <ClockIcon />
           <span aria-hidden="true">{count} stale</span>

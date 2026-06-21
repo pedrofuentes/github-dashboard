@@ -11,7 +11,7 @@ interface StubCellProps {
  */
 export function StubCell({ srLabel }: StubCellProps) {
   return (
-    <span className="inline-flex items-center justify-center text-slate-500">
+    <span className="inline-flex items-center justify-center text-text-muted">
       <span aria-hidden="true">—</span>
       <span className="sr-only">{srLabel}</span>
     </span>
