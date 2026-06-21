@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DashboardView } from './components/DashboardView';
+import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
 import { InboxView } from './components/inbox/InboxView';
@@ -47,6 +48,7 @@ function Shell(): ReactElement {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <ThemeToggle />
+            <DensityToggle />
             {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
           </div>
         </div>

@@ -30,6 +30,20 @@ export function formatCount(value: number): string {
   return `${sign}${round(abs / 1_000_000)}M`;
 }
 
+/**
+ * Formats a signed delta with a directional marker (e.g. `3` → `▲3`,
+ * `-1500` → `▼1.5k`). Zero and non-finite values render as an em dash.
+ * Magnitude is abbreviated via {@link formatCount}.
+ */
+export function formatDelta(value: number): string {
+  if (!Number.isFinite(value) || value === 0) {
+    return '—';
+  }
+
+  const marker = value > 0 ? '▲' : '▼';
+  return `${marker}${formatCount(Math.abs(value))}`;
+}
+
 function pluralize(value: number, unit: string): string {
   return `${String(value)} ${unit}${value === 1 ? '' : 's'} ago`;
 }
