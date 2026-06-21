@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
-import type { Repo, StaleSignalSlice } from '../../types/fleet';
+import type { Repo, StaleItem, StaleSignalSlice } from '../../types/fleet';
 
 /**
  * Stale signal — open PRs and issues with no recent activity (issue #17).
@@ -33,8 +33,13 @@ import type { Repo, StaleSignalSlice } from '../../types/fleet';
  */
 export const STALE_THRESHOLD_DAYS = 30;
 
-/** Only the total count is needed, so a single result keeps payloads tiny. */
-const SEARCH_PAGE_SIZE = 1;
+/**
+ * Items requested from the same per-repo Search call. The page is widened from
+ * 1 to this bound (still one call per repo) and sorted newest-stale-first so the
+ * Notifications Inbox can read each stale item's identity without any extra
+ * request; `total_count` continues to drive the tally regardless of this cap.
+ */
+export const STALE_ITEMS_PER_REPO = 30;
 
 /** Separator for the repo-set effect key (repo names can't contain it). */
 const KEY_SEPARATOR = '\n';
@@ -43,11 +48,32 @@ const KEY_SEPARATOR = '\n';
 const EMPTY: Map<string, StaleSignalSlice> = new Map();
 
 /**
- * Minimal Search response schema (local to this hook). `.passthrough()` keeps
- * the many unused Search fields from breaking validation; only `total_count`
- * is read, as the per-repo stale tally.
+ * One stale Search item's per-repo identity. `pull_request` is GitHub's marker
+ * distinguishing a PR from an issue on the shared `search/issues` endpoint; it
+ * is kept as an optional passthrough only to derive the item `type`.
  */
-const StaleCountSchema = z.object({ total_count: z.number() }).passthrough();
+const StaleItemSchema = z
+  .object({
+    number: z.number(),
+    title: z.string(),
+    html_url: z.string(),
+    updated_at: z.string(),
+    pull_request: z.unknown().optional(),
+  })
+  .passthrough();
+
+/**
+ * Minimal Search response schema (local to this hook). `.passthrough()` keeps
+ * the many unused Search fields from breaking validation; `total_count` is the
+ * per-repo stale tally and the now-widened `items` carry each stale item's
+ * identity (optional so a count-only payload still validates).
+ */
+const StaleSearchResponseSchema = z
+  .object({
+    total_count: z.number(),
+    items: z.array(StaleItemSchema).optional(),
+  })
+  .passthrough();
 
 /**
  * The inactivity cutoff as a UTC `YYYY-MM-DD` date: open items not updated on
@@ -61,20 +87,34 @@ export function staleCutoffDate(now: Date, days: number = STALE_THRESHOLD_DAYS):
 
 /**
  * Absolute Search URL counting a repo's open PRs + issues with no update since
- * `cutoffDate` (one call per repo; `total_count` is the stale tally).
+ * `cutoffDate` (one call per repo; `total_count` is the stale tally). The page
+ * is widened to {@link STALE_ITEMS_PER_REPO} and sorted by `updated` descending
+ * so the same single call also returns the newest stale items' identity.
  */
 export function staleSearchUrl(owner: string, name: string, cutoffDate: string): string {
   const query = `repo:${owner}/${name} is:open updated:<${cutoffDate}`;
-  return `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=${SEARCH_PAGE_SIZE}`;
+  return (
+    `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}` +
+    `&per_page=${STALE_ITEMS_PER_REPO}&sort=updated&order=desc`
+  );
 }
 
 /**
  * Builds the ready slice for a repo's stale tally. The score is the raw count
  * so the column sorts most-neglected repos first and the count feeds the future
- * composite "most broken" score (#18).
+ * composite "most broken" score (#18). `staleItems` un-projects each returned
+ * item's identity (from the same call) for the Notifications Inbox; it is
+ * omitted when the page returned none.
  */
-export function readyStaleSlice(staleCount: number): StaleSignalSlice {
-  return { status: 'ready', staleCount, score: staleCount };
+export function readyStaleSlice(
+  staleCount: number,
+  staleItems: StaleItem[] = [],
+): StaleSignalSlice {
+  const slice: StaleSignalSlice = { status: 'ready', staleCount, score: staleCount };
+  if (staleItems.length > 0) {
+    slice.staleItems = staleItems;
+  }
+  return slice;
 }
 
 /**
@@ -133,15 +173,22 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
         try {
           const data = await fetchWithETag(
             staleSearchUrl(repo.owner, repo.name, cutoffDate),
-            StaleCountSchema,
+            StaleSearchResponseSchema,
             { token, context: 'useStaleSignal', signal },
           );
           if (generation !== generationRef.current) {
             return;
           }
+          const staleItems: StaleItem[] = (data.items ?? []).map((item) => ({
+            number: item.number,
+            title: item.title,
+            html_url: item.html_url,
+            updated_at: item.updated_at,
+            type: item.pull_request ? 'pr' : 'issue',
+          }));
           setSlices((prev) => {
             const next = new Map(prev);
-            next.set(repo.nameWithOwner, readyStaleSlice(data.total_count));
+            next.set(repo.nameWithOwner, readyStaleSlice(data.total_count, staleItems));
             return next;
           });
         } catch (err) {
