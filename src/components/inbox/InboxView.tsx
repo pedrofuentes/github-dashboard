@@ -49,10 +49,16 @@ const CHECKBOX_CLASS =
  * dismissing two already-read items, which also leaves the unread `role="status"`
  * count unchanged, so this polite region is the only confirmation channel. React
  * would then leave the region's text node byte-for-byte identical, and many
- * screen readers only re-announce a polite region when its text actually changes,
- * so the second confirmation is silently dropped. Toggling this invisible,
- * non-speaking marker by the per-action nonce keeps the audible text "Dismissed"
- * while guaranteeing the region mutates on every action, forcing a re-announce.
+ * screen readers only re-announce a polite region when its content actually
+ * changes, so the second confirmation is silently dropped. Toggling this
+ * invisible, non-speaking marker by the per-action nonce keeps the audible text
+ * "Dismissed" while guaranteeing the region's content mutates on every action.
+ *
+ * The mutation is only half the fix: the region must also be `aria-atomic="true"`
+ * so screen readers re-read the WHOLE region — the human-readable words plus this
+ * marker — rather than only the changed (silent) marker node. Without atomic
+ * re-reading the mutation would announce just the zero-width space, dropping the
+ * repeated "Dismissed" words and leaving #245 unfixed.
  */
 const ANNOUNCE_MARKER = '\u200B';
 
@@ -273,7 +279,7 @@ export function InboxView({
         />
       )}
 
-      <div aria-live="polite" className="sr-only">
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement.text}
         <span>{ANNOUNCE_MARKER.repeat(announcement.nonce % 2)}</span>
       </div>
