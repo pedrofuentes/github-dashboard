@@ -29,8 +29,10 @@ const getRowData: GetRowData = () => ({});
 
 const CI_TIMESTAMP = '2026-06-20T12:00:00.000Z';
 
-// A fleet seam that yields exactly one (unread) failing-CI inbox item per repo,
-// so the lifted useInbox produces a deterministic fleet-wide unread count.
+// A fully-loaded fleet seam that yields exactly one (unread) failing-CI inbox
+// item per repo, so the lifted useInbox produces a deterministic fleet-wide
+// unread count. Every signal slice is settled (the non-CI slices resolve empty),
+// so each repo counts as fully resolved and the watermark may advance on open.
 const getRowDataWithFailingCi: GetRowData = (target: Repo): RepoSignalData => ({
   ci: {
     status: 'ready',
@@ -39,6 +41,11 @@ const getRowDataWithFailingCi: GetRowData = (target: Repo): RepoSignalData => ({
     updatedAt: CI_TIMESTAMP,
     latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/42`,
   },
+  security: { status: 'ready' },
+  reviews: { status: 'ready' },
+  pullRequests: { status: 'ready' },
+  issues: { status: 'ready' },
+  stale: { status: 'ready' },
 });
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
@@ -496,9 +503,10 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
     await screen.findByRole('region', { name: /notifications inbox/i });
 
-    // The per-repo signals now settle: each repo resolves a failing-CI slice whose
-    // derived id matches a seeded triage id (run 42 → octo/one, run 7 → octo/two),
-    // so both seeded ids are live once loading completes.
+    // The per-repo signals now fully settle: each repo resolves every slice —
+    // including a failing-CI slice whose derived id matches a seeded triage id
+    // (run 42 → octo/one, run 7 → octo/two) — so the fleet is fully resolved and
+    // both seeded ids are live once loading completes.
     const getRowDataLoaded: GetRowData = (target: Repo): RepoSignalData => ({
       ci: {
         status: 'ready',
@@ -507,6 +515,11 @@ describe('App', () => {
         updatedAt: CI_TIMESTAMP,
         latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/1`,
       },
+      security: { status: 'ready' },
+      reviews: { status: 'ready' },
+      pullRequests: { status: 'ready' },
+      issues: { status: 'ready' },
+      stale: { status: 'ready' },
     });
     mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataLoaded });
     rerender(<App />);
@@ -517,6 +530,110 @@ describe('App', () => {
       const stored = loadInboxTriage();
       expect(stored.readIds).toContain('ci:octo/one:42');
       expect(stored.dismissedIds).toContain('ci:octo/two:7');
+      expect(stored.lastVisitedAt).not.toBeNull();
+      expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
+    });
+  });
+
+  it('keeps persisted triage when the inbox opens while a slower signal slice is still loading (AC-16)', async () => {
+    // Residual regression for the PARTIAL-signal-load triage wipe: a repo whose
+    // `ci` slice settles first must NOT count as "resolved" while its `security`
+    // / `reviews` / `stale` slices are still loading. Counting it resolved on the
+    // first settled slice advances the watermark and prunes the seeded
+    // read/dismissed ids that belong to those not-yet-live slices — silently
+    // wiping a dismissed security alert and a read stale item. Triage must
+    // survive the partial-load window and settle only once EVERY slice has loaded.
+    const seeded = '2024-01-01T00:00:00.000Z';
+    localStorage.setItem('fleet:view', 'inbox');
+    localStorage.setItem(
+      'fleet:inbox-triage',
+      JSON.stringify({
+        readIds: ['stale:octo/one:issue:#9'],
+        dismissedIds: ['security:octo/one:dependabot:5'],
+        lastVisitedAt: seeded,
+      }),
+    );
+
+    // Partial load: the `ci` slice has settled (ready) but `security`, `reviews`
+    // and `stale` are still loading, so deriveInboxItems only emits the CI item —
+    // the seeded security/stale ids are NOT yet in the live set. With `.some` this
+    // repo is wrongly "resolved" (ci settled), so markAllSeen runs and prunes them.
+    const getRowDataPartial: GetRowData = (target: Repo): RepoSignalData => ({
+      ci: {
+        status: 'ready',
+        conclusion: 'failure',
+        runId: 42,
+        updatedAt: CI_TIMESTAMP,
+        latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/42`,
+      },
+      security: { status: 'loading' },
+      reviews: { status: 'loading' },
+      stale: { status: 'loading' },
+    });
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataPartial });
+
+    const user = userEvent.setup();
+    const { rerender } = render(<App />);
+    await authenticateWithRepos(user, [repo('octo/one')]);
+    await screen.findByRole('region', { name: /notifications inbox/i });
+
+    // During the partial-load window the watermark must NOT advance and the
+    // seeded slow-slice ids must SURVIVE (under `.some` the settled `ci` slice
+    // wrongly resolves the repo, markAllSeen runs and GCs them against the
+    // transiently-incomplete live set).
+    const duringLoad = loadInboxTriage();
+    expect(duringLoad.dismissedIds).toContain('security:octo/one:dependabot:5');
+    expect(duringLoad.readIds).toContain('stale:octo/one:issue:#9');
+    expect(duringLoad.lastVisitedAt).toBe(seeded);
+
+    // Every remaining slice now settles, so each seeded id maps to a live item
+    // (alert #5 → the security id, issue #9 → the stale id) and the repo is fully
+    // resolved across all slices.
+    const getRowDataLoaded: GetRowData = (target: Repo): RepoSignalData => ({
+      ci: {
+        status: 'ready',
+        conclusion: 'failure',
+        runId: 42,
+        updatedAt: CI_TIMESTAMP,
+        latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/42`,
+      },
+      security: {
+        status: 'ready',
+        alerts: [
+          {
+            number: 5,
+            type: 'dependabot',
+            severity: 'high',
+            html_url: `https://github.com/${target.nameWithOwner}/security/dependabot/5`,
+            created_at: CI_TIMESTAMP,
+          },
+        ],
+      },
+      reviews: { status: 'ready' },
+      pullRequests: { status: 'ready' },
+      issues: { status: 'ready' },
+      stale: {
+        status: 'ready',
+        staleItems: [
+          {
+            number: 9,
+            type: 'issue',
+            title: 'Stale issue',
+            html_url: `https://github.com/${target.nameWithOwner}/issues/9`,
+            updated_at: CI_TIMESTAMP,
+          },
+        ],
+      },
+    });
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataLoaded });
+    rerender(<App />);
+
+    // Only now (every slice settled) does the watermark advance — and the seeded
+    // ids still survive because they are live once their slices loaded.
+    await waitFor(() => {
+      const stored = loadInboxTriage();
+      expect(stored.dismissedIds).toContain('security:octo/one:dependabot:5');
+      expect(stored.readIds).toContain('stale:octo/one:issue:#9');
       expect(stored.lastVisitedAt).not.toBeNull();
       expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
     });
