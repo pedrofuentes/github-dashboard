@@ -3,6 +3,67 @@
 @tailwind utilities;
 
 /*
+ * Design tokens (DESIGN-TILES §1.1–§1.3). Raw hex is defined once per theme as
+ * CSS custom properties; Tailwind color utilities (tailwind.config.js
+ * theme.extend.colors) map to these via `var(--color-*)`. A single `.dark`
+ * class on <html> swaps the values and flips the whole tree — no per-component
+ * `dark:` color variants. With no `.dark` present, the light (`:root`) tokens
+ * are active, so the live app renders unchanged until components consume them.
+ * All pairings are WCAG 2.1 AA-verified in DESIGN-TILES §1.5.
+ */
+:root {
+  color-scheme: light;
+
+  /* Core */
+  --color-bg: #f1f5f9; /* slate-100 — page background */
+  --color-surface: #ffffff; /* tile / card body */
+  --color-surface-raised: #f8fafc; /* slate-50 — nested panel */
+  --color-text: #0f172a; /* slate-900 — primary text */
+  --color-text-muted: #475569; /* slate-600 — labels, metadata */
+  --color-border: #e2e8f0; /* slate-200 — decorative hairline only */
+  --color-border-strong: #64748b; /* slate-500 — structural/state borders */
+  --color-focus: #0369a1; /* sky-700 — focus ring */
+
+  /* Status */
+  --color-success: #047857; /* emerald-700 */
+  --color-failure: #b91c1c; /* red-700 */
+  --color-warning: #b45309; /* amber-700 */
+  --color-info: #0369a1; /* sky-700 */
+  --color-neutral: #475569; /* slate-600 */
+
+  /* Extended accents */
+  --color-coral: #c2410c; /* orange-700 */
+  --color-purple: #7e22ce; /* purple-700 */
+  --color-gold: #a16207; /* yellow-700 */
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Core */
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-raised: #21262d;
+  --color-text: #e6edf3;
+  --color-text-muted: #8b949e;
+  --color-border: #30363d; /* decorative hairline only */
+  --color-border-strong: #6e7681; /* structural/state borders */
+  --color-focus: #58a6ff;
+
+  /* Status */
+  --color-success: #3fb950;
+  --color-failure: #f85149;
+  --color-warning: #d29922;
+  --color-info: #58a6ff;
+  --color-neutral: #8b949e;
+
+  /* Extended accents */
+  --color-coral: #f78166;
+  --color-purple: #a371f7;
+  --color-gold: #e3b341;
+}
+
+/*
  * Respect the user's reduced-motion preference (WCAG 2.1 §2.3.3 / 2.2.2).
  * Near-instant durations keep state changes perceivable without animation
  * (e.g. the loading-skeleton pulse and hover transitions stop moving).
@@ -21,17 +82,18 @@
 /*
  * Dashboard edit mode (M10 T3). When the layout is being customised, make the
  * react-grid-layout resize handles persistently visible (not hover-only) and
- * give the handle glyph a slate-600 stroke so the non-text affordance clears
- * WCAG 1.4.11 (>=3:1) against the white tile surface — the library default
- * (rgba(0,0,0,0.4) ~ 2.8:1, opacity 0 until hover) does not. Scoped under
- * `.dashboard-editing` so it only applies while editing and always wins over
- * the imported library stylesheet regardless of import order.
+ * give the handle glyph a `border-strong`-token stroke so the non-text
+ * affordance clears WCAG 1.4.11 (>=3:1) against the tile surface — the library
+ * default (rgba(0,0,0,0.4) ~ 2.8:1, opacity 0 until hover) does not. Using the
+ * token (not a hardcoded slate-600) lets the handle flip with the theme. Scoped
+ * under `.dashboard-editing` so it only applies while editing and always wins
+ * over the imported library stylesheet regardless of import order.
  */
 .dashboard-editing .react-grid-item > .react-resizable-handle {
   opacity: 1;
 }
 
 .dashboard-editing .react-grid-item > .react-resizable-handle::after {
-  border-right: 2px solid #475569;
-  border-bottom: 2px solid #475569;
+  border-right: 2px solid var(--color-border-strong);
+  border-bottom: 2px solid var(--color-border-strong);
 }
