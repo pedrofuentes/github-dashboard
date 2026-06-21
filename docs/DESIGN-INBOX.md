@@ -69,6 +69,15 @@ per-item identity (always from data already in-flight — **no new request,
 datasource, or token permission**), the **timestamp** used for ordering, and the
 **stable ID** (§2).
 
+**One PR can surface under more than one kind — by design.** A PR opened by a new
+outside contributor that *also* requests your review qualifies as **both** `new-pr`
+and `review`, and it is emitted as **two distinct items** — **not** deduped. The two
+carry different stable IDs (`new-pr:<repo>:#<n>` vs `review:<repo>:#<n>`, §2.2),
+different accents (§5), and **independent triage**: dismissing the review task leaves
+the "new contributor" flag standing, and vice-versa. Collapsing them would drop a
+real, separately-actionable signal, so the Inbox intentionally shows such a PR once
+per qualifying kind; the §2.2 grammar guarantees the two ids never collide.
+
 ### 1.1 Failing CI — `kind: 'ci'`
 
 - **Signal source:** `CiSignalSlice` from `useCiSignal` —
@@ -96,9 +105,12 @@ datasource, or token permission**), the **timestamp** used for ordering, and the
 - **Already fetched:** each Search item already carries `repository_url`
   (used today only to attribute a count per repo). The full per-PR identity —
   `number`, `title`, `html_url`, `created_at`, `user.login` — is **already
-  modeled and parsed elsewhere in the same module**: `ReviewRequestedPR`
-  (`pull-requests.ts`) + `ReviewSearchResponseSchema` (`schemas.ts`). The
-  count-only `fetchReviewRequestedPage` projects it away
+  modeled and parsed in the same module**: `fetchReviewRequestedPage` validates each
+  page item through `ReviewRequestedSearchPageSchema` (`pull-requests.ts:~194`),
+  whose items use `.passthrough()`, so every Search field survives validation
+  **request-free**; `ReviewRequestedPR` (`pull-requests.ts:~22`) already models the
+  target shape. The count-only reader then projects it away in the `.map(...)` at
+  `pull-requests.ts:~254`
   (`items.map((i) => ({ repository_url: i.repository_url }))`).
 - **Minimal pure-derivation (no new request):** have the review-requested page
   reader retain the per-PR fields it already receives (the `ReviewRequestedPR`
@@ -131,7 +143,10 @@ datasource, or token permission**), the **timestamp** used for ordering, and the
 
 - **Signal source:** `SecuritySignalSlice` from `useSecuritySignal` — two feeds
   per repo, `fetchDependabotAlerts` + `fetchCodeScanningAlerts`
-  (`src/api/github/security-branches.ts`).
+  (`src/api/github/security-branches.ts`). **Security is the one signal that does
+  NOT ride `fetchWithETag`:** both feeds page through the bespoke `readAlertFeed`
+  reader (`security-branches.ts:~182`), which keeps its **own** conditional-request
+  cache — the crux of the defect below.
 - **Already fetched:** both feeds **page the full open-alert list** and then
   reduce it to severity counts (`SecurityAlertSummary` =
   `{critical, high, medium, low, total, truncated}`). Each raw alert is already
@@ -140,11 +155,36 @@ datasource, or token permission**), the **timestamp** used for ordering, and the
   (`rule.severity` / `rule.security_severity_level` + passthrough `number`,
   `html_url`, `created_at`). Per-alert severity bucketing already exists
   (`AlertSeverity`, `codeScanningSeverity`).
-- **Minimal pure-derivation (no new request):** retain the per-alert identity the
-  feeds already iterate — `{ number, type: 'dependabot' | 'code-scanning',
-  severity, html_url, created_at }` — alongside the counts, instead of
-  discarding it after tallying. Same alert pages, same `MAX_ALERT_PAGES` cap;
-  `truncated` still flags a lower-bound feed.
+- **Why the naive derivation is DISPROVEN on the 304 path:** `readAlertFeed` caches
+  **only the `SecurityAlertSummary` counts** (`security-branches.ts:~250`), and on a
+  `304 Not Modified` it returns `{ hit: true, summary }` **without any per-alert
+  rows** (`~206-207`); `fetchDependabotAlerts` / `fetchCodeScanningAlerts` then
+  `return read.summary` and **skip the per-alert loop entirely** on that cache hit
+  (`~295`, `~401`). So "retain the rows as the feed iterates them" yields rows **only
+  on a fresh `200`** — and the app's refresh cycle settles into `304`s after the
+  first load (`useRepoSignals` re-runs every signal's conditional fetch on each
+  revalidation, `src/hooks/useRepoSignals.ts:~41-54`). A literal version of that
+  derivation would therefore emit **zero security items on every `304`**: security
+  items would appear on first load and **vanish on every refresh**, violating the
+  §2.3 determinism rule and AC-7 stability. The trap: the request-count AC (AC-5)
+  stays **green** throughout, so a test written only against §1's "no new request"
+  promise would not catch it.
+- **Minimal pure-derivation (no new request) — the REAL enrichment:** extend
+  `readAlertFeed`'s bespoke cache to **persist the per-alert rows** (`{ number,
+  type: 'dependabot' | 'code-scanning', severity, html_url, created_at }`)
+  **alongside** the `SecurityAlertSummary`, and **replay those cached rows on a
+  `304`** — exactly mirroring how `fetchWithETag` replays the full parsed body from
+  cache on a `304` (`src/api/github/etag-cache.ts:~316`; the body is stored on the
+  `200` at `~334`). This stays **zero new requests**: it caches *more of the body the
+  `200` already returned*, issuing nothing extra. Concrete touch points — the
+  `readAlertFeed` cache shape and its `cache.set` (`security-branches.ts:~250`) widen
+  to store the rows; the `304` return path (`~206-207`) returns them; the
+  `AlertFeedRead` `hit: true` variant (`~130`) carries them; and the
+  `SecuritySignalSlice` (`src/types/fleet.ts:~51-60`) gains an **optional per-alert
+  list**. Same alert pages, same `MAX_ALERT_PAGES` cap; `truncated` still flags a
+  lower-bound feed — and because a truncated read must never seed a `304`, its rows
+  are likewise never replayed. Stability across the `200`→`304` transition is pinned
+  by AC-17 (§8).
 - **Timestamp:** alert `created_at`.
 - **ID:** `security:<repo>:<type>:<alert-number>` where `<type>` ∈
   {`dependabot`, `code-scanning`}.
@@ -163,11 +203,21 @@ datasource, or token permission**), the **timestamp** used for ordering, and the
   `1` to a small bounded page (`STALE_ITEMS_PER_REPO`, e.g. ≤ 30, newest-stale
   first via `sort=updated&order=desc`) and parse `items[]` for `number`,
   `title`, `html_url`, `updated_at`, and `pull_request` (present ⇒ PR, absent ⇒
-  issue). This is the **same request to the same endpoint** — only the page size
-  grows, still ETag-conditional, still one call per repo; `total_count` continues
+  issue). This is the **same request to the same endpoint** — the call gains
+  both a larger `per_page` and `sort=updated&order=desc` (the current
+  `staleSearchUrl` sets neither and uses `per_page=1`, `useStaleSignal.ts:~66`), both
+  harmless: it stays one ETag-conditional request to `search/issues`, still one call
+  per repo; `total_count` continues
   to drive the dashboard/table count. Items beyond the cap are still counted, not
   listed (mirrors the `truncated` lower-bound convention).
 - **Timestamp:** item `updated_at` (last activity before going stale).
+  **Intentional trade-off:** a stale item is by definition `>30d` past its
+  `updated_at`, so in the newest-first list (§4.1) stale items always sort **last**;
+  and because "new since last visit" (§3.1) tests `timestamp > lastVisitedAt`, a
+  stale item can essentially **never** be "new since last visit" (its instant always
+  predates any recent watermark). This is accepted: stale is a background-backlog
+  signal, not a fresh-event one, so surfacing it at the bottom and un-highlighted is
+  the intended behavior.
 - **ID:** `stale:<repo>:<pr|issue>:#<number>`.
 
 ### 1.6 Mapping summary
@@ -177,12 +227,20 @@ datasource, or token permission**), the **timestamp** used for ordering, and the
 | `ci` | `useCiSignal` | `…/actions/runs?per_page=1` | run id + `updated_at` | keep 2 dropped fields |
 | `review` | `useReviewsSignal` | Search `review-requested:@me` | `number/title/url/created_at` | un-project (already parsed) |
 | `new-pr` | `usePullRequestsSignal` | `…/pulls?state=open` | external-PR list | type 2 passthrough fields |
-| `security` | `useSecuritySignal` | Dependabot + code-scanning feeds | per-alert `{number,severity,type}` | retain pre-tally rows |
-| `stale` | `useStaleSignal` | Search `is:open updated:<cutoff` | per-item `{number,type,url}` | widen `per_page` (same call) |
+| `security` | `useSecuritySignal` | Dependabot + code-scanning feeds | per-alert `{number,severity,type}` | **most invasive (the exception)** — persist rows in `readAlertFeed`'s bespoke cache **and replay on 304**, plus the slice list (§1.4) |
+| `stale` | `useStaleSignal` | Search `is:open updated:<cutoff` | per-item `{number,type,url}` | widen `per_page` + add `sort`/`order` (same call) |
 
-Every enrichment is **additive and back-compatible**: existing slice fields and
-the existing counts/grades are unchanged; the Inbox reads new optional fields and
-the table/dashboard ignore them.
+The **first four rows are request-free retains**: `ci`, `new-pr`, and `stale` ride
+`fetchWithETag`, which replays the **full parsed body** from cache on a `304`, and
+`review` re-reads a full `200` page every cycle (it is not ETag-short-circuited) — so
+their already-parsed per-item rows are present on **every** derivation and the
+enrichment is simply "stop discarding fields." **`security` is the exception and the
+most invasive enrichment**: its bespoke `readAlertFeed` cache stores **only** the
+summary and replays **only** the summary on a `304`, so the rows must be added to
+that cache, to its `304` replay path, and to the fleet slice (§1.4). Every
+enrichment is still **additive and back-compatible**: existing slice fields and the
+existing counts/grades are unchanged; the Inbox reads new optional fields and the
+table/dashboard ignore them.
 
 ---
 
@@ -264,12 +322,13 @@ default). It never calls GitHub (§9: no mark-read-on-GitHub).
 | **read** | `item.id ∈ readIds`. Set when the user clicks the item / opens its URL, or via "mark all read". |
 | **unread** | not dismissed **and** `item.id ∉ readIds`. |
 | **dismissed / archived** | `item.id ∈ dismissedIds`. Hidden by default; restorable via "show dismissed" (§4). |
-| **new since last visit** | `item.timestamp > lastVisitedAt`. A highlight, **independent** of read/unread. |
+| **new since last visit** | `lastVisitedAt !== null && item.timestamp > lastVisitedAt`. A highlight, **independent** of read/unread. On a **null watermark** (first-ever visit — `DEFAULT_TRIAGE`), **nothing** is "new since last visit": the highlight is reserved for items that arrive *after* a recorded visit, so the first load is calm rather than a wall of highlights. INBOX-5 owns this rule. |
 | **unread count** | number of currently-derived items that are unread. The badge surfaced on the view toggle (§7). |
 
-`lastVisitedAt` (the **watermark**) advances to "now" when the Inbox view is
-opened (or on an explicit "mark all seen"), so items that arrived since the last
-visit are highlighted exactly once.
+`lastVisitedAt` (the **watermark**) is `null` until the first visit; it then advances
+to "now" each time the Inbox view is opened (or on an explicit "mark all seen"), so
+items that arrived since the last *recorded* visit are highlighted exactly once.
+While the watermark is `null`, no item counts as "new since last visit" (INBOX-5).
 
 ### 3.2 Persistence schema (localStorage + Zod)
 
@@ -448,7 +507,7 @@ a third branch.
 
 ---
 
-## 8. Increment plan (~7 PR-sized units)
+## 8. Increment plan (~8 PR-sized units — INBOX-2 lands as 2A + 2B)
 
 Each increment is one PR following the repo's TDD choreography (`test(scope)` →
 `feat(scope)`), with stable `AC-n` acceptance-criteria ids bound to future
@@ -467,8 +526,26 @@ are stable: an `AC-n` always refers to the same criterion.
   byte-identical ids.
 
 ### INBOX-2 · Signal source enrichment (no new requests)
-Additive per-item fields on the five slices/datasources (§1). May split into two
-PRs (Search-family `review`+`stale`; per-repo-family `ci`+`new-pr`+`security`).
+Additive per-item fields on the five slices/datasources (§1). The work splits into
+**two PR-sized sub-units of unequal weight**, landed as two PRs:
+
+- **INBOX-2A — the four request-free retains** (`ci`, `new-pr`, `review`, `stale`):
+  pure un-projection. `ci`/`new-pr` widen their already-ETag-cached schemas,
+  `review` drops the `repository_url`-only `.map(...)` (§1.2), and `stale` grows
+  `per_page` and appends `sort=updated&order=desc` (§1.5). All four already expose
+  their parsed rows on every derivation — full-body `304` replay for
+  `ci`/`new-pr`/`stale` via `fetchWithETag`, a full `200` each cycle for `review` —
+  so **no caching logic changes**.
+- **INBOX-2B — the security carve-out** (`security`; §1.4): the **heavier** unit.
+  Security is the one signal that bypasses `fetchWithETag`, so exposing per-alert
+  rows requires changing `readAlertFeed`'s **bespoke cache to persist the rows and
+  replay them on a `304`**, plus adding the per-alert list to `SecuritySignalSlice`.
+  Because it touches caching logic it is its own PR and carries its own stability AC
+  (AC-17). It is still zero-new-request (it caches more of the `200` body already
+  fetched) and is the heaviest enrichment unit; it can land in parallel with 2A.
+
+AC-4 and AC-5 apply to **both** sub-units (all five signals); AC-17 is specific to
+INBOX-2B.
 - **AC-4.** Each of the five signals exposes its per-item identity derived
   **only** from data already fetched — **zero** new endpoints, datasources, or
   token permissions are introduced (asserted by the existing privacy
@@ -476,8 +553,14 @@ PRs (Search-family `review`+`stale`; per-repo-family `ci`+`new-pr`+`security`).
   hook).
 - **AC-5.** Conditional/ETag behavior and page caps are preserved: CI/PR/security
   request counts are unchanged; the stale query stays one call per repo (only
-  `per_page` grows, bounded by `STALE_ITEMS_PER_REPO`); `truncated`/cap semantics
-  still hold.
+  `per_page` grows and `sort`/`order` are appended, bounded by
+  `STALE_ITEMS_PER_REPO`); `truncated`/cap semantics still hold.
+- **AC-17 (INBOX-2B).** Given a successful alert fetch (`200`) followed by a
+  conditional refresh that returns `304`, the security signal exposes **identical
+  per-alert identity**, so `deriveInboxItems` returns **byte-identical** security
+  items (same ids, same order) across the `200`→`304` transition — the cached rows
+  are replayed, never dropped. A truncated read still seeds no `304` and replays no
+  rows.
 
 ### INBOX-3 · `deriveInboxItems` pure transform
 `src/lib/inbox/derive.ts`.
@@ -523,10 +606,11 @@ PRs (Search-family `review`+`stale`; per-repo-family `ci`+`new-pr`+`security`).
 - **AC-16.** Opening the Inbox (or clicking an item) marks items read / advances
   the watermark and updates the unread badge on the toggle.
 
-> **Dependency order:** INBOX-1 → INBOX-2 (parallelizable with INBOX-1) →
-> INBOX-3 (needs 1+2) → INBOX-4 (needs 1) → INBOX-5 (needs 3+4) → INBOX-6
-> (needs 5) → INBOX-7 (needs 6). INBOX-2 and INBOX-4 can land alongside the
-> early units; the UI units (6–7) come last.
+> **Dependency order:** INBOX-1 → INBOX-2 (2A + 2B, each parallelizable with INBOX-1) →
+> INBOX-3 (needs 1 + both halves of 2) → INBOX-4 (needs 1) → INBOX-5 (needs 3+4) → INBOX-6
+> (needs 5) → INBOX-7 (needs 6). INBOX-2A/2B and INBOX-4 can land alongside the
+> early units (INBOX-2B is the heaviest enrichment unit and the increment that
+> gates AC-17); the UI units (6–7) come last.
 
 ---
 
@@ -556,7 +640,8 @@ Stated explicitly so reviewers reject scope creep:
 
 | Decision / artifact | Consumed by |
 | --- | --- |
-| §1 signal→item mappings + enrichment fields | INBOX-2 (slice/datasource enrichment) |
+| §1 signal→item mappings + enrichment fields | INBOX-2A (the four request-free retains) |
+| §1.4 security: persist per-alert rows + replay on 304 (AC-17) | INBOX-2B (the security carve-out) |
 | §2 item model + ID grammar | INBOX-1 (`types/inbox.ts`, `lib/inbox/ids.ts`) |
 | §1 + §2 + §4.1 sort | INBOX-3 (`deriveInboxItems`) |
 | §3 triage model + Zod schema + caps | INBOX-4 (`triage-store.ts`) |

@@ -79,9 +79,9 @@
 
 ### M11 · Notifications Inbox  — post‑MVP (cofounder‑approved direction)
 *A third top‑level `FleetView` (`'inbox'`): one triageable, newest‑first list of everything across the fleet that needs you — a **pure transform of already‑fetched signal data**. Design contract: `docs/DESIGN-INBOX.md`.*
-- **Issues:** `Inbox item model + stable‑ID grammar`; `Signal source enrichment (no new requests)`; `deriveInboxItems pure transform`; `Triage store (localStorage + Zod, capped/pruned)`; `useInbox hook (sort + filters + unread count)`; `Inbox view/list/row + states (WCAG‑AA gate)`; `FleetView 'inbox' + ViewToggle wiring + unread badge`.
+- **Issues:** `Inbox item model + stable‑ID grammar`; `Signal enrichment: the four request-free retains (no new requests)`; `Signal enrichment: security per-alert cache (persist rows + replay on 304)`; `deriveInboxItems pure transform`; `Triage store (localStorage + Zod, capped/pruned)`; `useInbox hook (sort + filters + unread count)`; `Inbox view/list/row + states (WCAG‑AA gate)`; `FleetView 'inbox' + ViewToggle wiring + unread badge`.
 - **Depends on:** M4 (the five signals) + M7 (a11y bar) + M10 (view‑toggle pattern).
-- **DoD:** a **Grid / Dashboard / Inbox** toggle (persisted under `fleet:view`); a flat **newest‑first** list of five actionable kinds — **failing CI**, **review‑requested PRs**, **new outside‑contributor PRs**, **security alerts** (with severity), **stale PRs/issues** — each a **pure transform of data the app already fetches** (no new token permission, no new request/datasource, no write‑back to GitHub); **per‑device triage** (read · dismiss/archive · "new since last visit" · unread count) persisted in `localStorage`, **Zod‑validated and capped/pruned**; **WCAG 2.1 AA** in both themes (keyboard‑operable, never colour alone). Approved live with the cofounder as a post‑MVP direction. See `docs/DESIGN-INBOX.md`.
+- **Exit:** a **Grid / Dashboard / Inbox** toggle (persisted under `fleet:view`); a flat **newest‑first** list of five actionable kinds — **failing CI**, **review‑requested PRs**, **new outside‑contributor PRs**, **security alerts** (with severity), **stale PRs/issues** — each a **pure transform of data the app already fetches** (no new token permission, no new request/datasource, no write‑back to GitHub); **per‑device triage** (read · dismiss/archive · "new since last visit" · unread count) persisted in `localStorage`, **Zod‑validated and capped/pruned**; **WCAG 2.1 AA** in both themes (keyboard‑operable, never colour alone). Approved live with the cofounder as a post‑MVP direction. See `docs/DESIGN-INBOX.md`.
 
 ---
 
@@ -99,7 +99,7 @@
 | M8 Docs | README · LICENSE · CONTRIBUTING | ✅ README |
 | M9 Release | DoD verification checklist | ✅ gate |
 | M10 Dashboard view | layout model · tiles+toggle · drag/resize · keyboard a11y · summary+docs | ✅ delivered |
-| M11 Notifications Inbox | item model · source enrichment · derive · triage store · useInbox · view+states · toggle+badge | post‑MVP |
+| M11 Notifications Inbox | item model · source enrichment (4 retains + security 304 cache) · derive · triage store · useInbox · view+states · toggle+badge | post‑MVP |
 
 ## Out of scope for v1 (post‑MVP backlog — `MISSION.md` §4)
 Release/version tracking · discussions monitor · write
