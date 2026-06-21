@@ -500,3 +500,106 @@ describe('useInbox — filters compose, zero API calls, not persisted (AC-12)', 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('useInbox — triage flush on page teardown (#241)', () => {
+  // The triage is persisted by an un-debounced `useEffect([triage])` that runs
+  // in React's passive-effect phase, *after* paint. A hard close / navigate /
+  // reload inside that window tears the page down before the effect fires, so
+  // the last triage write is dropped and the item reverts on the next load.
+  //
+  // Each test isolates the teardown flush from the passive effect that already
+  // ran inside `act`: it removes the just-written value from storage (modelling
+  // the write being lost in the teardown window) and then fires the teardown
+  // signal. On the CURRENT impl (no teardown listener) nothing re-persists, so
+  // the reloaded store does NOT reflect the mutation — the assertion fails.
+  // With the flush, the teardown signal synchronously re-saves the latest triage.
+
+  it('flushes the latest triage on beforeunload (hard close/navigate)', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markRead(ID_SECURITY);
+    });
+
+    // Drop the passive-effect write so the assertion proves the flush, not the
+    // effect that already ran — the data-loss the teardown window causes.
+    localStorage.removeItem(TRIAGE_KEY);
+
+    // A hard page close fires `beforeunload`; React never unmounts, so only an
+    // explicit listener can re-persist before the JS context is torn down.
+    act(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+    });
+
+    expect(loadInboxTriage().readIds).toContain(ID_SECURITY);
+  });
+
+  it('flushes the latest triage on visibilitychange → hidden (tab freeze/discard)', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismiss(ID_NEW_PR);
+    });
+
+    localStorage.removeItem(TRIAGE_KEY);
+
+    // Backgrounding the tab fires `visibilitychange` with state `hidden`; React
+    // never unmounts, so only this listener can flush before the tab is frozen.
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(loadInboxTriage().dismissedIds).toContain(ID_NEW_PR);
+  });
+
+  it('flushes the latest triage on React unmount (view switch)', () => {
+    const { result, unmount } = renderInbox();
+
+    act(() => {
+      result.current.markRead(ID_CI);
+    });
+
+    localStorage.removeItem(TRIAGE_KEY);
+
+    // Switching views unmounts the hook; the cleanup must flush the last change.
+    unmount();
+
+    expect(loadInboxTriage().readIds).toContain(ID_CI);
+  });
+
+  it('does not flush on visibilitychange → visible (a refocus is not a teardown)', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markRead(ID_SECURITY);
+    });
+
+    localStorage.removeItem(TRIAGE_KEY);
+
+    // Refocusing the tab transitions to `visible`, which is not a teardown — the
+    // listener must ignore it and leave the (dropped) write unrecovered.
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(loadInboxTriage().readIds).not.toContain(ID_SECURITY);
+  });
+
+  it('writes nothing on teardown when the Inbox was only opened (no pending triage)', () => {
+    // Merely opening the Inbox must never write (§3.1) — only real triage
+    // actions or an intended watermark advance persist. With no pending change,
+    // a teardown flush is a no-op: storage stays empty (never even the default).
+    renderInbox();
+    expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
+  });
+});

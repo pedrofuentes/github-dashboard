@@ -90,6 +90,22 @@ const DEFAULT_FILTERS: InboxFilters = {
 };
 
 /**
+ * Value-equality for triage so the teardown flush can skip a redundant write
+ * when storage already reflects the current state — preserving the "opening the
+ * Inbox never writes" property (§3.1). Insertion order is significant (the store
+ * caps LRU-style from the front), so the id arrays are compared element-wise.
+ */
+function triageEquals(a: InboxTriage, b: InboxTriage): boolean {
+  return (
+    a.lastVisitedAt === b.lastVisitedAt &&
+    a.readIds.length === b.readIds.length &&
+    a.dismissedIds.length === b.dismissedIds.length &&
+    a.readIds.every((id, index) => id === b.readIds[index]) &&
+    a.dismissedIds.every((id, index) => id === b.dismissedIds[index])
+  );
+}
+
+/**
  * Builds the Inbox view-model from the fleet and its `getRowData` seam.
  *
  * @param repos - The fleet repositories (same list the grid/dashboard receive).
@@ -141,6 +157,51 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
     lastPersisted.current = triage;
     saveInboxTriage(triage);
   }, [triage]);
+
+  // Mirror the latest committed triage into a ref so the teardown listeners can
+  // flush the newest value without re-subscribing on every render. Assigned
+  // during render (not in an effect) so it is current even when the passive
+  // persistence effect above has not run yet — exactly the window a hard
+  // teardown falls into.
+  const triageRef = useRef(triage);
+  triageRef.current = triage;
+
+  // Belt-and-suspenders persistence for the teardown window. The un-debounced
+  // effect above writes in React's passive phase, after paint; a hard close /
+  // navigate / reload tears the page down first, dropping the last write so the
+  // item reverts on the next load (#241). Re-persist synchronously when the page
+  // is being torn down. Gated on the stored value so merely opening the Inbox
+  // (storage already matches the loaded triage) never writes — a no-op flush,
+  // mirroring useDashboardLayout's `persist.flush()` (#127/#141).
+  const flushTriage = useCallback(() => {
+    const current = triageRef.current;
+    if (triageEquals(loadInboxTriage(), current)) {
+      return;
+    }
+    lastPersisted.current = current;
+    saveInboxTriage(current);
+  }, []);
+
+  // A hard page close/navigate/reload does NOT unmount React, so the unmount
+  // cleanup never runs. Flush the latest triage on `beforeunload` and on
+  // `visibilitychange` -> hidden (tab freeze/discard) so it survives teardown.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushTriage();
+      }
+    };
+    window.addEventListener('beforeunload', flushTriage);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', flushTriage);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [flushTriage]);
+
+  // Flush on React unmount too (e.g. switching views right after a triage
+  // action) so the last change is never lost.
+  useEffect(() => () => flushTriage(), [flushTriage]);
 
   const markRead = useCallback(
     (id: string) => {
