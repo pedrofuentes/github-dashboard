@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GetRowData, Repo } from '../types/fleet';
 import { DashboardView } from './DashboardView';
 
+// Activity tiles self-fetch via `useCommitActivity` (which reads the auth
+// context); stub it so the full grid mounts without an AuthProvider or network.
+vi.mock('../hooks/useCommitActivity', () => ({
+  useCommitActivity: vi.fn(() => ({ state: 'empty' })),
+}));
+
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
   return { nameWithOwner, owner, name, isPrivate: false };
@@ -41,8 +47,8 @@ describe('DashboardView — grid semantics & roving navigation', () => {
         onRepoActivate={vi.fn()}
       />,
     );
-    // Six per-repo signals → six gridcells.
-    expect(screen.getAllByRole('gridcell')).toHaveLength(6);
+    // Seven per-repo signals → seven gridcells.
+    expect(screen.getAllByRole('gridcell')).toHaveLength(7);
   });
 
   it('exposes a single roving tab stop (only one tile is tabbable)', () => {

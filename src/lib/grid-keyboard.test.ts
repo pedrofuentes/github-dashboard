@@ -153,5 +153,6 @@ describe('announcements', () => {
     expect(SIGNAL_LABELS.pullRequests).toBe('Pull requests');
     expect(SIGNAL_LABELS.issues).toBe('Issues');
     expect(SIGNAL_LABELS.stale).toBe('Stale');
+    expect(SIGNAL_LABELS.activity).toBe('Activity');
   });
 });

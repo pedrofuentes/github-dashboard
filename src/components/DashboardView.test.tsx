@@ -6,6 +6,12 @@ import { DEFAULT_LAYOUT } from '../lib/dashboard-layout';
 import type { GetRowData, Repo } from '../types/fleet';
 import { DashboardView } from './DashboardView';
 
+// Activity tiles self-fetch via `useCommitActivity` (which reads the auth
+// context); stub it so the full grid mounts without an AuthProvider or network.
+vi.mock('../hooks/useCommitActivity', () => ({
+  useCommitActivity: vi.fn(() => ({ state: 'empty' })),
+}));
+
 const STORAGE_KEY = 'fleet:dashboard-layout';
 
 function makeRepo(nameWithOwner: string): Repo {
@@ -43,8 +49,8 @@ describe('DashboardView', () => {
         onRepoActivate={vi.fn()}
       />,
     );
-    // Six per-repo signals → six tiles for a single repo.
-    expect(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })).toHaveLength(6);
+    // Seven per-repo signals → seven tiles for a single repo.
+    expect(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })).toHaveLength(7);
   });
 
   it('passes per-repo signal data through to its tiles', () => {
@@ -261,7 +267,7 @@ describe('DashboardView', () => {
         onRepoActivate={vi.fn()}
       />,
     );
-    // Two repos → six tiles each. Data must be resolved once per repo, not per tile.
+    // Two repos → seven tiles each. Data must be resolved once per repo, not per tile.
     const uniqueRepos = new Set(getRowData.mock.calls.map(([repo]) => repo.nameWithOwner));
     expect(uniqueRepos.size).toBe(2);
     expect(getRowData).toHaveBeenCalledTimes(2);

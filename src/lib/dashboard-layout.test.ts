@@ -14,7 +14,47 @@ import {
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
 
-const SIGNALS: TileSignalType[] = ['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale'];
+const SIGNALS: TileSignalType[] = [
+  'ci',
+  'security',
+  'reviews',
+  'pullRequests',
+  'issues',
+  'stale',
+  'activity',
+];
+
+/** The six signals persisted before the Activity tile shipped (back-compat). */
+const LEGACY_SIGNALS: TileSignalType[] = [
+  'ci',
+  'security',
+  'reviews',
+  'pullRequests',
+  'issues',
+  'stale',
+];
+
+/** Builds a pre-Activity (6-signal) persisted layout, as old clients stored it. */
+function legacyLayout(repos: Repo[]): DashboardTile[] {
+  const tiles: DashboardTile[] = [];
+  let index = 0;
+  for (const repo of repos) {
+    for (const signal of LEGACY_SIGNALS) {
+      tiles.push({
+        i: `${repo.nameWithOwner}:${signal}`,
+        signal,
+        repo: repo.nameWithOwner,
+        x: (index % 4) * 3,
+        y: Math.floor(index / 4) * 2,
+        w: 3,
+        h: 2,
+        visible: true,
+      });
+      index += 1;
+    }
+  }
+  return tiles;
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -266,6 +306,25 @@ describe('loadDashboardLayout', () => {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify([tile]));
     expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('migrates a legacy 6-signal layout by adding an activity tile per repo', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    const legacy = legacyLayout(repos);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const loaded = loadDashboardLayout(repos);
+
+    // Existing (legacy) tiles are preserved, never dropped.
+    for (const tile of legacy) {
+      expect(loaded.some((t) => t.i === tile.i)).toBe(true);
+    }
+    // An activity tile is added for every repo in the fleet.
+    expect(loaded.some((t) => t.i === 'octo/a:activity' && t.signal === 'activity')).toBe(true);
+    expect(loaded.some((t) => t.i === 'octo/b:activity' && t.signal === 'activity')).toBe(true);
+    // Exactly one activity tile per repo — the merge adds only what is missing.
+    expect(loaded.filter((t) => t.signal === 'activity')).toHaveLength(repos.length);
+    expect(loaded).toHaveLength(legacy.length + repos.length);
   });
 
   it('preserves a stored tile with a non-default custom position through reconciliation', () => {
