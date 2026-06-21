@@ -25,10 +25,12 @@ import type { CiSignalSlice, Repo } from '../../types/fleet';
 
 /** The subset of a workflow run we read from `GET /actions/runs`. */
 const CiRunSchema = z.object({
+  id: z.number().optional(),
   status: z.string().nullable().optional(),
   conclusion: z.string().nullable().optional(),
   html_url: z.string().optional(),
   name: z.string().nullable().optional(),
+  updated_at: z.string().optional(),
 });
 
 /** Local schema for the latest-run probe (`?per_page=1`). */
@@ -57,14 +59,20 @@ function summarize(data: CiRunsResponse): CiSignalSlice {
     return { status: 'ready', conclusion: 'none', score: SCORE_NEUTRAL, failingCount: 0 };
   }
 
-  const latestRunUrl = run.html_url;
+  // Per-run identity already present in the same `?per_page=1` response; the
+  // Inbox keys a `ci:<repo>:<run-id>` item off it and orders by `updatedAt`.
+  const runIdentity = {
+    latestRunUrl: run.html_url,
+    runId: run.id,
+    updatedAt: run.updated_at,
+  };
   const rawStatus = run.status ?? '';
   const rawConclusion = run.conclusion ?? '';
 
   // A run that has not `completed` is still in flight (queued / in_progress).
   if (rawStatus && rawStatus !== 'completed') {
     const conclusion = rawStatus === 'in_progress' ? 'in_progress' : 'queued';
-    return { status: 'ready', conclusion, score: SCORE_RUNNING, failingCount: 0, latestRunUrl };
+    return { status: 'ready', conclusion, score: SCORE_RUNNING, failingCount: 0, ...runIdentity };
   }
 
   if (FAILING_CONCLUSIONS.has(rawConclusion)) {
@@ -73,7 +81,7 @@ function summarize(data: CiRunsResponse): CiSignalSlice {
       conclusion: 'failure',
       score: SCORE_FAILING,
       failingCount: 1,
-      latestRunUrl,
+      ...runIdentity,
     };
   }
 
@@ -83,7 +91,7 @@ function summarize(data: CiRunsResponse): CiSignalSlice {
       conclusion: 'success',
       score: SCORE_NEUTRAL,
       failingCount: 0,
-      latestRunUrl,
+      ...runIdentity,
     };
   }
 
@@ -93,7 +101,7 @@ function summarize(data: CiRunsResponse): CiSignalSlice {
     conclusion: 'none',
     score: SCORE_NEUTRAL,
     failingCount: 0,
-    latestRunUrl,
+    ...runIdentity,
   };
 }
 

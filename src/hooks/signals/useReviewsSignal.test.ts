@@ -19,11 +19,33 @@ vi.mock('../../api/github', () => ({
 
 const mockFetchPage = vi.mocked(fetchReviewRequestedPage);
 
+/** One review-requested Search item carrying the full per-PR identity. */
+interface SearchItem {
+  repository_url: string;
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  user_login: string;
+}
+
 /** One page of the review-requested search, as the fetcher returns it. */
 interface PagePayload {
-  items: { repository_url: string }[];
+  items: SearchItem[];
   totalCount: number;
   nextPageUrl: string | null;
+}
+
+/** Builds a search item for `fullName` with deterministic identity fields. */
+function searchItem(fullName: string, number: number): SearchItem {
+  return {
+    repository_url: `https://api.github.com/repos/${fullName}`,
+    number,
+    title: `PR ${number} in ${fullName}`,
+    html_url: `https://github.com/${fullName}/pull/${number}`,
+    created_at: '2024-02-01T00:00:00Z',
+    user_login: `user-${number}`,
+  };
 }
 
 /** Builds a page payload from repo full names, defaulting to a single page. */
@@ -33,9 +55,7 @@ function page(
   totalCount: number = fullNames.length,
 ): PagePayload {
   return {
-    items: fullNames.map((name) => ({
-      repository_url: `https://api.github.com/repos/${name}`,
-    })),
+    items: fullNames.map((name, index) => searchItem(name, index + 1)),
     totalCount,
     nextPageUrl,
   };
@@ -43,6 +63,18 @@ function page(
 
 function resolveOnce(payload: PagePayload): void {
   mockFetchPage.mockResolvedValueOnce(payload as never);
+}
+
+/** The per-PR identity `searchItem` projects onto a repo's `requests` list. */
+function expectedRequest(fullName: string, number: number) {
+  const item = searchItem(fullName, number);
+  return {
+    number: item.number,
+    title: item.title,
+    html_url: item.html_url,
+    created_at: item.created_at,
+    user_login: item.user_login,
+  };
 }
 
 function repo(nameWithOwner: string): Repo {
@@ -99,36 +131,31 @@ describe('reviewRequestedSearchUrl', () => {
 });
 
 describe('distributeReviewCounts', () => {
-  it('counts requested reviews per repo and zero-fills the rest', () => {
+  it('counts requested reviews per repo, zero-fills the rest, and retains per-PR identity', () => {
     const result = distributeReviewCounts(
       ['octo/a', 'octo/b', 'octo/c'],
-      [
-        { repository_url: 'https://api.github.com/repos/octo/a' },
-        { repository_url: 'https://api.github.com/repos/octo/a' },
-        { repository_url: 'https://api.github.com/repos/octo/c' },
-      ],
+      [searchItem('octo/a', 1), searchItem('octo/a', 2), searchItem('octo/c', 3)],
     );
 
     expect(result.get('octo/a')).toEqual({
       status: 'ready',
       requestedCount: 2,
       score: 2 * REVIEW_SCORE_WEIGHT,
+      requests: [expectedRequest('octo/a', 1), expectedRequest('octo/a', 2)],
     });
     expect(result.get('octo/b')).toEqual({ status: 'ready', requestedCount: 0, score: 0 });
     expect(result.get('octo/c')).toEqual({
       status: 'ready',
       requestedCount: 1,
       score: REVIEW_SCORE_WEIGHT,
+      requests: [expectedRequest('octo/c', 3)],
     });
   });
 
   it('ignores requested reviews for repos outside the fleet', () => {
     const result = distributeReviewCounts(
       ['octo/a'],
-      [
-        { repository_url: 'https://api.github.com/repos/other/zzz' },
-        { repository_url: 'https://api.github.com/repos/octo/a' },
-      ],
+      [searchItem('other/zzz', 1), searchItem('octo/a', 2)],
     );
 
     expect(result.size).toBe(1);
@@ -139,8 +166,15 @@ describe('distributeReviewCounts', () => {
     const result = distributeReviewCounts(
       ['octo/a'],
       [
-        { repository_url: 'not-a-repos-url' },
-        { repository_url: 'https://api.github.com/repos/octo/a' },
+        {
+          repository_url: 'not-a-repos-url',
+          number: 1,
+          title: 'unparseable',
+          html_url: 'https://github.com/x/y/pull/1',
+          created_at: '2024-02-01T00:00:00Z',
+          user_login: 'nobody',
+        },
+        searchItem('octo/a', 2),
       ],
     );
 
@@ -216,11 +250,13 @@ describe('useReviewsSignal', () => {
     expect((mockFetchPage.mock.calls[1][1] as { signal?: AbortSignal }).signal).toBeInstanceOf(
       AbortSignal,
     );
-    expect(result.current.get('octo/a')).toEqual({
+    expect(result.current.get('octo/a')).toMatchObject({
       status: 'ready',
       requestedCount: 150,
       score: 150 * REVIEW_SCORE_WEIGHT,
     });
+    // Every counted PR is also retained as per-item identity for the Inbox.
+    expect(result.current.get('octo/a')?.requests).toHaveLength(150);
   });
 
   it('stops following pagination at the max page cap', async () => {
@@ -291,9 +327,31 @@ describe('useReviewsSignal', () => {
       status: 'ready',
       requestedCount: 2,
       score: 2 * REVIEW_SCORE_WEIGHT,
+      requests: [expectedRequest('octo/a', 1), expectedRequest('octo/a', 2)],
     });
     expect(result.current.get('octo/b')).toEqual({ status: 'ready', requestedCount: 0, score: 0 });
     expect(result.current.get('octo/c')?.requestedCount).toBe(1);
+  });
+
+  it('attributes each requested-review PR to its repo as per-item identity (AC-4)', async () => {
+    resolveOnce({
+      items: [searchItem('octo/a', 101), searchItem('octo/c', 202)],
+      totalCount: 2,
+      nextPageUrl: null,
+    });
+
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    // The Inbox emits a `review:<repo>:#<n>` item per awaiting PR, ordered by
+    // `created_at`; the data is un-projected from the same Search pages (no new
+    // request) and attributed to the repo via `repository_url`.
+    expect(result.current.get('octo/a')?.requests).toEqual([expectedRequest('octo/a', 101)]);
+    expect(result.current.get('octo/c')?.requests).toEqual([expectedRequest('octo/c', 202)]);
+    // Repos with no awaiting review carry no per-PR list (kept additive/optional).
+    expect(result.current.get('octo/b')?.requests).toBeUndefined();
   });
 
   it('marks every repo as error when the Search call fails', async () => {

@@ -178,8 +178,8 @@ export async function fetchReviewRequestedPRs(
 
 /** One page of the cross-repo "review-requested:@me" search. */
 export interface ReviewRequestedSearchPage {
-  /** Search items carrying the `repository_url` used to attribute each PR. */
-  items: { repository_url: string }[];
+  /** Search items carrying `repository_url` plus each PR's per-item identity. */
+  items: ReviewRequestedSearchItem[];
   /** Total matches across every page (GitHub Search `total_count`). */
   totalCount: number;
   /** Absolute URL of the next page (`Link: rel="next"`), or null when last. */
@@ -187,14 +187,43 @@ export interface ReviewRequestedSearchPage {
 }
 
 /**
- * Minimal schema for one review-requested Search page: only `total_count` and
- * each item's `repository_url` are read, so `.passthrough()` keeps the many
- * unused Search fields from failing validation.
+ * One review-requested Search item: the `repository_url` used to attribute the
+ * PR to its repo, plus the per-PR identity the Notifications Inbox needs. Every
+ * field is already present on the Search response, so retaining them adds no
+ * request.
+ */
+export interface ReviewRequestedSearchItem {
+  repository_url: string;
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  /** PR author login (empty string when GitHub returns a null author). */
+  user_login: string;
+}
+
+/**
+ * Schema for one review-requested Search page. `total_count` and each item's
+ * `repository_url` drive the per-repo counts; `number`, `title`, `html_url`,
+ * `created_at`, and `user.login` are the per-PR identity the Inbox un-projects
+ * (all already on the Search response). `.passthrough()` keeps GitHub's many
+ * other Search fields from failing validation.
  */
 const ReviewRequestedSearchPageSchema = z
   .object({
     total_count: z.number(),
-    items: z.array(z.object({ repository_url: z.string() }).passthrough()),
+    items: z.array(
+      z
+        .object({
+          repository_url: z.string(),
+          number: z.number(),
+          title: z.string(),
+          html_url: z.string(),
+          created_at: z.string(),
+          user: z.object({ login: z.string() }).passthrough().nullable(),
+        })
+        .passthrough(),
+    ),
   })
   .passthrough();
 
@@ -251,7 +280,14 @@ export async function fetchReviewRequestedPage(
 
   const data = ReviewRequestedSearchPageSchema.parse(await response.json());
   return {
-    items: data.items.map((item) => ({ repository_url: item.repository_url })),
+    items: data.items.map((item) => ({
+      repository_url: item.repository_url,
+      number: item.number,
+      title: item.title,
+      html_url: item.html_url,
+      created_at: item.created_at,
+      user_login: item.user?.login ?? '',
+    })),
     totalCount: data.total_count,
     nextPageUrl: parseNextPageUrl(response.headers.get('link')),
   };

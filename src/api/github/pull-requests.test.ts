@@ -97,13 +97,18 @@ describe('fetchReviewRequestedPage', () => {
   const PAGE2_URL = `${PAGE1_URL}&page=2`;
   const LAST_URL = `${PAGE1_URL}&page=3`;
 
-  /** Builds a Search page body whose items carry only `repository_url`. */
+  /** Builds a Search page body whose items carry the full per-PR identity. */
   function pageBody(repoFullNames: string[], totalCount: number): unknown {
     return {
       total_count: totalCount,
       incomplete_results: false,
-      items: repoFullNames.map((name) => ({
+      items: repoFullNames.map((name, index) => ({
         repository_url: `https://api.github.com/repos/${name}`,
+        number: index + 1,
+        title: `PR ${index + 1} in ${name}`,
+        html_url: `https://github.com/${name}/pull/${index + 1}`,
+        created_at: '2024-01-01T00:00:00Z',
+        user: { login: `user-${index + 1}` },
       })),
     };
   }
@@ -125,6 +130,61 @@ describe('fetchReviewRequestedPage', () => {
       'https://api.github.com/repos/octo/b',
     ]);
     expect(page.nextPageUrl).toBe(PAGE2_URL);
+  });
+
+  it('retains each PR\u2019s identity (number/title/url/created_at/login) for the inbox (AC-4)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(200, {
+        total_count: 1,
+        incomplete_results: false,
+        items: [
+          {
+            repository_url: 'https://api.github.com/repos/octo/a',
+            number: 7,
+            title: 'Fix the thing',
+            html_url: 'https://github.com/octo/a/pull/7',
+            created_at: '2024-04-01T00:00:00Z',
+            user: { login: 'octocat' },
+          },
+        ],
+      }),
+    );
+
+    const page = await fetchReviewRequestedPage(PAGE1_URL, { token: 'ghp_test' });
+
+    // The reader stops projecting items down to `repository_url` only: every
+    // field the `review:<repo>:#<n>` Inbox item needs is already on the page.
+    expect(page.items[0]).toEqual({
+      repository_url: 'https://api.github.com/repos/octo/a',
+      number: 7,
+      title: 'Fix the thing',
+      html_url: 'https://github.com/octo/a/pull/7',
+      created_at: '2024-04-01T00:00:00Z',
+      user_login: 'octocat',
+    });
+  });
+
+  it('defaults a missing PR author login to an empty string', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(200, {
+        total_count: 1,
+        incomplete_results: false,
+        items: [
+          {
+            repository_url: 'https://api.github.com/repos/octo/a',
+            number: 3,
+            title: 'Ghost author',
+            html_url: 'https://github.com/octo/a/pull/3',
+            created_at: '2024-04-02T00:00:00Z',
+            user: null,
+          },
+        ],
+      }),
+    );
+
+    const page = await fetchReviewRequestedPage(PAGE1_URL, { token: 'ghp_test' });
+
+    expect(page.items[0].user_login).toBe('');
   });
 
   it('reports no next page when the Link header is absent (single page)', async () => {
