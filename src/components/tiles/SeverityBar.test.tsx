@@ -80,3 +80,68 @@ describe('SeverityBar', () => {
     expect(container.querySelectorAll('[data-tone]')).toHaveLength(0);
   });
 });
+
+describe('SeverityBar — grayscale-safe channels', () => {
+  it('renders no divider borders by default (colour-only legacy mode)', () => {
+    const { container } = render(
+      <SeverityBar
+        segments={[
+          { tone: 'failure', value: 2, label: 'Critical' },
+          { tone: 'coral', value: 3, label: 'High' },
+        ]}
+      />,
+    );
+    const segs = container.querySelectorAll<HTMLElement>('[data-tone]');
+    expect(segs[0].className).not.toContain('border-l-2');
+    expect(segs[1].className).not.toContain('border-l-2');
+  });
+
+  it('adds a 2px divider before every segment after the first when dividers are on', () => {
+    const { container } = render(
+      <SeverityBar
+        dividers
+        segments={[
+          { tone: 'failure', value: 2, label: 'Critical' },
+          { tone: 'coral', value: 3, label: 'High' },
+          { tone: 'info', value: 1, label: 'Medium' },
+        ]}
+      />,
+    );
+    const segs = container.querySelectorAll<HTMLElement>('[data-tone]');
+    expect(segs[0].className).not.toContain('border-l-2');
+    expect(segs[1].className).toContain('border-l-2');
+    expect(segs[2].className).toContain('border-l-2');
+  });
+
+  it('steps visible segment heights down by render order so order survives grayscale', () => {
+    const { container } = render(
+      <SeverityBar
+        stepped
+        segments={[
+          { tone: 'failure', value: 2, label: 'Critical' },
+          { tone: 'coral', value: 3, label: 'High' },
+          { tone: 'info', value: 1, label: 'Medium' },
+        ]}
+      />,
+    );
+    const segs = container.querySelectorAll<HTMLElement>('[data-tone]');
+    expect(segs[0].style.height).toBe('100%');
+    expect(segs[1].style.height).toBe('80%');
+    expect(segs[2].style.height).toBe('60%');
+  });
+
+  it('keeps width proportional to value while stepping height', () => {
+    const { container } = render(
+      <SeverityBar
+        stepped
+        segments={[
+          { tone: 'failure', value: 1, label: 'Critical' },
+          { tone: 'coral', value: 3, label: 'High' },
+        ]}
+      />,
+    );
+    const segs = container.querySelectorAll<HTMLElement>('[data-tone]');
+    expect(segs[0].style.width).toBe('25%');
+    expect(segs[1].style.width).toBe('75%');
+  });
+});
