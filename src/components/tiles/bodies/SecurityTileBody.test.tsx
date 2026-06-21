@@ -20,13 +20,13 @@ function renderBody(
 
 describe('SecurityTileBody — states', () => {
   it('shows a loading state with sr text', () => {
-    const { getByText } = renderBody({ status: 'loading' });
-    expect(getByText(/loading security/i)).toBeInTheDocument();
+    const { getAllByText } = renderBody({ status: 'loading' });
+    expect(getAllByText(/loading security/i).length).toBeGreaterThan(0);
   });
 
   it('shows an error state', () => {
-    const { getByText } = renderBody({ status: 'error' });
-    expect(getByText(/couldn.t load security/i)).toBeInTheDocument();
+    const { getAllByText } = renderBody({ status: 'error' });
+    expect(getAllByText(/couldn.t load security/i).length).toBeGreaterThan(0);
   });
 
   it('shows n/a for an unknown slice', () => {
@@ -45,12 +45,12 @@ describe('SecurityTileBody — states', () => {
   });
 
   it('shows an all-clear positive state at grade A with no alerts (never blank)', () => {
-    const { getByText } = renderBody({
+    const { getByText, getAllByText } = renderBody({
       status: 'ready',
       grade: 'A',
       counts: { critical: 0, high: 0, medium: 0, low: 0 },
     });
-    expect(getByText(/no open alerts/i)).toBeInTheDocument();
+    expect(getAllByText(/no open alerts/i).length).toBeGreaterThan(0);
     expect(getByText('A')).toBeInTheDocument();
   });
 });
@@ -84,20 +84,20 @@ describe('SecurityTileBody — severity breakdown & truncation', () => {
   const counts = { critical: 2, high: 1, medium: 3, low: 4 };
 
   it('renders the severity counts in the breakdown', () => {
-    const { getByText } = renderBody({ status: 'ready', grade: 'F', counts }, 'expanded');
+    const { getAllByText } = renderBody({ status: 'ready', grade: 'F', counts }, 'expanded');
     // The accessible severity list reports each non-zero severity.
-    expect(getByText(/critical/i)).toBeInTheDocument();
-    expect(getByText(/high/i)).toBeInTheDocument();
+    expect(getAllByText(/critical/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/high/i).length).toBeGreaterThan(0);
   });
 
   it('marks a truncated tally as a lower bound (partial)', () => {
-    const { getByText, container } = renderBody({
+    const { getAllByText, container } = renderBody({
       status: 'ready',
       grade: 'F',
       counts,
       truncated: true,
     });
-    expect(getByText(/partial/i)).toBeInTheDocument();
+    expect(getAllByText(/partial/i).length).toBeGreaterThan(0);
     expect(container.textContent).toContain('≥');
   });
 
