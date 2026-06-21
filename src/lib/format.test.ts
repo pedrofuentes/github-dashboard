@@ -1,4 +1,4 @@
-import { formatCount, formatRelativeTime } from './format';
+import { formatCount, formatDelta, formatRelativeTime } from './format';
 
 describe('formatCount', () => {
   it('returns small numbers unchanged', () => {
@@ -25,6 +25,29 @@ describe('formatCount', () => {
   it('returns "0" for non-finite values', () => {
     expect(formatCount(Number.NaN)).toBe('0');
     expect(formatCount(Number.POSITIVE_INFINITY)).toBe('0');
+  });
+});
+
+describe('formatDelta', () => {
+  it('prefixes positive values with an upward triangle', () => {
+    expect(formatDelta(3)).toBe('▲3');
+  });
+
+  it('prefixes negative values with a downward triangle', () => {
+    expect(formatDelta(-2)).toBe('▼2');
+  });
+
+  it('renders zero as an em dash', () => {
+    expect(formatDelta(0)).toBe('—');
+  });
+
+  it('abbreviates magnitude via formatCount', () => {
+    expect(formatDelta(1500)).toBe('▲1.5k');
+    expect(formatDelta(-2_500_000)).toBe('▼2.5M');
+  });
+
+  it('renders non-finite values as an em dash', () => {
+    expect(formatDelta(Number.NaN)).toBe('—');
   });
 });
 
