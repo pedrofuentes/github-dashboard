@@ -250,6 +250,30 @@ describe('DashboardView', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('colors the fleet-load error alert with dark-safe semantic failure tokens', () => {
+    render(
+      <DashboardView
+        repos={[]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        error="Could not load your dashboard."
+        onRetry={vi.fn()}
+      />,
+    );
+
+    // The alert must rely on themed failure tokens, never hardcoded red-* palette
+    // classes that render light-red (and fail AA) on the dark theme.
+    const alert = screen.getByRole('alert');
+    expect(alert.className).not.toMatch(/\b(border|bg|text|outline)-red-\d/);
+    expect(alert.className).toContain('text-accent-failure');
+
+    // The Retry control uses the same semantic failure ink and the app-wide focus ring.
+    const retry = screen.getByRole('button', { name: /retry/i });
+    expect(retry.className).toContain('text-accent-failure');
+    expect(retry.className).toContain('outline-focus');
+    expect(retry.className).not.toMatch(/-red-\d/);
+  });
+
   it('prefers the error state over the empty state even with no repos', () => {
     render(
       <DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} error="boom" />,
