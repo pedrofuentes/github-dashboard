@@ -40,6 +40,7 @@ export const SIGNAL_LABELS: Record<TileSignalType, string> = {
   pullRequests: 'Pull requests',
   issues: 'Issues',
   stale: 'Stale',
+  activity: 'Activity',
 };
 
 /**
