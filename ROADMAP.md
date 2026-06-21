@@ -77,6 +77,12 @@
 - **Depends on:** M4 (signals + drill‑down) + M7 (a11y bar).
 - **Exit (all delivered):** a **Grid / Dashboard** toggle (persisted under `fleet:view`); one **glanceable tile per (repo, signal)** on react‑grid‑layout reusing the grid's icon+colour+text cells; an **edit mode** with pointer **drag/resize** and a **keyboard** Move/Resize equivalent following the WAI‑ARIA grid pattern (roving tabindex, arrow nav, `aria-live` announcements, reduced‑motion aware) — **WCAG 2.1 AA**; **layout persistence** (debounced `localStorage`, reconciled against the fleet); and a **pinned fleet summary** tile (broken / warning / healthy rollup, never colour alone). See ADR‑010/011.
 
+### M11 · Notifications Inbox  — post‑MVP (cofounder‑approved direction)
+*A third top‑level `FleetView` (`'inbox'`): one triageable, newest‑first list of everything across the fleet that needs you — a **pure transform of already‑fetched signal data**. Design contract: `docs/DESIGN-INBOX.md`.*
+- **Issues:** `Inbox item model + stable‑ID grammar`; `Signal source enrichment (no new requests)`; `deriveInboxItems pure transform`; `Triage store (localStorage + Zod, capped/pruned)`; `useInbox hook (sort + filters + unread count)`; `Inbox view/list/row + states (WCAG‑AA gate)`; `FleetView 'inbox' + ViewToggle wiring + unread badge`.
+- **Depends on:** M4 (the five signals) + M7 (a11y bar) + M10 (view‑toggle pattern).
+- **DoD:** a **Grid / Dashboard / Inbox** toggle (persisted under `fleet:view`); a flat **newest‑first** list of five actionable kinds — **failing CI**, **review‑requested PRs**, **new outside‑contributor PRs**, **security alerts** (with severity), **stale PRs/issues** — each a **pure transform of data the app already fetches** (no new token permission, no new request/datasource, no write‑back to GitHub); **per‑device triage** (read · dismiss/archive · "new since last visit" · unread count) persisted in `localStorage`, **Zod‑validated and capped/pruned**; **WCAG 2.1 AA** in both themes (keyboard‑operable, never colour alone). Approved live with the cofounder as a post‑MVP direction. See `docs/DESIGN-INBOX.md`.
+
 ---
 
 ## Milestone → issue map
@@ -93,7 +99,8 @@
 | M8 Docs | README · LICENSE · CONTRIBUTING | ✅ README |
 | M9 Release | DoD verification checklist | ✅ gate |
 | M10 Dashboard view | layout model · tiles+toggle · drag/resize · keyboard a11y · summary+docs | ✅ delivered |
+| M11 Notifications Inbox | item model · source enrichment · derive · triage store · useInbox · view+states · toggle+badge | post‑MVP |
 
 ## Out of scope for v1 (post‑MVP backlog — `MISSION.md` §4)
-Release/version tracking · notifications inbox · discussions monitor · write
+Release/version tracking · discussions monitor · write
 actions · secret‑scanning · OAuth device flow (until CORS or an approved proxy).
