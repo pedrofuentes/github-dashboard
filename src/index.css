@@ -31,6 +31,16 @@
   --color-info: #0369a1; /* sky-700 */
   --color-neutral: #475569; /* slate-600 */
 
+  /*
+   * Tinted-badge ink (DESIGN-TILES §1.5). On a 10% accent tint of white the
+   * accent-700 token only reaches ~4.4:1 for 12px text — below AA. Light tinted
+   * chips therefore carry darker -800 ink (amber-800 / orange-800) which clears
+   * 4.5:1 over the same tint while staying visually on-hue. Border/ring keep the
+   * accent token (non-text UI, ≥3:1).
+   */
+  --color-warning-ink: #92400e; /* amber-800 */
+  --color-coral-ink: #9a3412; /* orange-800 */
+
   /* Extended accents */
   --color-coral: #c2410c; /* orange-700 */
   --color-purple: #7e22ce; /* purple-700 */
@@ -56,6 +66,13 @@
   --color-warning: #d29922;
   --color-info: #58a6ff;
   --color-neutral: #8b949e;
+
+  /*
+   * Dark already clears AA with the accent itself on its tint (~5.9:1), so the
+   * ink tokens equal the accent here — the tinted badges render identically.
+   */
+  --color-warning-ink: #d29922;
+  --color-coral-ink: #f78166;
 
   /* Extended accents */
   --color-coral: #f78166;
