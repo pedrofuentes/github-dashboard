@@ -1,18 +1,21 @@
 /**
  * SignalTile — one (repo, signal) tile for the at-a-glance Dashboard view (M10).
  *
- * The tile is a glanceable card that reuses the existing per-signal `*Cell`
- * atoms (so the icon + colour + text encoding stays in one place and remains
- * WCAG-AA, never colour alone). A left accent band reflects the slice's data
- * lifecycle status (loading / error / unknown / ready) as a redundant, non-colour
- * cue alongside `data-status`. The whole card is keyboard-activatable via an
- * overlay button (button semantics, Enter/Space, the sky-600 focus ring) that
- * calls `onActivate` to open the shared drill-down drawer; the overlay avoids
- * nesting interactive cell content inside a button.
+ * The tile renders through the shared {@link TileFrame} shell (DESIGN-TILES §3):
+ * a top accent bar reflecting the slice's data lifecycle status, a header, the
+ * per-signal body, and the cross-cutting grid machinery (the `data-status`
+ * attribute, roving tabindex, the whole-tile activate overlay, and the
+ * edit-mode Move/Resize controls). For now the body reuses the existing
+ * per-signal `*Cell` atoms via {@link SignalSummary}; the bespoke per-signal
+ * bodies replace it in later tile tasks (DESIGN-TILES §6).
+ *
+ * The accent moved from the old left band to the frame's top bar: the slice
+ * lifecycle status maps to a `SignalIconKind` and then, via `iconKindTone`, to
+ * the {@link AccentTone} the bar + status dot paint — always paired with the
+ * redundant `data-status` attribute and the body's own text/glyph encoding.
  */
 import type { ReactElement } from 'react';
 
-import { cn } from '../lib/cn';
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
@@ -23,6 +26,10 @@ import { PullRequestsCell } from './columns/PullRequestsCell';
 import { ReviewsCell } from './columns/ReviewsCell';
 import { SecurityCell } from './columns/SecurityCell';
 import { StaleCell } from './columns/StaleCell';
+import { TileFrame } from './tiles/TileFrame';
+import type { AccentTone, SignalIconKind } from './tiles/types';
+import { iconKindTone } from './tiles/types';
+import { useTileSize } from './tiles/useTileSize';
 
 export interface SignalTileProps {
   /** The (repo, signal) tile to render. */
@@ -58,12 +65,16 @@ export interface SignalTileProps {
   rowIndex?: number;
 }
 
-/** Left-accent colour per data lifecycle status (paired with `data-status`). */
-const STATUS_ACCENT: Record<SignalStatus, string> = {
-  loading: 'border-l-slate-300',
-  error: 'border-l-red-500',
-  unknown: 'border-l-slate-300',
-  ready: 'border-l-sky-500',
+/**
+ * Map the data lifecycle status to the status glyph kind whose tone the accent
+ * bar paints (DESIGN-TILES §3.6). The per-signal escalation accents (§1.4) land
+ * with the bespoke bodies; for now the frame reflects the lifecycle state.
+ */
+const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
+  loading: 'loading',
+  error: 'failure',
+  unknown: 'unknown',
+  ready: 'info',
 };
 
 /** Renders the matching signal cell, reusing the grid's presentational atoms. */
@@ -106,161 +117,30 @@ export function SignalTile({
   const slice: SignalSlice | undefined = data[tile.signal];
   const status: SignalStatus = slice?.status ?? 'unknown';
   const signalLabel = SIGNAL_LABELS[tile.signal];
-  const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
+  const tone: AccentTone = iconKindTone(STATUS_ICON_KIND[status]);
 
-  // Roving tabindex: only the grid's active tile is in the tab order; the rest
-  // are reachable via the arrow keys handled by the grid (WAI-ARIA grid pattern).
-  const rovingTabIndex = active ? 0 : -1;
+  // The frame measures its own box to pick a density tier (DESIGN-TILES §3.4).
+  const { ref, tier } = useTileSize<HTMLElement>();
 
   return (
-    <article
-      role="gridcell"
-      data-status={status}
-      aria-colindex={colIndex}
-      aria-rowindex={rowIndex}
-      className={cn(
-        'relative flex h-full flex-col gap-2 overflow-hidden rounded-md border border-l-4 border-slate-200 bg-white p-4 shadow-sm',
-        STATUS_ACCENT[status],
-      )}
+    <TileFrame
+      containerRef={ref}
+      repo={repo}
+      signalLabel={signalLabel}
+      tone={tone}
+      status={status}
+      size={tier}
+      tileId={tile.i}
+      onActivate={() => onActivate(repo)}
+      active={active}
+      editing={editing}
+      onTileFocus={onTileFocus}
+      onMove={onMove}
+      onResize={onResize}
+      colIndex={colIndex}
+      rowIndex={rowIndex}
     >
-      <header className="relative z-10 flex items-baseline justify-between gap-2">
-        <h3 className="truncate text-sm font-semibold text-slate-900" title={repo.nameWithOwner}>
-          {repo.nameWithOwner}
-        </h3>
-        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500">
-          {signalLabel}
-        </span>
-      </header>
-      <div className="relative z-10 text-sm text-slate-700">
-        <SignalSummary signal={tile.signal} data={data} />
-      </div>
-      {editing ? (
-        // In edit mode the active tile exposes ~9 tabIndex=0 targets (activate
-        // button + 8 Move/Resize controls). This is intentional WCAG-AA design,
-        // not a roving-tabindex bug: each control is a distinct keyboard
-        // affordance that needs to be reachable via Tab within the tile. When
-        // the tile is inactive (rovingTabIndex === -1) all controls are removed
-        // from the tab order, leaving the grid's single roving tab stop intact.
-        <TileControls
-          tileId={tile.i}
-          tileName={tileName}
-          tabIndex={rovingTabIndex}
-          onMove={onMove}
-          onResize={onResize}
-        />
-      ) : null}
-      <button
-        type="button"
-        data-tile-activate={tile.i}
-        tabIndex={rovingTabIndex}
-        onClick={() => onActivate(repo)}
-        onFocus={() => onTileFocus?.(tile.i)}
-        aria-label={`View ${signalLabel} details for ${repo.nameWithOwner}`}
-        className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
-      />
-    </article>
-  );
-}
-
-interface TileControlsProps {
-  tileId: string;
-  tileName: string;
-  tabIndex: number;
-  onMove?: (tileId: string, direction: MoveDirection) => void;
-  onResize?: (tileId: string, dimension: ResizeDimension, delta: number) => void;
-}
-
-/** Per-tile Move/Resize affordance — the keyboard equivalent of pointer drag. */
-function TileControls({
-  tileId,
-  tileName,
-  tabIndex,
-  onMove,
-  onResize,
-}: TileControlsProps): ReactElement {
-  return (
-    <div
-      role="group"
-      aria-label={`Reorder and resize ${tileName}`}
-      className="relative z-20 mt-auto flex flex-wrap gap-1 pt-2"
-    >
-      <ControlButton
-        label={`Move ${tileName} left`}
-        tabIndex={tabIndex}
-        onClick={() => onMove?.(tileId, 'left')}
-      >
-        ←
-      </ControlButton>
-      <ControlButton
-        label={`Move ${tileName} right`}
-        tabIndex={tabIndex}
-        onClick={() => onMove?.(tileId, 'right')}
-      >
-        →
-      </ControlButton>
-      <ControlButton
-        label={`Move ${tileName} up`}
-        tabIndex={tabIndex}
-        onClick={() => onMove?.(tileId, 'up')}
-      >
-        ↑
-      </ControlButton>
-      <ControlButton
-        label={`Move ${tileName} down`}
-        tabIndex={tabIndex}
-        onClick={() => onMove?.(tileId, 'down')}
-      >
-        ↓
-      </ControlButton>
-      <ControlButton
-        label={`Grow ${tileName} width`}
-        tabIndex={tabIndex}
-        onClick={() => onResize?.(tileId, 'width', 1)}
-      >
-        +W
-      </ControlButton>
-      <ControlButton
-        label={`Shrink ${tileName} width`}
-        tabIndex={tabIndex}
-        onClick={() => onResize?.(tileId, 'width', -1)}
-      >
-        −W
-      </ControlButton>
-      <ControlButton
-        label={`Grow ${tileName} height`}
-        tabIndex={tabIndex}
-        onClick={() => onResize?.(tileId, 'height', 1)}
-      >
-        +H
-      </ControlButton>
-      <ControlButton
-        label={`Shrink ${tileName} height`}
-        tabIndex={tabIndex}
-        onClick={() => onResize?.(tileId, 'height', -1)}
-      >
-        −H
-      </ControlButton>
-    </div>
-  );
-}
-
-interface ControlButtonProps {
-  label: string;
-  tabIndex: number;
-  onClick: () => void;
-  children: string;
-}
-
-function ControlButton({ label, tabIndex, onClick, children }: ControlButtonProps): ReactElement {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      tabIndex={tabIndex}
-      onClick={onClick}
-      className="dashboard-tile-control inline-flex h-7 min-w-7 items-center justify-center rounded border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
-    >
-      <span aria-hidden="true">{children}</span>
-    </button>
+      <SignalSummary signal={tile.signal} data={data} />
+    </TileFrame>
   );
 }
