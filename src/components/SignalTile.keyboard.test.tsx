@@ -23,7 +23,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
 
   it('exposes the tile id on the activation control for grid navigation', () => {
     render(<SignalTile tile={makeTile()} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute(
       'data-tile-activate',
       'octo/a:ci',
     );
@@ -33,10 +33,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
     render(
       <SignalTile tile={makeTile()} repo={makeRepo()} data={{}} onActivate={vi.fn()} active />,
     );
-    expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
-      'tabindex',
-      '0',
-    );
+    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute('tabindex', '0');
   });
 
   it('is removed from the tab order when not active (roving tabindex)', () => {
@@ -49,7 +46,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
         active={false}
       />,
     );
-    expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute(
       'tabindex',
       '-1',
     );
@@ -71,7 +68,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
     // The roving-tabindex invariant: only the grid's active tile is tabbable, so
     // an inactive editing tile must have its activation overlay AND every
     // Move/Resize control out of the tab order.
-    expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute(
       'tabindex',
       '-1',
     );
@@ -188,7 +185,7 @@ describe('SignalTile — keyboard reorder & resize controls', () => {
     const repo = makeRepo();
     const user = userEvent.setup();
     render(<SignalTile tile={makeTile()} repo={repo} data={{}} onActivate={onActivate} editing />);
-    await user.click(screen.getByRole('button', { name: /view ci details for octo\/a/i }));
+    await user.click(screen.getByRole('button', { name: /ci: .*octo\/a/i }));
     expect(onActivate).toHaveBeenCalledWith(repo);
   });
 });

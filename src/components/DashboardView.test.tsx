@@ -50,7 +50,7 @@ describe('DashboardView', () => {
       />,
     );
     // Seven per-repo signals → seven tiles for a single repo.
-    expect(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })).toHaveLength(7);
+    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i })).toHaveLength(7);
   });
 
   it('passes per-repo signal data through to its tiles', () => {
@@ -71,14 +71,14 @@ describe('DashboardView', () => {
     const repo = makeRepo('octo/a');
     const user = userEvent.setup();
     render(<DashboardView repos={[repo]} getRowData={emptyData} onRepoActivate={onRepoActivate} />);
-    await user.click(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })[0]);
+    await user.click(screen.getAllByRole('button', { name: /: .*octo\/a/i })[0]);
     expect(onRepoActivate).toHaveBeenCalledWith(repo);
   });
 
   it('shows an empty state when there are no repos', () => {
     render(<DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} />);
     expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /view .* details/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /: .*\u2014 octo/i })).toBeNull();
   });
 
   it('does not render hidden tiles', () => {
@@ -86,7 +86,7 @@ describe('DashboardView', () => {
     const hidden = DEFAULT_LAYOUT(repos).map((tile) => ({ ...tile, visible: false }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(hidden));
     render(<DashboardView repos={repos} getRowData={emptyData} onRepoActivate={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /view .* details/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /: .*\u2014 octo/i })).toBeNull();
     expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe('DashboardView', () => {
         editing
       />,
     );
-    await user.click(screen.getAllByRole('button', { name: /view .* details for octo\/a/i })[0]);
+    await user.click(screen.getAllByRole('button', { name: /: .*octo\/a/i })[0]);
     expect(onRepoActivate).toHaveBeenCalledWith(repo);
   });
 
@@ -226,7 +226,7 @@ describe('DashboardView', () => {
     pulses.forEach((pulse) => expect(pulse).toHaveClass('motion-reduce:animate-none'));
     // The empty-state copy must NOT flash while loading.
     expect(screen.queryByText(/no repositories to display/i)).toBeNull();
-    expect(screen.queryByRole('button', { name: /view .* details/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /: .*\u2014 octo/i })).toBeNull();
   });
 
   it('renders an alert with a retry control when the fetch fails', async () => {

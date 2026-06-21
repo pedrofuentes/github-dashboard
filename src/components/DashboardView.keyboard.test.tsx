@@ -60,7 +60,7 @@ describe('DashboardView — grid semantics & roving navigation', () => {
       />,
     );
     const tabbable = screen
-      .getAllByRole('button', { name: /view .* details for octo\/a/i })
+      .getAllByRole('button', { name: /: .*octo\/a/i })
       .filter((button) => button.getAttribute('tabindex') === '0');
     expect(tabbable).toHaveLength(1);
   });
@@ -76,12 +76,12 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     );
     // Tab lands on the first (CI) tile, the initial roving tab stop.
     await user.tab();
-    const ci = screen.getByRole('button', { name: /view ci details for octo\/a/i });
+    const ci = screen.getByRole('button', { name: /ci: .*octo\/a/i });
     expect(ci).toHaveFocus();
 
     // ArrowRight moves to the neighbouring Security tile and updates the tab stop.
     await user.keyboard('{ArrowRight}');
-    const security = screen.getByRole('button', { name: /view security details for octo\/a/i });
+    const security = screen.getByRole('button', { name: /security: .*octo\/a/i });
     expect(security).toHaveFocus();
     expect(security).toHaveAttribute('tabindex', '0');
     expect(ci).toHaveAttribute('tabindex', '-1');
@@ -100,13 +100,13 @@ describe('DashboardView — grid semantics & roving navigation', () => {
       />,
     );
     await user.tab();
-    const ci = screen.getByRole('button', { name: /view ci details for octo\/a"b/i });
+    const ci = screen.getByRole('button', { name: /ci: .*octo\/a"b/i });
     expect(ci).toHaveFocus();
 
     // Without CSS.escape this querySelector throws and focus never moves.
     await user.keyboard('{ArrowRight}');
     const security = screen.getByRole('button', {
-      name: /view security details for octo\/a"b/i,
+      name: /security: .*octo\/a"b/i,
     });
     expect(security).toHaveFocus();
   });
@@ -134,7 +134,7 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     // ArrowUp have no spatial neighbour, so focus stays put — but the handler
     // must still call preventDefault() so the page doesn't native-scroll.
     await user.tab();
-    const ci = screen.getByRole('button', { name: /view ci details for octo\/a/i });
+    const ci = screen.getByRole('button', { name: /ci: .*octo\/a/i });
     expect(ci).toHaveFocus();
 
     // fireEvent returns false when a handler called event.preventDefault().
@@ -158,15 +158,15 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     const cellFor = (name: RegExp): HTMLElement | null =>
       screen.getByRole('button', { name }).closest('[role="gridcell"]');
 
-    const ci = cellFor(/view ci details for octo\/a/i);
+    const ci = cellFor(/ci: .*octo\/a/i);
     expect(ci).toHaveAttribute('aria-colindex', '1');
     expect(ci).toHaveAttribute('aria-rowindex', '1');
 
-    const security = cellFor(/view security details for octo\/a/i);
+    const security = cellFor(/security: .*octo\/a/i);
     expect(security).toHaveAttribute('aria-colindex', '4');
     expect(security).toHaveAttribute('aria-rowindex', '1');
 
-    const stale = cellFor(/view stale details for octo\/a/i);
+    const stale = cellFor(/stale: .*octo\/a/i);
     expect(stale).toHaveAttribute('aria-colindex', '4');
     expect(stale).toHaveAttribute('aria-rowindex', '3');
   });

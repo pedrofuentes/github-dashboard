@@ -40,7 +40,7 @@ describe('SignalTile', () => {
         onActivate={onActivate}
       />,
     );
-    await user.click(screen.getByRole('button', { name: /view ci details for octo\/a/i }));
+    await user.click(screen.getByRole('button', { name: /ci: .*octo\/a/i }));
     expect(onActivate).toHaveBeenCalledWith(repo);
   });
 
@@ -51,7 +51,7 @@ describe('SignalTile', () => {
       <SignalTile tile={makeTile('issues')} repo={makeRepo()} data={{}} onActivate={onActivate} />,
     );
     await user.tab();
-    expect(screen.getByRole('button', { name: /view issues details for octo\/a/i })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /issues: .*octo\/a/i })).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
@@ -143,9 +143,7 @@ describe('SignalTile', () => {
   ])('renders the %s signal with its label and bespoke body', (signal, label, bodyMarker) => {
     render(<SignalTile tile={makeTile(signal)} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
     expect(screen.getByText(label)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: new RegExp(`details for octo/a`, 'i') }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(`octo/a`, 'i') })).toBeInTheDocument();
     // The bespoke per-signal body (DESIGN-TILES §6) renders its own redundant
     // sr-text — proof the tile now dispatches to the bodies, not the `*Cell`
     // atoms (which the table view keeps).
@@ -158,16 +156,65 @@ describe('SignalTile', () => {
     );
     // The signal label resolves to "Activity" and the activate affordance names it.
     expect(screen.getByText('Activity')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /view activity details for octo\/a/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /activity: .*octo\/a/i })).toBeInTheDocument();
     // Activity has no lifecycle slice in RepoSignalData — the frame shows a stable
-    // identity state: a 'ready'-equivalent status tinted with the success accent.
+    // calm identity: a 'ready'-equivalent status and the purple identity accent
+    // on the header dot (spec §5 "purple icon"; redesign R2 — the old success
+    // ACTIVITY_TONE is removed).
     expect(container.querySelector('[data-status="ready"]')).not.toBeNull();
-    expect(container.querySelector('[data-tone="success"]')).not.toBeNull();
+    expect(container.querySelector('[data-salience="calm"]')).not.toBeNull();
+    const header = container.querySelector('header');
+    expect(header?.querySelector('[data-tone="purple"]')).not.toBeNull();
+    expect(container.querySelector('[data-tone="success"]')).toBeNull();
     // Proof the bespoke ActivityTileBody rendered (its empty-state copy), not the
     // exhaustive-switch fallback.
     expect(screen.getByText(/no recent commit activity/i)).toBeInTheDocument();
     expect(screen.queryByText(/unknown signal/i)).toBeNull();
+  });
+
+  it('escalates a failing-CI tile to the PROBLEM salience tier', () => {
+    const { container } = render(
+      <SignalTile
+        tile={makeTile('ci')}
+        repo={makeRepo()}
+        data={{ ci: { status: 'ready', conclusion: 'failure', failingCount: 2 } }}
+        onActivate={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-salience="problem"]')).not.toBeNull();
+    // The activate label carries the scope + metric + tier + repo (a11y summary).
+    expect(
+      screen.getByRole('button', { name: 'CI: 2 failing, problem — octo/a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('escalates a pending-review tile to the ACTIONABLE salience tier', () => {
+    const { container } = render(
+      <SignalTile
+        tile={makeTile('reviews')}
+        repo={makeRepo()}
+        data={{ reviews: { status: 'ready', requestedCount: 2 } }}
+        onActivate={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-salience="actionable"]')).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Reviews: 2 awaiting review, actionable — octo/a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a calm, informational tile at the CALM salience tier', () => {
+    const { container } = render(
+      <SignalTile
+        tile={makeTile('issues')}
+        repo={makeRepo()}
+        data={{ issues: { status: 'ready', openCount: 7 } }}
+        onActivate={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-salience="calm"]')).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Issues: 7 open, calm — octo/a' }),
+    ).toBeInTheDocument();
   });
 });

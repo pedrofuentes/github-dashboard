@@ -293,7 +293,7 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /dashboard/i }));
     const tile = screen.getAllByRole('button', {
-      name: /view .* details for octo\/hello-world/i,
+      name: /: .*\u2014 octo\/hello-world/i,
     })[0];
     await user.click(tile);
 

@@ -14,10 +14,21 @@
 import type { ReactElement, ReactNode, RefObject } from 'react';
 
 import type { MoveDirection, ResizeDimension } from '../../lib/grid-keyboard';
+import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo, SignalStatus } from '../../types/fleet';
 import { AccentBar } from './AccentBar';
 import { StatusDot } from './StatusDot';
 import type { AccentTone, TileTier } from './types';
+import { toneToVar } from './types';
+
+/** Default salience for callers that don't opt into the 3-tier treatment. */
+const CALM_SALIENCE: TileSalience = {
+  tier: 'calm',
+  edgeTone: 'neutral',
+  tint: false,
+  glow: false,
+  actionableTab: false,
+};
 
 export interface TileFrameProps {
   /** The repo this tile belongs to (drives the header + accessible names). */
@@ -56,6 +67,32 @@ export interface TileFrameProps {
   containerRef?: RefObject<HTMLElement>;
   /** Optional footer (meta / last-updated · deep link). Hidden when compact. */
   footer?: ReactNode;
+  /**
+   * 3-tier salience treatment for the edge/surface (DESIGN-TILES §3). Defaults
+   * to calm/neutral so existing callers render unchanged. PROBLEM thickens the
+   * bar to 6px, tints the surface and adds a static glow; ACTIONABLE keeps a 5px
+   * neutral bar plus a persistent info-blue edge tab; CALM keeps the 5px neutral
+   * bar and moves identity colour to the header dot.
+   */
+  salience?: TileSalience;
+  /**
+   * Optional per-repo display alias (Phase 3 setting). When set the header shows
+   * the alias as visible text plus a visually-hidden `(alias for <repo>)`, while
+   * the `title` keeps the real `nameWithOwner`. Defaults to the real name.
+   */
+  alias?: string;
+  /**
+   * Per-signal identity accent for the header dot on CALM tiles
+   * (`SIGNAL_IDENTITY_TONE`). Problem/actionable tiers override it with their
+   * salience edge tone. Falls back to `tone` when omitted.
+   */
+  identityTone?: AccentTone;
+  /**
+   * Full scope+metric+state phrase used as the activate-button `aria-label`
+   * (e.g. `CI: 2 failing, problem — octo/a`). Falls back to the legacy
+   * "View <signal> details for <repo>" label when omitted.
+   */
+  accessibleSummary?: string;
   /** The signal-specific body content. */
   children: ReactNode;
 }
@@ -77,9 +114,14 @@ export function TileFrame({
   rowIndex,
   containerRef,
   footer,
+  salience = CALM_SALIENCE,
+  alias,
+  identityTone,
+  accessibleSummary,
   children,
 }: TileFrameProps): ReactElement {
   const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
+  const displayName = alias ?? repo.nameWithOwner;
 
   // Roving tabindex: only the grid's active tile is in the tab order; the rest
   // are reachable via the arrow keys handled by the grid (WAI-ARIA grid pattern).
@@ -89,25 +131,62 @@ export function TileFrame({
   // and status word are the last things to go.
   const showFooter = footer != null && size !== 'compact';
 
+  // Salience drives the edge/surface treatment (DESIGN-TILES §3); the bar is a
+  // redundant salience channel (colour + 5px/6px thickness) paired with the
+  // `data-salience` attribute. Identity colour lives in the header dot on calm
+  // tiles. All tints/glows are STATIC (no animation) so reduced-motion is safe.
+  const isProblem = salience.tier === 'problem';
+  const isActionable = salience.tier === 'actionable';
+  const barTone: AccentTone = isProblem ? salience.edgeTone : 'neutral';
+  const dotTone: AccentTone = salience.tier === 'calm' ? (identityTone ?? tone) : salience.edgeTone;
+  const articleStyle =
+    isProblem && salience.tint
+      ? {
+          backgroundColor: `color-mix(in srgb, ${toneToVar(salience.edgeTone)} 10%, var(--color-surface))`,
+        }
+      : undefined;
+  const activateLabel =
+    accessibleSummary ?? `View ${signalLabel} details for ${repo.nameWithOwner}`;
+
   return (
     <article
       ref={containerRef}
       role="gridcell"
       data-status={status}
+      data-salience={salience.tier}
       data-tile-size={size}
       aria-colindex={colIndex}
       aria-rowindex={rowIndex}
+      style={articleStyle}
       className="relative flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface shadow-sm"
     >
-      <AccentBar tone={tone} />
+      {isProblem && salience.glow ? (
+        <div
+          aria-hidden="true"
+          data-part="problem-glow"
+          className="pointer-events-none absolute inset-0 z-0 rounded-md"
+          style={{ boxShadow: `inset 0 0 32px -10px ${toneToVar(salience.edgeTone)}` }}
+        />
+      ) : null}
+      {isActionable && salience.actionableTab ? (
+        <span
+          aria-hidden="true"
+          data-part="actionable-tab"
+          className="pointer-events-none absolute right-0 top-0 z-20 h-8 w-1 rounded-bl bg-accent-info"
+        />
+      ) : null}
+      <AccentBar tone={barTone} thickness={isProblem ? 'problem' : 'calm'} />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-4">
         <header className="flex items-baseline justify-between gap-2">
           <h3 className="truncate text-sm font-semibold text-text" title={repo.nameWithOwner}>
-            {repo.nameWithOwner}
+            {displayName}
+            {alias != null ? (
+              <span className="sr-only"> (alias for {repo.nameWithOwner})</span>
+            ) : null}
           </h3>
           <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-text-muted">
             {signalLabel}
-            <StatusDot tone={tone} />
+            <StatusDot tone={dotTone} />
           </span>
         </header>
         <div className="min-h-0 flex-1 text-sm text-text">{children}</div>
@@ -134,7 +213,7 @@ export function TileFrame({
         tabIndex={rovingTabIndex}
         onClick={onActivate}
         onFocus={() => onTileFocus?.(tileId)}
-        aria-label={`View ${signalLabel} details for ${repo.nameWithOwner}`}
+        aria-label={activateLabel}
         className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       />
     </article>

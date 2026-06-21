@@ -43,4 +43,16 @@ describe('BigValue', () => {
     render(<BigValue value={9} />);
     expect(screen.getByText('9').className).toContain('text-4xl');
   });
+
+  it('wraps the value in an aria-live="polite" region when live', () => {
+    render(<BigValue value={4} live />);
+    const region = document.querySelector('[aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region).toContainElement(screen.getByText('4'));
+  });
+
+  it('renders no aria-live region when live is absent', () => {
+    render(<BigValue value={5} />);
+    expect(document.querySelector('[aria-live]')).toBeNull();
+  });
 });
