@@ -42,6 +42,26 @@ const CHECKBOX_LABEL_CLASS = 'inline-flex items-center gap-1.5 text-sm text-text
 const CHECKBOX_CLASS =
   'h-4 w-4 rounded border-border-strong text-accent-info focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
 
+/**
+ * Zero-width space toggled on alternating triage announcements (§6.2, #245).
+ *
+ * Two consecutive actions can post the IDENTICAL human-readable string — e.g.
+ * dismissing two already-read items, which also leaves the unread `role="status"`
+ * count unchanged, so this polite region is the only confirmation channel. React
+ * would then leave the region's text node byte-for-byte identical, and many
+ * screen readers only re-announce a polite region when its content actually
+ * changes, so the second confirmation is silently dropped. Toggling this
+ * invisible, non-speaking marker by the per-action nonce keeps the audible text
+ * "Dismissed" while guaranteeing the region's content mutates on every action.
+ *
+ * The mutation is only half the fix: the region must also be `aria-atomic="true"`
+ * so screen readers re-read the WHOLE region — the human-readable words plus this
+ * marker — rather than only the changed (silent) marker node. Without atomic
+ * re-reading the mutation would announce just the zero-width space, dropping the
+ * repeated "Dismissed" words and leaving #245 unfixed.
+ */
+const ANNOUNCE_MARKER = '\u200B';
+
 export interface InboxViewProps {
   /** The lifted inbox view-model (one shared {@link useInbox} instance). */
   inbox: UseInboxResult;
@@ -66,28 +86,37 @@ export function InboxView({
 
   const repoFilterId = useId();
   const kindFilterId = useId();
-  const [announcement, setAnnouncement] = useState('');
+  // The nonce makes each announcement mutate the live region even when the
+  // human-readable text repeats, so screen readers re-announce it (#245).
+  const [announcement, setAnnouncement] = useState<{ text: string; nonce: number }>({
+    text: '',
+    nonce: 0,
+  });
+
+  const announce = useCallback((text: string) => {
+    setAnnouncement((prev) => ({ text, nonce: prev.nonce + 1 }));
+  }, []);
 
   const handleMarkRead = useCallback(
     (id: string) => {
       markRead(id);
-      setAnnouncement('Marked as read');
+      announce('Marked as read');
     },
-    [markRead],
+    [markRead, announce],
   );
   const handleDismiss = useCallback(
     (id: string) => {
       dismiss(id);
-      setAnnouncement('Dismissed');
+      announce('Dismissed');
     },
-    [dismiss],
+    [dismiss, announce],
   );
   const handleRestore = useCallback(
     (id: string) => {
       restore(id);
-      setAnnouncement('Restored');
+      announce('Restored');
     },
-    [restore],
+    [restore, announce],
   );
 
   function handleRepoChange(event: ChangeEvent<HTMLSelectElement>): void {
@@ -250,8 +279,9 @@ export function InboxView({
         />
       )}
 
-      <div aria-live="polite" className="sr-only">
-        {announcement}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement.text}
+        <span>{ANNOUNCE_MARKER.repeat(announcement.nonce % 2)}</span>
       </div>
     </section>
   );
