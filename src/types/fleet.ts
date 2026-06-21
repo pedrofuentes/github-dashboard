@@ -53,6 +53,27 @@ export interface CiSignalSlice extends SignalSlice {
 }
 
 /**
+ * Severity of a single security alert — mirrors the alert feed's `AlertSeverity`
+ * (kept here too so this pure-type module needs no api/github import).
+ */
+export type SecurityAlertSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+/**
+ * Per-alert identity for ONE open security alert, retained from the already-
+ * fetched feed body so {@link SecuritySignalSlice.alerts} can carry it across a
+ * conditional (304) refresh and the Notifications Inbox can derive one stable
+ * item per alert (INBOX-2B, issue #216). `number` is the GitHub alert number,
+ * unique within a (repo, feed) pair; `type` disambiguates the two feeds.
+ */
+export interface SecurityAlertRow {
+  number: number;
+  type: 'dependabot' | 'code-scanning';
+  severity: SecurityAlertSeverity;
+  html_url: string;
+  created_at: string;
+}
+
+/**
  * Security slice — owned by issue #13 (Dependabot / code-scanning alerts).
  * Carries a letter grade plus the alert breakdown by severity.
  */
@@ -65,6 +86,13 @@ export interface SecuritySignalSlice extends SignalSlice {
    * (issue #77). Omitted when every feed was fully counted.
    */
   truncated?: boolean;
+  /**
+   * Per-alert identity rows (one per OPEN alert across both feeds), retained so
+   * a later `deriveInboxItems` can emit one stable inbox item per alert that
+   * survives a conditional (304) refresh. Omitted entirely when there are no
+   * alerts, so a clean slice stays byte-identical (INBOX-2B, issue #216).
+   */
+  alerts?: SecurityAlertRow[];
 }
 
 /**

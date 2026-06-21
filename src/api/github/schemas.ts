@@ -142,6 +142,12 @@ export const ReleaseResponseSchema = z
 /** Schema for a single Dependabot alert. */
 export const DependabotAlertSchema = z
   .object({
+    // Per-alert identity retained for the Notifications Inbox so a 304 refresh
+    // can replay it (INBOX-2B, issue #216). Optional: minimal fixtures and any
+    // unexpectedly-shaped alert simply yield no inbox row, never a parse error.
+    number: z.number().optional(),
+    html_url: z.string().optional(),
+    created_at: z.string().optional(),
     security_advisory: z
       .object({
         severity: z.string().nullable(),

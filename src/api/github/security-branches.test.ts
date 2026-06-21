@@ -95,6 +95,7 @@ describe('fetchCodeScanningAlerts', () => {
       low: 0,
       total: 3,
       truncated: false,
+      rows: [],
     });
   });
 
@@ -143,6 +144,7 @@ describe('fetchCodeScanningAlerts', () => {
       low: 2,
       total: 7,
       truncated: false,
+      rows: [],
     });
   });
 
@@ -240,6 +242,7 @@ describe('fetchDependabotAlerts', () => {
       low: 0,
       total: 2,
       truncated: false,
+      rows: [],
     });
   });
 
@@ -307,6 +310,7 @@ describe('alert feeds — page-1 conditional caching (#78)', () => {
       low: 0,
       total: 1,
       truncated: false,
+      rows: [],
     });
     const headers = (vi.mocked(globalThis.fetch).mock.calls[0][1] as RequestInit).headers as Record<
       string,
@@ -322,7 +326,15 @@ describe('alert feeds — page-1 conditional caching (#78)', () => {
       mockResponse(200, [levelAlert('critical'), levelAlert('high')], undefined, 'W/"v1"'),
     );
     const first = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
-    expect(first).toEqual({ critical: 1, high: 1, medium: 0, low: 0, total: 2, truncated: false });
+    expect(first).toEqual({
+      critical: 1,
+      high: 1,
+      medium: 0,
+      low: 0,
+      total: 2,
+      truncated: false,
+      rows: [],
+    });
 
     // Second refresh: the head of the feed is unchanged, so the server answers
     // 304 and the cached summary is reused without re-reading the body.
@@ -376,6 +388,7 @@ describe('alert feeds — page-1 conditional caching (#78)', () => {
       low: 0,
       total: 2,
       truncated: false,
+      rows: [],
     });
 
     // A third refresh now conditionalizes on the *new* validator.
@@ -557,5 +570,232 @@ describe('assertGitHubApiOrigin (#66)', () => {
 
   it('refuses an unparseable URL', () => {
     expect(() => assertGitHubApiOrigin('not-a-valid-url')).toThrow();
+  });
+});
+
+// ──────────────────────────────────────────────
+// Per-alert identity rows + 304 replay — INBOX-2B (issue #216, DESIGN-INBOX §1.4)
+//
+// The Notifications Inbox derives one item per OPEN alert, so each feed must
+// expose per-alert identity ({number, type, severity, html_url, created_at}),
+// not just severity counts. Security is the one signal that bypasses
+// `fetchWithETag`, so `readAlertFeed`'s bespoke cache must persist those rows
+// alongside the summary and REPLAY them on a 304 — otherwise the app's
+// steady-state 304 refreshes (useRepoSignals) would skip the per-alert loop and
+// emit zero security items, so the inbox would flicker every cycle. Replaying
+// the cached rows re-uses more of the already-fetched 200 body — ZERO new
+// requests (no new endpoint, page, or permission). Mirrors how `fetchWithETag`
+// replays the full body on a 304 (etag-cache.ts).
+// ──────────────────────────────────────────────
+
+describe('alert feeds — per-alert identity rows + 304 replay (INBOX-2B #216)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  /** A fully-identified code-scanning alert (number + deep link + created_at). */
+  function csFullAlert(
+    number: number,
+    level: string,
+    html_url: string,
+    created_at: string,
+  ): Record<string, unknown> {
+    return { number, html_url, created_at, rule: { security_severity_level: level } };
+  }
+
+  /** A fully-identified Dependabot alert (number + deep link + created_at). */
+  function depFullAlert(
+    number: number,
+    severity: string,
+    html_url: string,
+    created_at: string,
+  ): Record<string, unknown> {
+    return { number, html_url, created_at, security_advisory: { severity } };
+  }
+
+  it('exposes per-alert identity rows derived from the already-fetched 200 body (AC-4)', async () => {
+    const cache = new ETagCache();
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(
+        200,
+        [
+          csFullAlert(
+            7,
+            'critical',
+            'https://github.com/octo/cs/security/code-scanning/7',
+            '2026-02-01T00:00:00Z',
+          ),
+          csFullAlert(
+            8,
+            'medium',
+            'https://github.com/octo/cs/security/code-scanning/8',
+            '2026-02-02T00:00:00Z',
+          ),
+        ],
+        undefined,
+        'W/"v1"',
+      ),
+    );
+
+    const feed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    // Counts are unchanged (back-compat); the rows carry the inbox identity.
+    expect(feed.total).toBe(2);
+    expect(feed.rows).toEqual([
+      {
+        number: 7,
+        type: 'code-scanning',
+        severity: 'critical',
+        html_url: 'https://github.com/octo/cs/security/code-scanning/7',
+        created_at: '2026-02-01T00:00:00Z',
+      },
+      {
+        number: 8,
+        type: 'code-scanning',
+        severity: 'medium',
+        html_url: 'https://github.com/octo/cs/security/code-scanning/8',
+        created_at: '2026-02-02T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('tags Dependabot rows with type "dependabot" and advisory severity (AC-4)', async () => {
+    const cache = new ETagCache();
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(
+        200,
+        [
+          depFullAlert(
+            3,
+            'high',
+            'https://github.com/octo/dep/security/dependabot/3',
+            '2026-03-01T00:00:00Z',
+          ),
+        ],
+        undefined,
+        'W/"v1"',
+      ),
+    );
+
+    const feed = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+
+    expect(feed.rows).toEqual([
+      {
+        number: 3,
+        type: 'dependabot',
+        severity: 'high',
+        html_url: 'https://github.com/octo/dep/security/dependabot/3',
+        created_at: '2026-03-01T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('replays byte-identical code-scanning rows across a 200→304 refresh (AC-17)', async () => {
+    const cache = new ETagCache();
+    const alerts = [
+      csFullAlert(
+        7,
+        'critical',
+        'https://github.com/octo/cs/security/code-scanning/7',
+        '2026-02-01T00:00:00Z',
+      ),
+      csFullAlert(
+        8,
+        'medium',
+        'https://github.com/octo/cs/security/code-scanning/8',
+        '2026-02-02T00:00:00Z',
+      ),
+    ];
+    // 200: rows are retained from the parsed body and the page-1 ETag is cached.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, alerts, undefined, 'W/"v1"'),
+    );
+    const first = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(first.rows).toHaveLength(2);
+
+    // 304: the head is unchanged, the body is NOT re-read — rows come from cache.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v1"'));
+    const second = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+
+    // CRUX (AC-17): identical per-alert identity — same ids, same order — so the
+    // derived security items are byte-identical across the 200→304 transition.
+    expect(second.rows).toEqual(first.rows);
+    // AC-5: the 304 added zero requests — no new endpoint, page, or permission.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    const conditionalHeaders = (vi.mocked(globalThis.fetch).mock.calls[1][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(conditionalHeaders['If-None-Match']).toBe('W/"v1"');
+  });
+
+  it('replays byte-identical Dependabot rows across a 200→304 refresh (AC-17)', async () => {
+    const cache = new ETagCache();
+    const alerts = [
+      depFullAlert(
+        3,
+        'high',
+        'https://github.com/octo/dep/security/dependabot/3',
+        '2026-03-01T00:00:00Z',
+      ),
+      depFullAlert(
+        5,
+        'low',
+        'https://github.com/octo/dep/security/dependabot/5',
+        '2026-03-02T00:00:00Z',
+      ),
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, alerts, undefined, 'W/"dep1"'),
+    );
+    const first = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+    expect(first.rows.map((row) => row.number)).toEqual([3, 5]);
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(304, null, undefined, 'W/"dep1"'),
+    );
+    const second = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, cache);
+
+    expect(second.rows).toEqual(first.rows);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('never seeds a 304 from a truncated read, so stale rows can never be replayed (AC-5/AC-17)', async () => {
+    const cache = new ETagCache();
+    // Every page advertises another on-origin next page; only the cap stops it,
+    // so the tally is partial. A partial read must NOT be cached (no validator
+    // stored), so a later refresh cannot answer 304 with stale rows.
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockResponse(
+        200,
+        [
+          csFullAlert(
+            1,
+            'low',
+            'https://github.com/octo/cs/security/code-scanning/1',
+            '2026-02-01T00:00:00Z',
+          ),
+        ],
+        '<https://api.github.com/repositories/1/code-scanning/alerts?state=open&per_page=100&page=99>; rel="next"',
+        'W/"v1"',
+      ),
+    );
+    const first = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    expect(first.truncated).toBe(true);
+
+    // A follow-up refresh must carry NO `If-None-Match` (nothing was cached), so
+    // the server cannot 304 and rows are always re-derived from a fresh body.
+    vi.mocked(globalThis.fetch).mockClear();
+    await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, cache);
+    const headers = (vi.mocked(globalThis.fetch).mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
+    expect(headers['If-None-Match']).toBeUndefined();
   });
 });

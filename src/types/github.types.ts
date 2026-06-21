@@ -21,6 +21,7 @@ export type {
 export type {
   AlertSeverity,
   SecurityAlertSummary,
+  SecurityAlertFeed,
   BranchComparison,
   BranchInfo,
   CommitActivityWeek,

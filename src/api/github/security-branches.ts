@@ -25,6 +25,7 @@ import {
   CommitListItemSchema,
   TagListItemSchema,
 } from './schemas';
+import type { SecurityAlertRow } from '../../types/fleet';
 
 // ─── Security Alert APIs ────────────────────────────────────────────
 
@@ -44,6 +45,20 @@ export interface SecurityAlertSummary {
    * complete tally, so callers can flag the grade as partial (issue #77).
    */
   truncated: boolean;
+}
+
+/**
+ * A fully-read alert feed: the severity {@link SecurityAlertSummary} widened
+ * with the per-alert {@link SecurityAlertRow} identities retained from the SAME
+ * 200 body. Persisting the rows in the bespoke conditional cache lets a later
+ * 304 replay them byte-identically (mirroring how `fetchWithETag` replays the
+ * full body), so the derived inbox items stay stable across a refresh instead
+ * of vanishing when the per-alert loop is skipped on a cache hit (INBOX-2B,
+ * issue #216). It re-uses already-fetched data — it adds ZERO new requests.
+ */
+export interface SecurityAlertFeed extends SecurityAlertSummary {
+  /** One row per counted open alert, in feed (page) order. */
+  rows: SecurityAlertRow[];
 }
 
 /**
@@ -86,9 +101,11 @@ export function assertGitHubApiOrigin(url: string): void {
 
 /**
  * Process-local cache used by the alert feeds when a caller does not inject its
- * own. Keyed by the page-1 URL, it stores the last fully-counted
- * {@link SecurityAlertSummary} plus the page-1 `ETag` so a subsequent refresh
- * can replay the validator and short-circuit on `304` (issue #78).
+ * own. Keyed by the page-1 URL, it stores the last fully-read
+ * {@link SecurityAlertFeed} (severity counts **and** per-alert rows) plus the
+ * page-1 `ETag` so a subsequent refresh can replay the validator and, on a
+ * `304`, replay the whole feed — counts and rows — without re-paginating
+ * (issues #78, #216).
  */
 const defaultAlertCache = new ETagCache();
 
@@ -121,13 +138,13 @@ function parseNextPageUrl(linkHeader: string | null): string | null {
  * Outcome of a (possibly conditional) alert-feed read.
  *
  * Either the feed's first page was unchanged since the last successful read — so
- * the previously computed summary is served straight from cache without
- * re-paginating (`hit: true`, issue #78) — or every page was (re)read and the
- * raw rows are returned for the caller to tally with its feed-specific severity
- * rules, along with a {@link AlertFeedFresh.commit} hook that persists the
- * resulting summary for the next conditional read.
+ * the previously read feed (counts + per-alert rows) is served straight from
+ * cache without re-paginating (`hit: true`, issues #78, #216) — or every page
+ * was (re)read and the raw rows are returned for the caller to tally with its
+ * feed-specific severity rules, along with a {@link AlertFeedFresh.commit} hook
+ * that persists the resulting feed for the next conditional read.
  */
-type AlertFeedRead<T> = { hit: true; summary: SecurityAlertSummary } | AlertFeedFresh<T>;
+type AlertFeedRead<T> = { hit: true; feed: SecurityAlertFeed } | AlertFeedFresh<T>;
 
 interface AlertFeedFresh<T> {
   hit: false;
@@ -136,12 +153,12 @@ interface AlertFeedFresh<T> {
   /** `true` when {@link MAX_ALERT_PAGES} stopped pagination with pages remaining. */
   truncated: boolean;
   /**
-   * Persists `summary` as the cached answer for the next conditional read, keyed
-   * by the page-1 URL and tagged with page 1's `ETag`. A no-op when the read was
-   * truncated — a lower-bound count must never be replayed as a `304`
-   * "unchanged" answer (issues #77, #78).
+   * Persists `feed` (counts + per-alert rows) as the cached answer for the next
+   * conditional read, keyed by the page-1 URL and tagged with page 1's `ETag`.
+   * A no-op when the read was truncated — a lower-bound feed must never be
+   * replayed as a `304` "unchanged" answer (issues #77, #78, #216).
    */
-  commit: (summary: SecurityAlertSummary) => void;
+  commit: (feed: SecurityAlertFeed) => void;
 }
 
 /**
@@ -190,7 +207,7 @@ async function readAlertFeed<T>(
   signal?: AbortSignal,
 ): Promise<AlertFeedRead<T>> {
   const headers = buildHeaders(token);
-  const cached = cache.get<SecurityAlertSummary>(initialUrl);
+  const cached = cache.get<SecurityAlertFeed>(initialUrl);
 
   // Page 1 is conditional: replay the stored validator so an unchanged feed head
   // answers 304 and reuses the cached tally without re-paginating (issue #78).
@@ -202,9 +219,11 @@ async function readAlertFeed<T>(
   assertGitHubApiOrigin(initialUrl);
   const first = await fetchWithRetry(initialUrl, { headers: firstHeaders, signal }, context);
 
-  // 304 must be checked before `!ok` (a 304 reports `ok === false`).
+  // 304 must be checked before `!ok` (a 304 reports `ok === false`). Replay the
+  // whole cached feed — counts AND per-alert rows — so the derived inbox items
+  // stay byte-identical across the refresh (issue #216).
   if (first.status === 304 && cached) {
-    return { hit: true, summary: cached.data };
+    return { hit: true, feed: cached.data };
   }
 
   if (!first.ok) {
@@ -244,17 +263,39 @@ async function readAlertFeed<T>(
 
   // A still-non-null `url` means the cap stopped us with pages remaining.
   const truncated = url !== null;
-  const commit = (summary: SecurityAlertSummary): void => {
-    // Only a complete tally may seed a future 304 short-circuit.
-    if (summary.truncated) return;
-    cache.set<SecurityAlertSummary>(initialUrl, {
+  const commit = (feed: SecurityAlertFeed): void => {
+    // Only a complete read may seed a future 304 short-circuit/replay.
+    if (feed.truncated) return;
+    cache.set<SecurityAlertFeed>(initialUrl, {
       etag: pageOneEtag,
-      data: summary,
+      data: feed,
       storedAt: Date.now(),
     });
   };
 
   return { hit: false, items, truncated, commit };
+}
+
+/** Narrows an arbitrary string to a known {@link AlertSeverity}. */
+function isAlertSeverity(value: string): value is AlertSeverity {
+  return value === 'critical' || value === 'high' || value === 'medium' || value === 'low';
+}
+
+/**
+ * Builds the per-alert identity {@link SecurityAlertRow} the Notifications Inbox
+ * addresses an item with, or `null` when the alert lacks a field the inbox
+ * needs (its `number`, `html_url` deep link, or `created_at`). Skipping
+ * incomplete alerts keeps the retained rows in lock-step with the tally and
+ * means a minimal/legacy alert shape degrades to "no inbox row", never a crash.
+ */
+function buildAlertRow(
+  type: 'dependabot' | 'code-scanning',
+  severity: AlertSeverity,
+  alert: { number?: number | null; html_url?: string | null; created_at?: string | null },
+): SecurityAlertRow | null {
+  const { number, html_url, created_at } = alert;
+  if (typeof number !== 'number' || !html_url || !created_at) return null;
+  return { number, type, severity, html_url, created_at };
 }
 
 /**
@@ -276,7 +317,7 @@ export async function fetchDependabotAlerts(
   token: string,
   signal?: AbortSignal,
   cache: ETagCache = defaultAlertCache,
-): Promise<SecurityAlertSummary> {
+): Promise<SecurityAlertFeed> {
   // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
   // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
@@ -292,7 +333,7 @@ export async function fetchDependabotAlerts(
     cache,
     signal,
   );
-  if (read.hit) return read.summary;
+  if (read.hit) return read.feed;
 
   const summary: SecurityAlertSummary = {
     critical: 0,
@@ -302,6 +343,7 @@ export async function fetchDependabotAlerts(
     total: 0,
     truncated: read.truncated,
   };
+  const rows: SecurityAlertRow[] = [];
   for (const alert of read.items) {
     const severity = alert.security_advisory?.severity ?? 'low';
     if (
@@ -313,14 +355,25 @@ export async function fetchDependabotAlerts(
       summary[severity]++;
     }
     summary.total++;
+    // Retain this alert's identity for the inbox; severity falls back to 'low'
+    // for the same unrecognized values the counts already bucket out (#216).
+    const row = buildAlertRow('dependabot', isAlertSeverity(severity) ? severity : 'low', alert);
+    if (row) rows.push(row);
   }
-  read.commit(summary);
-  return summary;
+  const feed: SecurityAlertFeed = { ...summary, rows };
+  read.commit(feed);
+  return feed;
 }
 
-/** Code-scanning alert shape we care about: just the rule's severity sources. */
+/** Code-scanning alert shape we care about: the rule's severity plus identity. */
 const CodeScanningAlertSchema = z
   .object({
+    // Per-alert identity retained for the Notifications Inbox so a 304 refresh
+    // can replay it (INBOX-2B, issue #216). Optional: minimal fixtures and any
+    // unexpectedly-shaped alert simply yield no inbox row, never a parse error.
+    number: z.number().optional(),
+    html_url: z.string().optional(),
+    created_at: z.string().optional(),
     rule: z
       .object({
         severity: z.string().nullable().optional(),
@@ -382,7 +435,7 @@ export async function fetchCodeScanningAlerts(
   token: string,
   signal?: AbortSignal,
   cache: ETagCache = defaultAlertCache,
-): Promise<SecurityAlertSummary> {
+): Promise<SecurityAlertFeed> {
   // sort=updated floats any new OR reopened alert (updated_at = now) to page 1's
   // head, so the page-1 304 short-circuit can never hide it on page ≥2 (#78).
   const initialUrl =
@@ -398,7 +451,7 @@ export async function fetchCodeScanningAlerts(
     cache,
     signal,
   );
-  if (read.hit) return read.summary;
+  if (read.hit) return read.feed;
 
   const summary: SecurityAlertSummary = {
     critical: 0,
@@ -408,15 +461,21 @@ export async function fetchCodeScanningAlerts(
     total: 0,
     truncated: read.truncated,
   };
+  const rows: SecurityAlertRow[] = [];
   for (const alert of read.items) {
     const severity = codeScanningSeverity(alert);
     if (severity) {
       summary[severity]++;
       summary.total++;
+      // Retain identity for the inbox only for alerts the tally recognized, so
+      // rows and counts stay in lock-step (issue #216).
+      const row = buildAlertRow('code-scanning', severity, alert);
+      if (row) rows.push(row);
     }
   }
-  read.commit(summary);
-  return summary;
+  const feed: SecurityAlertFeed = { ...summary, rows };
+  read.commit(feed);
+  return feed;
 }
 
 // ─── Branch Network API ──────────────────────────────────────
