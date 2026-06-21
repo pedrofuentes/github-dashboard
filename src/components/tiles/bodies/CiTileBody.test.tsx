@@ -224,6 +224,20 @@ describe('CiTileBody', () => {
       expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
     });
 
+    it('out-of-enum conclusion falls back to a neutral, non-blank render (#185)', () => {
+      // GitHub exposes conclusions beyond our 5-member enum (cancelled, skipped,
+      // timed_out, action_required, neutral, stale). An unexpected value must
+      // not throw a TypeError (→ blank tile, violating never-blank); it falls
+      // back to the neutral "No runs" render.
+      const slice = { status: 'ready', conclusion: 'cancelled' } as unknown as CiSignalSlice;
+      let container: HTMLElement | undefined;
+      expect(() => {
+        container = render(<CiTileBody repo={repo} data={data(slice)} size="standard" />).container;
+      }).not.toThrow();
+      expect(glyph(container as HTMLElement, 'neutral')).not.toBeNull();
+      expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
+    });
+
     it('all-clear ready state is never blank', () => {
       const { container } = render(
         <CiTileBody
