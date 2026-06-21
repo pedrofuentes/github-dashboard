@@ -73,12 +73,16 @@ const SIGNAL_KEYS = ['ci', 'security', 'reviews', 'pullRequests', 'issues', 'sta
 const RESOLVED_SIGNAL_STATUSES = new Set<SignalStatus>(['ready', 'error']);
 
 /**
- * Whether a repo's signal data has settled — at least one slice has resolved
- * (`ready`/`error`). Until then every slice is still absent or `loading`, so the
- * derived inbox for that repo is only transiently empty (it has not loaded yet).
+ * Whether a repo's signal data has settled — `true` only once **every** slice
+ * has settled (`ready`/`error`). While any slice is still absent or `loading`
+ * the derived inbox for that repo is incomplete: ids from the not-yet-loaded
+ * slices are missing from the live set, so advancing the watermark (and pruning
+ * triage against that partial set) would wrongly GC their read/dismissed marks.
+ * A failed fetch becomes `error`, which counts as settled, so this still becomes
+ * true eventually — there is no permanent stall on a slice that never loads.
  */
 function repoSignalsResolved(data: RepoSignalData): boolean {
-  return SIGNAL_KEYS.some((key) => {
+  return SIGNAL_KEYS.every((key) => {
     const slice = data[key];
     return slice !== undefined && RESOLVED_SIGNAL_STATUSES.has(slice.status);
   });
@@ -94,9 +98,11 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const [editing, setEditing] = useState(false);
 
   // The per-repo signals load asynchronously after the repo list resolves, so a
-  // `status === 'success'` render can still have a transiently-empty derived inbox.
-  // Treat the fleet as settled only once every repo has at least one resolved
-  // signal slice, so the live ids the watermark GC runs against reflect real data.
+  // `status === 'success'` render can still have an incomplete derived inbox.
+  // Treat the fleet as settled only once every repo has every signal slice
+  // resolved, so the live ids the watermark GC runs against are complete — a repo
+  // with even one slice still loading would otherwise prune triage for the ids of
+  // its not-yet-loaded slices.
   const signalsResolved = useMemo(
     () => repos.every((repo) => repoSignalsResolved(getRowData(repo))),
     [repos, getRowData],
