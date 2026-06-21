@@ -2,13 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { TileSignalType } from '../../types/dashboard';
 import type { AccentTone, SignalIconKind, TileTier } from './types';
-import {
-  SIGNAL_IDENTITY_TONE,
-  iconKindTone,
-  toneBgClass,
-  toneTextClass,
-  toneToVar,
-} from './types';
+import { SIGNAL_IDENTITY_TONE, iconKindTone, toneBgClass, toneTextClass, toneToVar } from './types';
 
 const TONES: AccentTone[] = [
   'success',
