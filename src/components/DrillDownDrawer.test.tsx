@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Repo, RepoSignalData } from '../types/fleet';
+import type { CiSignalSlice, Repo, RepoSignalData } from '../types/fleet';
 import { DrillDownDrawer } from './DrillDownDrawer';
 
 const REPO: Repo = { nameWithOwner: 'octo/hello', owner: 'octo', name: 'hello', isPrivate: false };
@@ -240,5 +240,26 @@ describe('DrillDownDrawer slice states', () => {
     render(<DrillDownDrawer repo={REPO} data={{}} onClose={vi.fn()} />);
 
     expect(screen.getAllByText(/no data yet/i)).toHaveLength(6);
+  });
+});
+
+describe('DrillDownDrawer unknown CI conclusion (#205)', () => {
+  it('falls back to the neutral "No runs" label for an out-of-enum conclusion without crashing', () => {
+    // GitHub exposes workflow conclusions beyond our 5-member enum (cancelled,
+    // skipped, timed_out, action_required, neutral, stale). An unexpected value
+    // must not index the label map to `undefined` (rendering "Conclusion:
+    // undefined") — the same unguarded `CONCLUSION[...]` lookup that threw a
+    // TypeError in CiTileBody (#185). It must fall back to the neutral "No runs"
+    // label, mirroring the CiTileBody guard.
+    const slice = { status: 'ready', conclusion: 'cancelled' } as unknown as CiSignalSlice;
+    let dialog: HTMLElement | undefined;
+    expect(() => {
+      render(<DrillDownDrawer repo={REPO} data={{ ci: slice }} onClose={vi.fn()} />);
+      dialog = screen.getByRole('dialog');
+    }).not.toThrow();
+
+    const scoped = within(dialog as HTMLElement);
+    expect(scoped.getByText(/Conclusion: No runs/i)).toBeInTheDocument();
+    expect(scoped.queryByText(/undefined/i)).toBeNull();
   });
 });
