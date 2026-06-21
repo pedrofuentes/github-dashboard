@@ -1,15 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { InboxFilters, InboxItemView, UseInboxResult } from '../../hooks/useInbox';
-import { useInbox } from '../../hooks/useInbox';
-import type { GetRowData, Repo } from '../../types/fleet';
+import type { Repo } from '../../types/fleet';
 import { InboxView } from './InboxView';
-
-vi.mock('../../hooks/useInbox', () => ({ useInbox: vi.fn() }));
-
-const mockedUseInbox = vi.mocked(useInbox);
 
 function repo(nameWithOwner: string): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -22,7 +17,6 @@ function repo(nameWithOwner: string): Repo {
 }
 
 const REPOS = [repo('octo/app'), repo('octo/api')];
-const getRowData: GetRowData = () => ({});
 
 function makeItem(overrides: Partial<InboxItemView> = {}): InboxItemView {
   return {
@@ -62,32 +56,37 @@ function inboxResult(overrides: Partial<UseInboxResult> = {}): UseInboxResult {
   };
 }
 
-beforeEach(() => {
-  mockedUseInbox.mockReset();
-  mockedUseInbox.mockReturnValue(inboxResult());
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('InboxView wiring', () => {
-  it('drives the view from useInbox(repos, getRowData) so App can supply the fleet seam', () => {
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
-    expect(mockedUseInbox).toHaveBeenCalledWith(REPOS, getRowData);
+  it('renders from the inbox view-model supplied as a prop (single shared instance)', () => {
+    render(
+      <InboxView
+        inbox={inboxResult({ items: [makeItem({ title: 'Build broke' })], unreadCount: 2 })}
+        repos={REPOS}
+      />,
+    );
+    // The view is presentational: it reflects exactly the view-model App passes
+    // in, so the toggle badge and the list can share one useInbox instance.
+    expect(screen.getByText('Build broke')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/2 unread/i);
   });
 
   it('announces the fleet-wide unread count in a polite status region', () => {
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [makeItem()], unreadCount: 3 }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(
+      <InboxView inbox={inboxResult({ items: [makeItem()], unreadCount: 3 })} repos={REPOS} />,
+    );
     expect(screen.getByRole('status')).toHaveTextContent(/3 unread/i);
   });
 });
 
 describe('InboxView states (AC-13)', () => {
   it('shows a positive "all caught up" empty state when nothing matches and no filter is active', () => {
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [], filters: DEFAULT_FILTERS }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(
+      <InboxView inbox={inboxResult({ items: [], filters: DEFAULT_FILTERS })} repos={REPOS} />,
+    );
 
     expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
     expect(screen.queryByText(/no items match these filters/i)).toBeNull();
@@ -96,10 +95,16 @@ describe('InboxView states (AC-13)', () => {
   it('shows a distinct empty-filtered state with a clear-filters control when filters hide everything', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
-    mockedUseInbox.mockReturnValue(
-      inboxResult({ items: [], filters: { ...DEFAULT_FILTERS, unreadOnly: true }, setFilters }),
+    render(
+      <InboxView
+        inbox={inboxResult({
+          items: [],
+          filters: { ...DEFAULT_FILTERS, unreadOnly: true },
+          setFilters,
+        })}
+        repos={REPOS}
+      />,
     );
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
 
     expect(screen.getByText(/no items match these filters/i)).toBeInTheDocument();
     expect(screen.queryByText(/all caught up/i)).toBeNull();
@@ -114,7 +119,7 @@ describe('InboxView states (AC-13)', () => {
   });
 
   it('renders a reduced-motion-friendly loading skeleton inherited from the fleet load', () => {
-    const { container } = render(<InboxView repos={REPOS} getRowData={getRowData} loading />);
+    const { container } = render(<InboxView inbox={inboxResult()} repos={REPOS} loading />);
 
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
@@ -128,7 +133,7 @@ describe('InboxView states (AC-13)', () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
     render(
-      <InboxView repos={REPOS} getRowData={getRowData} error="Network down" onRetry={onRetry} />,
+      <InboxView inbox={inboxResult()} repos={REPOS} error="Network down" onRetry={onRetry} />,
     );
 
     const alert = screen.getByRole('alert');
@@ -138,10 +143,15 @@ describe('InboxView states (AC-13)', () => {
   });
 
   it('renders the list of items when the inbox has matches', () => {
-    mockedUseInbox.mockReturnValue(
-      inboxResult({ items: [makeItem({ id: 'a', title: 'Build broke' })], unreadCount: 1 }),
+    render(
+      <InboxView
+        inbox={inboxResult({
+          items: [makeItem({ id: 'a', title: 'Build broke' })],
+          unreadCount: 1,
+        })}
+        repos={REPOS}
+      />,
     );
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
 
     expect(screen.getByRole('list', { name: /inbox items/i })).toBeInTheDocument();
     expect(screen.getByText('Build broke')).toBeInTheDocument();
@@ -153,8 +163,7 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
   it('narrows by repository', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [makeItem()], setFilters }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(<InboxView inbox={inboxResult({ items: [makeItem()], setFilters })} repos={REPOS} />);
 
     await user.selectOptions(screen.getByLabelText(/filter by repository/i), 'octo/api');
     expect(setFilters).toHaveBeenCalledWith({ repos: ['octo/api'] });
@@ -163,8 +172,7 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
   it('narrows by kind', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [makeItem()], setFilters }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(<InboxView inbox={inboxResult({ items: [makeItem()], setFilters })} repos={REPOS} />);
 
     await user.selectOptions(screen.getByLabelText(/filter by kind/i), 'security');
     expect(setFilters).toHaveBeenCalledWith({ kinds: ['security'] });
@@ -173,8 +181,7 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
   it('toggles unread-only and show-dismissed', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [makeItem()], setFilters }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(<InboxView inbox={inboxResult({ items: [makeItem()], setFilters })} repos={REPOS} />);
 
     await user.click(screen.getByRole('checkbox', { name: /unread only/i }));
     expect(setFilters).toHaveBeenCalledWith({ unreadOnly: true });
@@ -185,15 +192,49 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
 });
 
 describe('InboxView triage announcements (AC-14)', () => {
+  it('routes a row open (mark read) to the hook and announces it politely', async () => {
+    const user = userEvent.setup();
+    const markRead = vi.fn();
+    const item = makeItem({ id: 'ci:octo/app:7', title: 'Build is red' });
+    render(
+      <InboxView inbox={inboxResult({ items: [item], unreadCount: 1, markRead })} repos={REPOS} />,
+    );
+
+    await user.click(screen.getByRole('link', { name: 'Build is red' }));
+    expect(markRead).toHaveBeenCalledWith('ci:octo/app:7');
+    expect(screen.getByText('Marked as read')).toBeInTheDocument();
+  });
+
   it('routes a row dismiss to the hook and announces it politely', async () => {
     const user = userEvent.setup();
     const dismiss = vi.fn();
     const item = makeItem({ id: 'ci:octo/app:9', title: 'Pipeline red' });
-    mockedUseInbox.mockReturnValue(inboxResult({ items: [item], unreadCount: 1, dismiss }));
-    render(<InboxView repos={REPOS} getRowData={getRowData} />);
+    render(
+      <InboxView inbox={inboxResult({ items: [item], unreadCount: 1, dismiss })} repos={REPOS} />,
+    );
 
     await user.click(screen.getByRole('button', { name: /dismiss pipeline red/i }));
     expect(dismiss).toHaveBeenCalledWith('ci:octo/app:9');
     expect(screen.getByText('Dismissed')).toBeInTheDocument();
+  });
+
+  it('routes a row restore to the hook and announces it politely', async () => {
+    const user = userEvent.setup();
+    const restore = vi.fn();
+    const item = makeItem({ id: 'ci:octo/app:8', title: 'Old failure', dismissed: true });
+    render(
+      <InboxView
+        inbox={inboxResult({
+          items: [item],
+          filters: { ...DEFAULT_FILTERS, showDismissed: true },
+          restore,
+        })}
+        repos={REPOS}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /restore old failure/i }));
+    expect(restore).toHaveBeenCalledWith('ci:octo/app:8');
+    expect(screen.getByText('Restored')).toBeInTheDocument();
   });
 });

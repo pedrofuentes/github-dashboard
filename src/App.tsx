@@ -1,19 +1,21 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
+import { InboxView } from './components/inbox/InboxView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
 import { useAuth } from './hooks/useAuth';
+import { useInbox } from './hooks/useInbox';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import { loadViewPreference, saveViewPreference } from './lib/view-preference';
 import type { FleetView } from './lib/view-preference';
 import type { AuthUser } from './types/auth';
-import type { Repo } from './types/fleet';
+import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
 export function App(): ReactElement {
   return (
@@ -64,12 +66,64 @@ function Shell(): ReactElement {
   );
 }
 
+/** The per-repo signal slots populated asynchronously after the repo list loads. */
+const SIGNAL_KEYS = ['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale'] as const;
+
+/** Signal statuses that mean a slice has finished loading (settled, not in-flight). */
+const RESOLVED_SIGNAL_STATUSES = new Set<SignalStatus>(['ready', 'error']);
+
+/**
+ * Whether a repo's signal data has settled — `true` only once **every** slice
+ * has settled (`ready`/`error`). While any slice is still absent or `loading`
+ * the derived inbox for that repo is incomplete: ids from the not-yet-loaded
+ * slices are missing from the live set, so advancing the watermark (and pruning
+ * triage against that partial set) would wrongly GC their read/dismissed marks.
+ * A failed fetch becomes `error`, which counts as settled, so this still becomes
+ * true eventually — there is no permanent stall on a slice that never loads.
+ */
+function repoSignalsResolved(data: RepoSignalData): boolean {
+  return SIGNAL_KEYS.every((key) => {
+    const slice = data[key];
+    return slice !== undefined && RESOLVED_SIGNAL_STATUSES.has(slice.status);
+  });
+}
+
 function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
+  const inbox = useInbox(repos, getRowData);
+  const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [view, setView] = useState<FleetView>(loadViewPreference);
   const [editing, setEditing] = useState(false);
+
+  // The per-repo signals load asynchronously after the repo list resolves, so a
+  // `status === 'success'` render can still have an incomplete derived inbox.
+  // Treat the fleet as settled only once every repo has every signal slice
+  // resolved, so the live ids the watermark GC runs against are complete — a repo
+  // with even one slice still loading would otherwise prune triage for the ids of
+  // its not-yet-loaded slices.
+  const signalsResolved = useMemo(
+    () => repos.every((repo) => repoSignalsResolved(getRowData(repo))),
+    [repos, getRowData],
+  );
+
+  // Advance the "last visited" watermark once per Inbox visit, but only after the
+  // signals have settled so the hook's triage GC runs against the real live ids
+  // (never the transiently-empty set of the load window, which would drop every
+  // read/dismissed mark). Leaving the Inbox re-arms it so the next open re-stamps
+  // the watermark (AC-16).
+  const inboxSeenRef = useRef(false);
+  useEffect(() => {
+    if (view !== 'inbox') {
+      inboxSeenRef.current = false;
+      return;
+    }
+    if (status === 'success' && signalsResolved && !inboxSeenRef.current) {
+      inboxSeenRef.current = true;
+      markAllSeen();
+    }
+  }, [view, status, signalsResolved, markAllSeen]);
 
   // Stable callbacks so the memoised grid rows keep shallow-equal props and do
   // not all re-render when the drawer opens or closes.
@@ -88,7 +142,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <ViewToggle view={view} onChange={handleViewChange} />
+        <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
         {view === 'dashboard' ? (
           <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
         ) : null}
@@ -99,6 +153,14 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
           getRowData={getRowData}
           onRepoActivate={handleRepoActivate}
           editing={editing}
+          loading={status === 'loading'}
+          error={status === 'error' ? error : null}
+          onRetry={reload}
+        />
+      ) : view === 'inbox' ? (
+        <InboxView
+          inbox={inbox}
+          repos={repos}
           loading={status === 'loading'}
           error={status === 'error' ? error : null}
           onRetry={reload}
@@ -149,14 +211,16 @@ function CustomizeLayoutToggle({ editing, onToggle }: CustomizeLayoutToggleProps
 interface ViewToggleProps {
   view: FleetView;
   onChange: (view: FleetView) => void;
+  unreadCount: number;
 }
 
 const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Dashboard' },
+  { value: 'inbox', label: 'Inbox' },
 ];
 
-function ViewToggle({ view, onChange }: ViewToggleProps): ReactElement {
+function ViewToggle({ view, onChange, unreadCount }: ViewToggleProps): ReactElement {
   return (
     <div
       role="group"
@@ -165,6 +229,7 @@ function ViewToggle({ view, onChange }: ViewToggleProps): ReactElement {
     >
       {VIEW_OPTIONS.map((option) => {
         const isActive = view === option.value;
+        const showBadge = option.value === 'inbox' && unreadCount > 0;
         return (
           <button
             key={option.value}
@@ -173,11 +238,17 @@ function ViewToggle({ view, onChange }: ViewToggleProps): ReactElement {
             onClick={() => onChange(option.value)}
             className={
               isActive
-                ? 'rounded px-3 py-1 text-sm font-medium bg-text text-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
-                : 'rounded px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
+                ? 'inline-flex items-center rounded px-3 py-1 text-sm font-medium bg-text text-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
+                : 'inline-flex items-center rounded px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
             }
           >
             {option.label}
+            {showBadge ? (
+              <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-accent-info px-1.5 py-0.5 text-xs font-semibold leading-none text-surface">
+                {unreadCount}
+                <span className="sr-only"> unread</span>
+              </span>
+            ) : null}
           </button>
         );
       })}
