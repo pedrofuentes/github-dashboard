@@ -6,6 +6,7 @@
  * helpers); raw hex lives once per theme in `src/index.css`, so a single
  * `.dark` class on `<html>` flips the whole tree.
  */
+import type { TileSignalType } from '../../types/dashboard';
 
 /** A semantic accent that resolves to a status/identity colour token. */
 export type AccentTone =
@@ -103,3 +104,20 @@ const ICON_KIND_TONE: Record<SignalIconKind, AccentTone> = {
 export function iconKindTone(kind: SignalIconKind): AccentTone {
   return ICON_KIND_TONE[kind];
 }
+
+/**
+ * Per-signal **identity** accent for a CALM tile's header dot/icon
+ * (DESIGN-TILES §3, §5). On calm tiles the edge bar is neutral and the signal's
+ * identity colour moves to the header glyph, so colour-blind redundancy is kept
+ * via the adjacent label + icon shape rather than the bar. Problem/actionable
+ * tiers override this with their salience edge tone (handled by `TileFrame`).
+ */
+export const SIGNAL_IDENTITY_TONE: Record<TileSignalType, AccentTone> = {
+  ci: 'neutral',
+  security: 'neutral',
+  pullRequests: 'info',
+  reviews: 'info',
+  issues: 'neutral',
+  stale: 'ochre',
+  activity: 'purple',
+};
