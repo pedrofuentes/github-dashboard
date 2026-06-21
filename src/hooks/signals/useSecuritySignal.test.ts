@@ -6,10 +6,10 @@ import {
   GitHubErrorCode,
   fetchCodeScanningAlerts,
   fetchDependabotAlerts,
-  type SecurityAlertSummary,
+  type SecurityAlertFeed,
 } from '../../api/github';
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
-import type { Repo } from '../../types/fleet';
+import type { Repo, SecurityAlertRow } from '../../types/fleet';
 import { useSecuritySignal } from './useSecuritySignal';
 
 vi.mock('../../api/github', async (importActual) => {
@@ -41,16 +41,25 @@ function manyRepos(count: number): Repo[] {
 /** Flush all pending microtasks via a macrotask boundary. */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Builds a severity summary (the shape both alert fetchers now return). */
-function summaryOf(partial: Partial<SecurityAlertSummary>): SecurityAlertSummary {
-  return { critical: 0, high: 0, medium: 0, low: 0, total: 0, truncated: false, ...partial };
+/** Builds a feed: severity counts + per-alert identity rows (the fetcher shape). */
+function feedOf(partial: Partial<SecurityAlertFeed> = {}): SecurityAlertFeed {
+  return {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0,
+    truncated: false,
+    rows: [],
+    ...partial,
+  };
 }
 
-const dependabot = summaryOf;
+const dependabot = feedOf;
 
 /** Resolve the code-scanning fetch with a severity summary. */
-function codeScanning(partial: Partial<SecurityAlertSummary>): void {
-  mockCodeScanning.mockResolvedValue(summaryOf(partial));
+function codeScanning(partial: Partial<SecurityAlertFeed>): void {
+  mockCodeScanning.mockResolvedValue(feedOf(partial));
 }
 
 function apiError(status: number, code: GitHubErrorCode): GitHubApiError {
@@ -94,8 +103,8 @@ describe('useSecuritySignal', () => {
   });
 
   it('exposes a loading slice for each repo before the fetches resolve', () => {
-    mockDependabot.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
-    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
+    mockDependabot.mockReturnValue(new Promise<SecurityAlertFeed>(() => {}));
+    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertFeed>(() => {}));
 
     const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     expect(result.current.get('octo/a')).toEqual({ status: 'loading' });
@@ -116,6 +125,40 @@ describe('useSecuritySignal', () => {
       score: 1 * 100 + 1 * 20 + 3 * 5 + 0,
       grade: 'F',
     });
+  });
+
+  it('merges per-alert identity rows from both feeds into slice.alerts (INBOX-2B #216)', async () => {
+    const depRows: SecurityAlertRow[] = [
+      {
+        number: 3,
+        type: 'dependabot',
+        severity: 'high',
+        html_url: 'https://github.com/octo/a/security/dependabot/3',
+        created_at: '2026-03-01T00:00:00Z',
+      },
+    ];
+    const csRows: SecurityAlertRow[] = [
+      {
+        number: 7,
+        type: 'code-scanning',
+        severity: 'critical',
+        html_url: 'https://github.com/octo/a/security/code-scanning/7',
+        created_at: '2026-02-01T00:00:00Z',
+      },
+    ];
+    mockDependabot.mockResolvedValue(dependabot({ high: 1, rows: depRows }));
+    codeScanning({ critical: 1, rows: csRows });
+
+    const { result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    // deriveInboxItems (a later increment) needs one row per OPEN alert across
+    // BOTH feeds; merge order is irrelevant (it sorts by timestamp+id later).
+    const alerts = result.current.get('octo/a')?.alerts;
+    expect(alerts).toHaveLength(2);
+    expect(alerts).toEqual(expect.arrayContaining([...depRows, ...csRows]));
   });
 
   it('flags the slice as truncated when a contributing feed hit the page cap (#77)', async () => {
@@ -204,12 +247,12 @@ describe('useSecuritySignal', () => {
     // The stale generation's BOTH feeds are deferred so neither per-feed task
     // settles until we release them — *after* the fresh generation has already
     // won. Each task's generation guard must discard the late write.
-    let resolveStaleDependabot: ((value: SecurityAlertSummary) => void) | undefined;
-    let resolveStaleCodeScanning: ((value: SecurityAlertSummary) => void) | undefined;
-    const staleDependabot = new Promise<SecurityAlertSummary>((resolve) => {
+    let resolveStaleDependabot: ((value: SecurityAlertFeed) => void) | undefined;
+    let resolveStaleCodeScanning: ((value: SecurityAlertFeed) => void) | undefined;
+    const staleDependabot = new Promise<SecurityAlertFeed>((resolve) => {
       resolveStaleDependabot = resolve;
     });
-    const staleCodeScanning = new Promise<SecurityAlertSummary>((resolve) => {
+    const staleCodeScanning = new Promise<SecurityAlertFeed>((resolve) => {
       resolveStaleCodeScanning = resolve;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
@@ -240,7 +283,7 @@ describe('useSecuritySignal', () => {
     // sleep) so the discarded continuation is drained deterministically (#66).
     await act(async () => {
       resolveStaleDependabot?.(dependabot({ critical: 9 }));
-      resolveStaleCodeScanning?.(summaryOf({}));
+      resolveStaleCodeScanning?.(feedOf({}));
       await flush();
     });
 
@@ -254,14 +297,14 @@ describe('useSecuritySignal', () => {
 
   it('ignores a stale rejection after the token changes (race guard)', async () => {
     let rejectStale: ((reason: unknown) => void) | undefined;
-    const staleDependabot = new Promise<SecurityAlertSummary>((_, reject) => {
+    const staleDependabot = new Promise<SecurityAlertFeed>((_, reject) => {
       rejectStale = reject;
     });
     mockDependabot.mockReturnValueOnce(staleDependabot);
     // Defer only the stale generation's sibling feed (mirroring the resolution
     // race test) so it never settles on its own; the fresh generation below sets
     // its own resolved default (#66).
-    mockCodeScanning.mockReturnValueOnce(new Promise<SecurityAlertSummary>(() => {}));
+    mockCodeScanning.mockReturnValueOnce(new Promise<SecurityAlertFeed>(() => {}));
 
     const { result, rerender } = renderHook(({ token }) => useSecuritySignal(REPOS, token), {
       initialProps: { token: 'ghp_one' },
@@ -345,7 +388,7 @@ describe('useSecuritySignal', () => {
     mockDependabot.mockImplementation(() => {
       inFlight += 1;
       peak = Math.max(peak, inFlight);
-      return new Promise<SecurityAlertSummary>((resolve) => {
+      return new Promise<SecurityAlertFeed>((resolve) => {
         release.push(() => {
           inFlight -= 1;
           resolve(dependabot({}));
@@ -381,13 +424,13 @@ describe('useSecuritySignal', () => {
     let inFlight = 0;
     let peak = 0;
     const release: Array<() => void> = [];
-    const track = (): Promise<SecurityAlertSummary> => {
+    const track = (): Promise<SecurityAlertFeed> => {
       inFlight += 1;
       peak = Math.max(peak, inFlight);
-      return new Promise<SecurityAlertSummary>((resolve) => {
+      return new Promise<SecurityAlertFeed>((resolve) => {
         release.push(() => {
           inFlight -= 1;
-          resolve(summaryOf({}));
+          resolve(feedOf({}));
         });
       });
     };
@@ -418,11 +461,11 @@ describe('useSecuritySignal', () => {
     let rejectFetch!: (reason: unknown) => void;
     mockDependabot.mockImplementation(
       () =>
-        new Promise<SecurityAlertSummary>((_resolve, reject) => {
+        new Promise<SecurityAlertFeed>((_resolve, reject) => {
           rejectFetch = reject;
         }),
     );
-    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertSummary>(() => {}));
+    mockCodeScanning.mockReturnValue(new Promise<SecurityAlertFeed>(() => {}));
 
     const { unmount, result } = renderHook(() => useSecuritySignal(REPOS, 'ghp_token'));
     // BOTH feeds must receive the run's shared AbortSignal — not just Dependabot —
