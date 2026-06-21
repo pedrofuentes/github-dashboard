@@ -21,6 +21,7 @@ import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo, RepoSignalData, SignalSlice, SignalStatus } from '../types/fleet';
 import { CiTileBody } from './tiles/bodies/CiTileBody';
+import { ActivityTileBody } from './tiles/bodies/ActivityTileBody';
 import { IssuesTileBody } from './tiles/bodies/IssuesTileBody';
 import { PrsTileBody } from './tiles/bodies/PrsTileBody';
 import { ReviewsTileBody } from './tiles/bodies/ReviewsTileBody';
@@ -77,6 +78,16 @@ const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
   ready: 'info',
 };
 
+/**
+ * Frame accent for the Activity tile. Activity has no lifecycle slice in
+ * {@link RepoSignalData} — the {@link ActivityTileBody} owns its own load states
+ * — so the frame shows a stable identity rather than a data-driven status: a
+ * `ready`-equivalent status and the `success` accent that matches the body's
+ * activity ink (DESIGN-TILES §4.7).
+ */
+const ACTIVITY_STATUS: SignalStatus = 'ready';
+const ACTIVITY_TONE: AccentTone = 'success';
+
 /** Renders the matching bespoke per-signal body (DESIGN-TILES §4, §6). */
 function SignalBody({
   signal,
@@ -102,6 +113,14 @@ function SignalBody({
       return <IssuesTileBody repo={repo} data={data} size={size} />;
     case 'stale':
       return <StaleTileBody repo={repo} data={data} size={size} />;
+    case 'activity':
+      // Activity self-fetches its own commit history via `useCommitActivity`
+      // (no `RepoSignalData` slice), so it takes only `{ repo, size }`. The fetch
+      // is lazy on-mount and one-shot — consistent with the per-repo signal
+      // fetching and deliberately un-polled. Successor note: for very large
+      // fleets a future on-view IntersectionObserver could defer the fetch until
+      // the tile scrolls into view (out of scope here).
+      return <ActivityTileBody repo={repo} size={size} />;
     default:
       // The switch is exhaustive over `TileSignalType`; this guards a malformed
       // runtime signal so the tile degrades to a neutral, labelled state rather
@@ -123,10 +142,13 @@ export function SignalTile({
   colIndex,
   rowIndex,
 }: SignalTileProps): ReactElement {
-  const slice: SignalSlice | undefined = data[tile.signal];
-  const status: SignalStatus = slice?.status ?? 'unknown';
+  const isActivity = tile.signal === 'activity';
+  // Narrow inline (not via `isActivity`) so `data[...]` is keyed by a non-activity
+  // signal — `RepoSignalData` has no `activity` slice; the body self-fetches.
+  const slice: SignalSlice | undefined = tile.signal === 'activity' ? undefined : data[tile.signal];
+  const status: SignalStatus = isActivity ? ACTIVITY_STATUS : (slice?.status ?? 'unknown');
   const signalLabel = SIGNAL_LABELS[tile.signal];
-  const tone: AccentTone = iconKindTone(STATUS_ICON_KIND[status]);
+  const tone: AccentTone = isActivity ? ACTIVITY_TONE : iconKindTone(STATUS_ICON_KIND[status]);
 
   // The frame measures its own box to pick a density tier (DESIGN-TILES §3.4).
   const { ref, tier } = useTileSize<HTMLElement>();

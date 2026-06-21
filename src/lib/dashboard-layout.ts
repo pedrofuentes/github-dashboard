@@ -25,6 +25,7 @@ const TILE_SIGNALS: readonly TileSignalType[] = [
   'pullRequests',
   'issues',
   'stale',
+  'activity',
 ];
 
 /** Grid is 12 columns wide; tiles are a fixed 3×2 so 4 fit per row. */
@@ -45,7 +46,15 @@ export const MAX_TILES = 600;
 /** Cap on the length of the `i` / `repo` strings (GitHub names are far shorter). */
 export const MAX_STRING_LENGTH = 256;
 
-const TileSignalSchema = z.enum(['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale']);
+const TileSignalSchema = z.enum([
+  'ci',
+  'security',
+  'reviews',
+  'pullRequests',
+  'issues',
+  'stale',
+  'activity',
+]);
 
 const DashboardTileSchema = z
   .object({
@@ -130,9 +139,11 @@ export function toRglLayout(tiles: DashboardTile[]): Layout {
 
 /**
  * Reads, validates, and reconciles the persisted layout against the current
- * fleet. Tiles for repos no longer present are dropped; any
- * missing/corrupt/invalid/empty-after-reconcile result falls back to
- * {@link DEFAULT_LAYOUT}. Never throws.
+ * fleet. Tiles for repos no longer present are dropped; tiles missing from the
+ * stored layout (e.g. a newly added signal such as `activity` absent from an
+ * older persisted layout) are appended from {@link DEFAULT_LAYOUT} so the grid
+ * never silently omits a signal. Any missing/corrupt/invalid/empty-after-reconcile
+ * result falls back to {@link DEFAULT_LAYOUT}. Never throws.
  */
 export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
   const raw = safeGet(STORAGE_KEY);
@@ -157,7 +168,20 @@ export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
   if (reconciled.length === 0) {
     return DEFAULT_LAYOUT(repos);
   }
-  return reconciled;
+
+  // Back-compat: for each repo already in the stored layout, append any signal
+  // tile it predates — e.g. `activity`, absent from a layout persisted before
+  // that tile shipped — keeping the stored geometry for the existing tiles. The
+  // grid's vertical compaction resolves any overlap with the default positions.
+  // Repos entirely absent from the stored layout are NOT introduced: repo
+  // membership stays authoritative (a newly added fleet repo only appears on
+  // reset), matching the pre-existing reconciliation contract.
+  const storedIds = new Set(reconciled.map((tile) => tile.i));
+  const reposInLayout = new Set(reconciled.map((tile) => tile.repo));
+  const additions = DEFAULT_LAYOUT(repos).filter(
+    (tile) => reposInLayout.has(tile.repo) && !storedIds.has(tile.i),
+  );
+  return additions.length === 0 ? reconciled : [...reconciled, ...additions];
 }
 
 /**

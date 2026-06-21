@@ -6,6 +6,12 @@ import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo } from '../types/fleet';
 import { SignalTile } from './SignalTile';
 
+// The Activity body self-fetches via `useCommitActivity` (which reads the auth
+// context); stub it so the tile mounts without an AuthProvider or network.
+vi.mock('../hooks/useCommitActivity', () => ({
+  useCommitActivity: vi.fn(() => ({ state: 'empty' })),
+}));
+
 function makeRepo(nameWithOwner = 'octo/a'): Repo {
   const [owner, name] = nameWithOwner.split('/');
   return { nameWithOwner, owner, name, isPrivate: false };
@@ -144,5 +150,24 @@ describe('SignalTile', () => {
     // sr-text — proof the tile now dispatches to the bodies, not the `*Cell`
     // atoms (which the table view keeps).
     expect(screen.getAllByText(bodyMarker).length).toBeGreaterThan(0);
+  });
+
+  it('renders the ActivityTileBody for the activity signal (label, a11y, identity tone)', () => {
+    const { container } = render(
+      <SignalTile tile={makeTile('activity')} repo={makeRepo()} data={{}} onActivate={vi.fn()} />,
+    );
+    // The signal label resolves to "Activity" and the activate affordance names it.
+    expect(screen.getByText('Activity')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view activity details for octo\/a/i }),
+    ).toBeInTheDocument();
+    // Activity has no lifecycle slice in RepoSignalData — the frame shows a stable
+    // identity state: a 'ready'-equivalent status tinted with the success accent.
+    expect(container.querySelector('[data-status="ready"]')).not.toBeNull();
+    expect(container.querySelector('[data-tone="success"]')).not.toBeNull();
+    // Proof the bespoke ActivityTileBody rendered (its empty-state copy), not the
+    // exhaustive-switch fallback.
+    expect(screen.getByText(/no recent commit activity/i)).toBeInTheDocument();
+    expect(screen.queryByText(/unknown signal/i)).toBeNull();
   });
 });

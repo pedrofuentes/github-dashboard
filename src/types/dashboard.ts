@@ -5,8 +5,15 @@
  * values so it emits no JS — behavior belongs in `src/lib/dashboard-layout.ts`.
  */
 
-/** The six per-repo signals that can each become a dashboard tile. */
-export type TileSignalType = 'ci' | 'security' | 'reviews' | 'pullRequests' | 'issues' | 'stale';
+/** The seven per-repo signals that can each become a dashboard tile. */
+export type TileSignalType =
+  | 'ci'
+  | 'security'
+  | 'reviews'
+  | 'pullRequests'
+  | 'issues'
+  | 'stale'
+  | 'activity';
 
 /**
  * One dashboard tile = one (repo, signal) pairing positioned on the grid.

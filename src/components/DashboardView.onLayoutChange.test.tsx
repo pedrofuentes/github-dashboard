@@ -43,6 +43,12 @@ vi.mock('react-grid-layout/legacy', () => ({
     },
 }));
 
+// Activity tiles self-fetch via `useCommitActivity` (which reads the auth
+// context); stub it so the rendered tiles mount without an AuthProvider.
+vi.mock('../hooks/useCommitActivity', () => ({
+  useCommitActivity: vi.fn(() => ({ state: 'empty' })),
+}));
+
 // Imported after the mock so DashboardView picks up the stubbed grid.
 const { DashboardView } = await import('./DashboardView');
 
