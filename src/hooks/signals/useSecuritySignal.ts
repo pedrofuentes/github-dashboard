@@ -25,13 +25,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   GitHubApiError,
   GitHubErrorCode,
-  type SecurityAlertSummary,
+  type SecurityAlertFeed,
   fetchCodeScanningAlerts,
   fetchDependabotAlerts,
 } from '../../api/github';
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { isAbortError } from '../../lib/abort';
-import type { Repo, SecuritySignalSlice } from '../../types/fleet';
+import type { Repo, SecurityAlertRow, SecuritySignalSlice } from '../../types/fleet';
 import { computeGrade, computeSecurityScore, type SecurityCounts } from './securityGrade';
 
 /** Shared stable identity for every empty result (no token / no repos). */
@@ -44,19 +44,21 @@ interface FeedData {
   counts: SecurityCounts;
   /** `true` when this feed hit the pagination cap (partial count; issue #77). */
   truncated: boolean;
+  /** Per-alert identity rows retained for the inbox derivation (issue #216). */
+  rows: SecurityAlertRow[];
 }
 type FeedResult = FeedData | typeof NO_ACCESS;
 
 /** One alert feed for a repo: severity counts, or NO_ACCESS when unavailable. */
 type FeedLoader = (repo: Repo, token: string, signal?: AbortSignal) => Promise<FeedResult>;
 
-/** Raw summary fetcher shared by both feeds (Dependabot / code scanning). */
-type SummaryFetcher = (
+/** Raw feed fetcher shared by both feeds: severity counts + per-alert rows. */
+type FeedFetcher = (
   owner: string,
   repo: string,
   token: string,
   signal?: AbortSignal,
-) => Promise<SecurityAlertSummary>;
+) => Promise<SecurityAlertFeed>;
 
 function emptyCounts(): SecurityCounts {
   return { critical: 0, high: 0, medium: 0, low: 0 };
@@ -74,19 +76,20 @@ function isNoAccessError(error: unknown): boolean {
   );
 }
 
-/** Wraps a summary fetcher into a feed loader that maps "no access" to NO_ACCESS. */
-function feedLoader(fetcher: SummaryFetcher): FeedLoader {
+/** Wraps a feed fetcher into a feed loader that maps "no access" to NO_ACCESS. */
+function feedLoader(fetcher: FeedFetcher): FeedLoader {
   return async (repo, token, signal) => {
     try {
-      const summary = await fetcher(repo.owner, repo.name, token, signal);
+      const feed = await fetcher(repo.owner, repo.name, token, signal);
       return {
         counts: {
-          critical: summary.critical,
-          high: summary.high,
-          medium: summary.medium,
-          low: summary.low,
+          critical: feed.critical,
+          high: feed.high,
+          medium: feed.medium,
+          low: feed.low,
         },
-        truncated: summary.truncated,
+        truncated: feed.truncated,
+        rows: feed.rows,
       };
     } catch (error) {
       if (isNoAccessError(error)) return NO_ACCESS;
@@ -107,6 +110,7 @@ function combineFeeds(feeds: FeedResult[]): SecuritySignalSlice {
 
   const counts = emptyCounts();
   let truncated = false;
+  const alerts: SecurityAlertRow[] = [];
   for (const feed of feeds) {
     if (feed === NO_ACCESS) continue;
     counts.critical += feed.counts.critical;
@@ -115,6 +119,9 @@ function combineFeeds(feeds: FeedResult[]): SecuritySignalSlice {
     counts.low += feed.counts.low;
     // Any partial feed makes the merged count a lower bound (issue #77).
     if (feed.truncated) truncated = true;
+    // Collect every feed's per-alert rows for the later inbox derivation; merge
+    // order is irrelevant (deriveInboxItems sorts by timestamp+id; issue #216).
+    for (const row of feed.rows) alerts.push(row);
   }
 
   const slice: SecuritySignalSlice = {
@@ -125,6 +132,9 @@ function combineFeeds(feeds: FeedResult[]): SecuritySignalSlice {
   };
   // Only set the flag when partial, so a fully-counted slice stays clean.
   if (truncated) slice.truncated = true;
+  // Omit `alerts` entirely when empty, mirroring the `truncated` omission, so a
+  // no-alert slice stays byte-identical to its pre-INBOX shape (issue #216).
+  if (alerts.length > 0) slice.alerts = alerts;
   return slice;
 }
 
