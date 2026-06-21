@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadInboxTriage } from './lib/inbox/triage-store';
 import { forgetToken } from './lib/token-storage';
 import { validateToken } from './lib/validate-token';
 import { useRepos } from './hooks/useRepos';
@@ -468,6 +469,55 @@ describe('App', () => {
         lastVisitedAt: string | null;
       };
       expect(typeof stored.lastVisitedAt).toBe('string');
+      expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
+    });
+  });
+
+  it('keeps persisted triage when the inbox opens before per-repo signals load (AC-16)', async () => {
+    // Regression for the triage-wipe: landing on the persisted Inbox view must not
+    // GC read/dismissed marks against the transiently-empty live set produced while
+    // the per-repo signals are still loading (the repo list resolved, signals not).
+    const seeded = '2024-01-01T00:00:00.000Z';
+    localStorage.setItem('fleet:view', 'inbox');
+    localStorage.setItem(
+      'fleet:inbox-triage',
+      JSON.stringify({
+        readIds: ['ci:octo/one:42'],
+        dismissedIds: ['ci:octo/two:7'],
+        lastVisitedAt: seeded,
+      }),
+    );
+
+    // Signals start UNloaded: the repo list has resolved but every repo's slices
+    // are still absent, so deriveInboxItems is transiently empty (liveIds === []).
+    mockUseRepoSignals.mockReturnValue({ getRowData: () => ({}) });
+    const user = userEvent.setup();
+    const { rerender } = render(<App />);
+    await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+    await screen.findByRole('region', { name: /notifications inbox/i });
+
+    // The per-repo signals now settle: each repo resolves a failing-CI slice whose
+    // derived id matches a seeded triage id (run 42 → octo/one, run 7 → octo/two),
+    // so both seeded ids are live once loading completes.
+    const getRowDataLoaded: GetRowData = (target: Repo): RepoSignalData => ({
+      ci: {
+        status: 'ready',
+        conclusion: 'failure',
+        runId: target.nameWithOwner === 'octo/two' ? 7 : 42,
+        updatedAt: CI_TIMESTAMP,
+        latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/1`,
+      },
+    });
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataLoaded });
+    rerender(<App />);
+
+    // The seeded marks must SURVIVE the visit (not be wiped during the load window),
+    // while the watermark still advances once the signals have settled.
+    await waitFor(() => {
+      const stored = loadInboxTriage();
+      expect(stored.readIds).toContain('ci:octo/one:42');
+      expect(stored.dismissedIds).toContain('ci:octo/two:7');
+      expect(stored.lastVisitedAt).not.toBeNull();
       expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
     });
   });
