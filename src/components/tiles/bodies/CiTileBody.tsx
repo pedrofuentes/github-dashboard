@@ -1,0 +1,158 @@
+import type { ReactElement } from 'react';
+
+import { safeGitHubHref } from '../../../lib/github-url';
+import type { CiSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
+import { AmbientGlow } from '../AmbientGlow';
+import { BigValue } from '../BigValue';
+import { StatusGlyph } from '../StatusGlyph';
+import type { AccentTone, SignalIconKind, TileTier } from '../types';
+import { iconKindTone } from '../types';
+
+export interface CiTileBodyProps {
+  /** The repo this CI signal belongs to (used for accessible context). */
+  repo: Repo;
+  /** The repo's resolved signal payload; `data.ci` is the CI slice. */
+  data: RepoSignalData;
+  /** Density tier the surrounding tile renders at (DESIGN-TILES §3.4). */
+  size: TileTier;
+}
+
+type Conclusion = NonNullable<CiSignalSlice['conclusion']>;
+
+/**
+ * Conclusion → glyph kind + status word (DESIGN-TILES §2.1, §4.1). The tone is
+ * derived from the glyph via {@link iconKindTone} so glyph, glow and word stay
+ * on one accent: success→success/✓, failure→failure/✗, in_progress→warning/
+ * spinner, queued→info/clock, none→neutral/—.
+ */
+const CONCLUSION: Record<Conclusion, { glyph: SignalIconKind; word: string }> = {
+  success: { glyph: 'success', word: 'Passing' },
+  failure: { glyph: 'failure', word: 'Failing' },
+  in_progress: { glyph: 'running', word: 'Running' },
+  queued: { glyph: 'queued', word: 'Queued' },
+  none: { glyph: 'neutral', word: 'No runs' },
+};
+
+/** Hero glyph pixel size per density tier. */
+const GLYPH_SIZE: Record<TileTier, number> = {
+  compact: 32,
+  standard: 44,
+  expanded: 60,
+};
+
+interface CiView {
+  /** Which status glyph to render as the hero. */
+  glyph: SignalIconKind;
+  /** Accent shared by glyph, glow and the status word. */
+  tone: AccentTone;
+  /** Visible status word (BigValue at standard/expanded). */
+  word: string;
+  /** Muted secondary line; omitted when there is nothing to add. */
+  detail?: string;
+  /** Failing workflow count (> 0 only) — the numeric redundant encoding. */
+  failing: number;
+  /** Full sr-only sentence — the redundant text layer, never blank. */
+  sr: string;
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * Collapse the CI slice (and its lifecycle status) into a single presentational
+ * descriptor. Every branch yields a glyph, tone, word and sr sentence so the
+ * body is never blank and state is encoded redundantly (glyph + word + colour +
+ * sr-text), per DESIGN-TILES §3.6 and §4.1.
+ */
+function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
+  if (!ci || ci.status === 'unknown') {
+    return {
+      glyph: 'neutral',
+      tone: 'neutral',
+      word: 'n/a',
+      failing: 0,
+      sr: `CI status unavailable for ${repoLabel}`,
+    };
+  }
+
+  if (ci.status === 'loading') {
+    return {
+      glyph: 'loading',
+      tone: 'neutral',
+      word: 'Loading…',
+      failing: 0,
+      sr: 'Loading CI…',
+    };
+  }
+
+  if (ci.status === 'error') {
+    return {
+      glyph: 'failure',
+      tone: 'failure',
+      word: "Couldn't load CI",
+      failing: 0,
+      sr: 'CI status could not be loaded',
+    };
+  }
+
+  const conclusion: Conclusion = ci.conclusion ?? 'none';
+  const { glyph, word } = CONCLUSION[conclusion];
+  const tone = iconKindTone(glyph);
+  const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;
+  const detail = failing > 0 ? `${failing} failing` : 'No failing workflows';
+  const sr =
+    failing > 0
+      ? `CI ${word.toLowerCase()} — ${plural(failing, 'workflow')} failing`
+      : `CI ${word.toLowerCase()}`;
+
+  return { glyph, tone, word, detail, failing, sr };
+}
+
+/**
+ * Bespoke CI / Actions tile body (DESIGN-TILES §4.1). Presentational only — the
+ * shared `TileFrame` supplies the accent bar, header and activate/edit chrome;
+ * this renders the inner CI visual: a hero `StatusGlyph` over a same-tone static
+ * `AmbientGlow`, the run-state word as `BigValue`, the failing count, and — at
+ * the expanded tier — a GitHub-origin-gated "View latest run" deep link.
+ *
+ * State is encoded redundantly (glyph + word + colour + sr-text) and the body is
+ * never blank: loading, error, unknown and all-clear all render a positive,
+ * labelled state. The `AmbientGlow` is intentionally static, so it honours
+ * `prefers-reduced-motion` by construction.
+ */
+export function CiTileBody({ repo, data, size }: CiTileBodyProps): ReactElement {
+  const ci = data.ci;
+  const view = resolveView(ci, repo.nameWithOwner);
+
+  const href = size === 'expanded' ? safeGitHubHref(ci?.latestRunUrl) : undefined;
+  const showWord = size !== 'compact';
+  const showDetail = view.detail !== undefined && (size !== 'compact' || view.failing > 0);
+
+  return (
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden text-center">
+      <AmbientGlow tone={view.tone} />
+
+      <div className="relative flex flex-col items-center gap-1">
+        <StatusGlyph status={view.glyph} size={GLYPH_SIZE[size]} title={view.word} />
+
+        {showWord ? <BigValue value={view.word} tone={view.tone} size={size} /> : null}
+
+        {showDetail ? <span className="text-sm text-text-muted">{view.detail}</span> : null}
+
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-1 inline-flex rounded text-sm font-medium text-accent-info hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            View latest run
+          </a>
+        ) : null}
+
+        <span className="sr-only">{view.sr}</span>
+      </div>
+    </div>
+  );
+}
