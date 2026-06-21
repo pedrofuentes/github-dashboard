@@ -1,0 +1,179 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  buildCiId,
+  buildNewPrId,
+  buildReviewId,
+  buildSecurityId,
+  buildStaleId,
+  isInboxId,
+  parseInboxId,
+} from './ids';
+
+const REPO = 'octocat/hello-world';
+
+describe('stable-ID builders — §2.2 grammar (AC-1)', () => {
+  it('buildCiId → ci:<repo>:<run-id>', () => {
+    expect(buildCiId(REPO, 9876543210)).toBe('ci:octocat/hello-world:9876543210');
+  });
+
+  it('buildReviewId → review:<repo>:#<pr-number>', () => {
+    expect(buildReviewId(REPO, 42)).toBe('review:octocat/hello-world:#42');
+  });
+
+  it('buildNewPrId → new-pr:<repo>:#<pr-number>', () => {
+    expect(buildNewPrId(REPO, 108)).toBe('new-pr:octocat/hello-world:#108');
+  });
+
+  it('buildSecurityId → security:<repo>:<type>:<alert-number>', () => {
+    expect(buildSecurityId(REPO, 'dependabot', 7)).toBe(
+      'security:octocat/hello-world:dependabot:7',
+    );
+    expect(buildSecurityId(REPO, 'code-scanning', 3)).toBe(
+      'security:octocat/hello-world:code-scanning:3',
+    );
+  });
+
+  it('buildStaleId → stale:<repo>:<pr|issue>:#<number>', () => {
+    expect(buildStaleId(REPO, 'issue', 13)).toBe('stale:octocat/hello-world:issue:#13');
+    expect(buildStaleId(REPO, 'pr', 99)).toBe('stale:octocat/hello-world:pr:#99');
+  });
+
+  it('accepts a string run-id (e.g. parsed from the run URL path segment)', () => {
+    expect(buildCiId(REPO, '9876543210')).toBe('ci:octocat/hello-world:9876543210');
+  });
+
+  it('every builder output is recognised by isInboxId', () => {
+    expect(isInboxId(buildCiId(REPO, 1))).toBe(true);
+    expect(isInboxId(buildReviewId(REPO, 1))).toBe(true);
+    expect(isInboxId(buildNewPrId(REPO, 1))).toBe(true);
+    expect(isInboxId(buildSecurityId(REPO, 'dependabot', 1))).toBe(true);
+    expect(isInboxId(buildStaleId(REPO, 'issue', 1))).toBe(true);
+  });
+});
+
+describe('parseInboxId / isInboxId — round-trip, rejection, collisions (AC-2)', () => {
+  it('parseInboxId round-trips every kind back to its components', () => {
+    expect(parseInboxId(buildCiId(REPO, 9876543210))).toEqual({
+      kind: 'ci',
+      repo: REPO,
+      runId: '9876543210',
+    });
+    expect(parseInboxId(buildReviewId(REPO, 42))).toEqual({
+      kind: 'review',
+      repo: REPO,
+      prNumber: 42,
+    });
+    expect(parseInboxId(buildNewPrId(REPO, 108))).toEqual({
+      kind: 'new-pr',
+      repo: REPO,
+      prNumber: 108,
+    });
+    expect(parseInboxId(buildSecurityId(REPO, 'dependabot', 7))).toEqual({
+      kind: 'security',
+      repo: REPO,
+      type: 'dependabot',
+      alertNumber: 7,
+    });
+    expect(parseInboxId(buildStaleId(REPO, 'issue', 13))).toEqual({
+      kind: 'stale',
+      repo: REPO,
+      target: 'issue',
+      itemNumber: 13,
+    });
+  });
+
+  it('re-building from a parsed id yields the identical string (full round-trip)', () => {
+    const id = buildSecurityId(REPO, 'code-scanning', 3);
+    const parsed = parseInboxId(id);
+    expect(parsed).not.toBeNull();
+    if (parsed?.kind === 'security') {
+      expect(buildSecurityId(parsed.repo, parsed.type, parsed.alertNumber)).toBe(id);
+    }
+  });
+
+  it('parseInboxId returns null for malformed ids', () => {
+    const malformed = [
+      '',
+      'octocat/hello-world',
+      'ci:octocat/hello-world',
+      'ci:octocat/hello-world:',
+      'ci:octocat/hello-world:abc',
+      'review:octocat/hello-world:42',
+      'review:octocat/hello-world:#',
+      'new-pr:octocat/hello-world:#1.2',
+      'security:octocat/hello-world:snyk:7',
+      'security:octocat/hello-world:dependabot',
+      'stale:octocat/hello-world:branch:#1',
+      'stale:octocat/hello-world:issue:13',
+      'unknown:octocat/hello-world:1',
+      'ci:octocat:1',
+      'ci:octo/cat/extra:1',
+      'ci:octo:cat:1',
+    ];
+    for (const bad of malformed) {
+      expect(parseInboxId(bad)).toBeNull();
+    }
+  });
+
+  it('isInboxId accepts well-formed ids and rejects malformed values and non-strings', () => {
+    expect(isInboxId('ci:octocat/hello-world:1')).toBe(true);
+    expect(isInboxId('nope')).toBe(false);
+    expect(isInboxId('')).toBe(false);
+    expect(isInboxId(null)).toBe(false);
+    expect(isInboxId(undefined)).toBe(false);
+    expect(isInboxId(42)).toBe(false);
+    expect(isInboxId({ id: 'ci:octocat/hello-world:1' })).toBe(false);
+  });
+
+  it('ids are collision-free across kinds for an identical repo + number', () => {
+    const n = 42;
+    const ids = [
+      buildCiId(REPO, n),
+      buildReviewId(REPO, n),
+      buildNewPrId(REPO, n),
+      buildSecurityId(REPO, 'dependabot', n),
+      buildStaleId(REPO, 'issue', n),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(parseInboxId(buildCiId(REPO, n))?.kind).toBe('ci');
+    expect(parseInboxId(buildReviewId(REPO, n))?.kind).toBe('review');
+    expect(parseInboxId(buildNewPrId(REPO, n))?.kind).toBe('new-pr');
+    expect(parseInboxId(buildSecurityId(REPO, 'dependabot', n))?.kind).toBe('security');
+    expect(parseInboxId(buildStaleId(REPO, 'issue', n))?.kind).toBe('stale');
+  });
+
+  it('review and new-pr ids for the same PR are distinct (emitted as two items, never deduped)', () => {
+    expect(buildReviewId(REPO, 42)).not.toBe(buildNewPrId(REPO, 42));
+  });
+});
+
+describe('builders are pure and deterministic (AC-3)', () => {
+  it('identical inputs yield byte-identical ids', () => {
+    expect(buildCiId(REPO, 9876543210)).toBe(buildCiId(REPO, 9876543210));
+    expect(buildReviewId(REPO, 42)).toBe(buildReviewId(REPO, 42));
+    expect(buildSecurityId(REPO, 'dependabot', 7)).toBe(buildSecurityId(REPO, 'dependabot', 7));
+    expect(buildStaleId(REPO, 'pr', 99)).toBe(buildStaleId(REPO, 'pr', 99));
+  });
+
+  it('normalises a numeric and string run-id to the same id', () => {
+    expect(buildCiId(REPO, 9876543210)).toBe(buildCiId(REPO, '9876543210'));
+  });
+});
+
+describe('builders validate inputs so output is always a valid id (grammar integrity)', () => {
+  it('throws when repo is not "owner/name"', () => {
+    expect(() => buildCiId('octocat', 1)).toThrow();
+    expect(() => buildCiId('octo/cat/extra', 1)).toThrow();
+    expect(() => buildReviewId('octo:cat', 1)).toThrow();
+    expect(() => buildNewPrId('bad#repo/name', 1)).toThrow();
+  });
+
+  it('throws when a numeric id is not a non-negative integer', () => {
+    expect(() => buildReviewId(REPO, -1)).toThrow();
+    expect(() => buildReviewId(REPO, 1.5)).toThrow();
+    expect(() => buildReviewId(REPO, Number.NaN)).toThrow();
+    expect(() => buildCiId(REPO, 'abc')).toThrow();
+    expect(() => buildCiId(REPO, '')).toThrow();
+  });
+});
