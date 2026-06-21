@@ -70,21 +70,25 @@ describe('App — customize-layout contrast (#125)', () => {
 
     expect(customize).toHaveAttribute('aria-pressed', 'true');
     const className = customize.getAttribute('class') ?? '';
-    // The white-on-sky-600 active state failed 4.5:1; sky-700 (~5.93:1) passes AA.
-    expect(className).toContain('bg-sky-700');
-    expect(className).toContain('border-sky-700');
+    // The white-on-sky-600 active state failed 4.5:1; accent-info (sky-700 in
+    // light, ~5.93:1) passes AA and flips correctly in dark mode.
+    expect(className).toContain('bg-accent-info');
+    expect(className).toContain('border-accent-info');
     expect(className).not.toContain('bg-sky-600');
     expect(className).not.toContain('border-sky-600');
+    expect(className).not.toContain('bg-sky-700');
+    expect(className).not.toContain('border-sky-700');
   });
 
-  it('uses an sky-700 focus ring on the customize-layout toggle', async () => {
+  it('uses a tokenised focus ring on the customize-layout toggle', async () => {
     const user = userEvent.setup();
     render(<App />);
     await openDashboard(user);
 
     const customize = screen.getByRole('button', { name: /customize layout/i });
     const className = customize.getAttribute('class') ?? '';
-    expect(className).toContain('focus-visible:outline-sky-700');
+    expect(className).toContain('focus-visible:outline-focus');
     expect(className).not.toContain('focus-visible:outline-sky-600');
+    expect(className).not.toContain('focus-visible:outline-sky-700');
   });
 });
