@@ -32,6 +32,8 @@ const OpenPullRequestSchema = z
     author_association: z.string(),
     draft: z.boolean().optional(),
     html_url: z.string(),
+    title: z.string(),
+    created_at: z.string(),
   })
   .passthrough();
 
@@ -45,19 +47,35 @@ type OpenPullRequest = z.infer<typeof OpenPullRequestSchema>;
  * so `externalCount` is always a subset of `openCount`. The score weights each
  * new-contributor PR five times heavier than a routine open PR, floating repos
  * with fresh outside contributions to the top of a descending sort.
+ *
+ * `externalPullRequests` un-projects each counted external, non-draft PR's
+ * identity (already in the same `/pulls?state=open` payload — no extra request),
+ * in payload order, for the Notifications Inbox; it is omitted when none match.
  */
 function summarize(pulls: OpenPullRequest[]): PullRequestsSignalSlice {
   const open = pulls.filter((pull) => pull.draft !== true);
-  const externalCount = open.filter((pull) =>
+  const external = open.filter((pull) =>
     OUTSIDE_CONTRIBUTOR_ASSOCIATIONS.has(pull.author_association),
-  ).length;
+  );
+  const externalCount = external.length;
   const openCount = open.length;
-  return {
+  const slice: PullRequestsSignalSlice = {
     status: 'ready',
     openCount,
     externalCount,
     score: externalCount * 5 + openCount,
   };
+  if (externalCount > 0) {
+    slice.externalPullRequests = external.map((pull) => ({
+      number: pull.number,
+      title: pull.title,
+      html_url: pull.html_url,
+      created_at: pull.created_at,
+      user_login: pull.user?.login ?? '',
+      author_association: pull.author_association,
+    }));
+  }
+  return slice;
 }
 
 /**

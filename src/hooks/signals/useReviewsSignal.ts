@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { GITHUB_API_BASE, fetchReviewRequestedPage } from '../../api/github';
+import type { ReviewRequestedSearchItem } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
-import type { Repo, ReviewsSignalSlice } from '../../types/fleet';
+import type { Repo, ReviewRequestedPullRequest, ReviewsSignalSlice } from '../../types/fleet';
 
 /**
  * Reviews signal — PRs awaiting the authenticated user's review (issue #15).
@@ -69,29 +70,44 @@ export function repoFullNameFromUrl(repositoryUrl: string): string | null {
 /**
  * Folds the cross-repo Search items into one ready {@link ReviewsSignalSlice}
  * per repo in `repoNames`: each repo's `requestedCount` is how many returned
- * PRs target it (zero when none), and `score` is that count weighted for sort.
- * Items for repos outside the fleet are ignored.
+ * PRs target it (zero when none), `score` is that count weighted for sort, and
+ * `requests` un-projects each targeting PR's per-item identity (in result
+ * order, omitted when the repo has none) for the Notifications Inbox. Items for
+ * repos outside the fleet are ignored.
  */
 export function distributeReviewCounts(
   repoNames: string[],
-  items: { repository_url: string }[],
+  items: ReviewRequestedSearchItem[],
 ): Map<string, ReviewsSignalSlice> {
-  const counts = new Map<string, number>();
+  const requestsByRepo = new Map<string, ReviewRequestedPullRequest[]>();
   for (const item of items) {
     const fullName = repoFullNameFromUrl(item.repository_url);
     if (fullName !== null) {
-      counts.set(fullName, (counts.get(fullName) ?? 0) + 1);
+      const list = requestsByRepo.get(fullName) ?? [];
+      list.push({
+        number: item.number,
+        title: item.title,
+        html_url: item.html_url,
+        created_at: item.created_at,
+        user_login: item.user_login,
+      });
+      requestsByRepo.set(fullName, list);
     }
   }
 
   const slices = new Map<string, ReviewsSignalSlice>();
   for (const name of repoNames) {
-    const requestedCount = counts.get(name) ?? 0;
-    slices.set(name, {
+    const requests = requestsByRepo.get(name) ?? [];
+    const requestedCount = requests.length;
+    const slice: ReviewsSignalSlice = {
       status: 'ready',
       requestedCount,
       score: requestedCount * REVIEW_SCORE_WEIGHT,
-    });
+    };
+    if (requestedCount > 0) {
+      slice.requests = requests;
+    }
+    slices.set(name, slice);
   }
   return slices;
 }
@@ -120,8 +136,8 @@ function uniformSlices(
 async function collectReviewRequestedItems(
   token: string,
   signal: AbortSignal,
-): Promise<{ repository_url: string }[]> {
-  const items: { repository_url: string }[] = [];
+): Promise<ReviewRequestedSearchItem[]> {
+  const items: ReviewRequestedSearchItem[] = [];
   let nextUrl: string | null = reviewRequestedSearchUrl();
 
   for (let pageNumber = 0; nextUrl !== null && pageNumber < MAX_REVIEW_PAGES; pageNumber += 1) {
