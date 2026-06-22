@@ -159,6 +159,7 @@ describe('App', () => {
   });
 
   it('renders the fleet grid for the authenticated user', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
     mockUseRepos.mockReturnValue({
       status: 'success',
@@ -190,6 +191,7 @@ describe('App', () => {
   });
 
   it('opens an origin-validated drill-down dialog when a repo row is activated', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
     mockUseRepos.mockReturnValue({
       status: 'success',
@@ -243,16 +245,17 @@ describe('App', () => {
     expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
   });
 
-  it('defaults to the grid (table) view', async () => {
+  it('defaults to the dashboard view (AC1)', async () => {
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    expect(await screen.findByRole('table')).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('switches between the grid and dashboard views', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -266,17 +269,17 @@ describe('App', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument();
   });
 
-  it('persists the selected view', async () => {
+  it('does not persist an in-session view switch under fleet:view (AC6)', async () => {
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
-    expect(localStorage.getItem('fleet:view')).toBe('dashboard');
+    await user.click(screen.getByRole('button', { name: /grid/i }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(localStorage.getItem('fleet:view')).toBeNull();
   });
 
-  it('starts in the dashboard view when it was previously persisted', async () => {
-    localStorage.setItem('fleet:view', 'dashboard');
+  it('opens to the dashboard default after authenticating (AC1)', async () => {
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -286,6 +289,7 @@ describe('App', () => {
   });
 
   it('opens the drill-down drawer from a dashboard tile', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -302,6 +306,7 @@ describe('App', () => {
   });
 
   it('does not offer the customize-layout control in the grid view', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -311,6 +316,7 @@ describe('App', () => {
   });
 
   it('offers an accessible customize-layout toggle only in the dashboard view', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -327,6 +333,7 @@ describe('App', () => {
   });
 
   it('enables drag + resize on the dashboard when customize layout is toggled on', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     const { container } = render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -351,7 +358,6 @@ describe('App', () => {
   }
 
   it('shows a loading skeleton in the dashboard view while repos load', async () => {
-    localStorage.setItem('fleet:view', 'dashboard');
     mockUseRepos.mockReturnValue({
       status: 'loading',
       repos: [],
@@ -368,7 +374,6 @@ describe('App', () => {
   });
 
   it('shows an error + retry in the dashboard view and calls reload on retry', async () => {
-    localStorage.setItem('fleet:view', 'dashboard');
     const reload = vi.fn();
     mockUseRepos.mockReturnValue({
       status: 'error',
@@ -405,6 +410,7 @@ describe('App', () => {
   });
 
   it('renders the inbox view and hides the grid when Inbox is selected (AC-15)', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -416,23 +422,45 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
   });
 
-  it('persists the inbox view selection under fleet:view (AC-15)', async () => {
+  it('does not persist an in-session inbox switch under fleet:view (AC6)', async () => {
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
     await user.click(inboxToggleButton());
-    expect(localStorage.getItem('fleet:view')).toBe('inbox');
+    expect(localStorage.getItem('fleet:view')).toBeNull();
   });
 
-  it('starts in the inbox view when it was previously persisted (AC-15)', async () => {
-    localStorage.setItem('fleet:view', 'inbox');
+  it('opens to the configured default view (inbox) (AC1/AC5)', async () => {
+    localStorage.setItem('fleet:default-view', 'inbox');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
     expect(await screen.findByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('switching the default view persists fleet:default-view and switches the live view (AC5)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    const defaultGroup = screen.getByRole('radiogroup', { name: /default view/i });
+    await user.click(within(defaultGroup).getByRole('radio', { name: /inbox/i }));
+
+    expect(localStorage.getItem('fleet:default-view')).toBe('inbox');
+    expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
+  });
+
+  it('ignores a legacy fleet:view value on load (AC7)', async () => {
+    localStorage.setItem('fleet:view', 'inbox');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
   });
 
   it('surfaces the fleet-wide unread count as an accessible badge on the Inbox toggle (AC-16)', async () => {
@@ -448,6 +476,7 @@ describe('App', () => {
   });
 
   it('shares a single inbox instance so dismissing in the view updates the toggle badge (AC-16)', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
     const user = userEvent.setup();
     render(<App />);
@@ -465,6 +494,7 @@ describe('App', () => {
   });
 
   it('advances the last-visited watermark when the inbox is opened (AC-16)', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     const seeded = '2024-01-01T00:00:00.000Z';
     localStorage.setItem(
       'fleet:inbox-triage',
@@ -492,7 +522,7 @@ describe('App', () => {
     // GC read/dismissed marks against the transiently-empty live set produced while
     // the per-repo signals are still loading (the repo list resolved, signals not).
     const seeded = '2024-01-01T00:00:00.000Z';
-    localStorage.setItem('fleet:view', 'inbox');
+    localStorage.setItem('fleet:default-view', 'inbox');
     localStorage.setItem(
       'fleet:inbox-triage',
       JSON.stringify({
@@ -551,7 +581,7 @@ describe('App', () => {
     // wiping a dismissed security alert and a read stale item. Triage must
     // survive the partial-load window and settle only once EVERY slice has loaded.
     const seeded = '2024-01-01T00:00:00.000Z';
-    localStorage.setItem('fleet:view', 'inbox');
+    localStorage.setItem('fleet:default-view', 'inbox');
     localStorage.setItem(
       'fleet:inbox-triage',
       JSON.stringify({
