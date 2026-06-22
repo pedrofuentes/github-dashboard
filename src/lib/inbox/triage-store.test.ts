@@ -246,6 +246,91 @@ describe('pruneTriage — GC, LRU cap & immutability (AC-10)', () => {
   });
 });
 
+/** §3.3 watermark horizon: a `lastVisitedAt` older than 180 days resets (#233). */
+const HORIZON_MS = 180 * 24 * 60 * 60 * 1000;
+
+describe('pruneTriage — watermark horizon reset (§3.3, #233)', () => {
+  const VISITED = '2026-06-21T08:33:30.948Z';
+  const visitedMs = Date.parse(VISITED);
+
+  it('resets a watermark older than the 180-day horizon to null when now is supplied', () => {
+    const triage: InboxTriage = { readIds: ['a'], dismissedIds: [], lastVisitedAt: VISITED };
+    const pruned = pruneTriage(triage, new Set(['a']), { now: visitedMs + HORIZON_MS + 1 });
+    expect(pruned.lastVisitedAt).toBeNull();
+    // The id-set GC is independent of the watermark reset.
+    expect(pruned.readIds).toEqual(['a']);
+  });
+
+  it('keeps a watermark exactly at the horizon (the reset is strictly older-than)', () => {
+    const triage: InboxTriage = { readIds: [], dismissedIds: [], lastVisitedAt: VISITED };
+    const pruned = pruneTriage(triage, new Set(), { now: visitedMs + HORIZON_MS });
+    expect(pruned.lastVisitedAt).toBe(VISITED);
+  });
+
+  it('keeps a watermark within the horizon', () => {
+    const triage: InboxTriage = { readIds: [], dismissedIds: [], lastVisitedAt: VISITED };
+    const pruned = pruneTriage(triage, new Set(), { now: visitedMs + HORIZON_MS - 1 });
+    expect(pruned.lastVisitedAt).toBe(VISITED);
+  });
+
+  it('carries an ancient watermark through untouched when now is omitted (pure id-set GC)', () => {
+    const triage: InboxTriage = { readIds: [], dismissedIds: [], lastVisitedAt: VISITED };
+    expect(pruneTriage(triage, new Set()).lastVisitedAt).toBe(VISITED);
+  });
+
+  it('leaves a null watermark null even with now well past the horizon', () => {
+    const triage: InboxTriage = { readIds: [], dismissedIds: [], lastVisitedAt: null };
+    const pruned = pruneTriage(triage, new Set(), { now: visitedMs + HORIZON_MS + 1 });
+    expect(pruned.lastVisitedAt).toBeNull();
+  });
+});
+
+describe('pruneTriage — protect retains transient-failure marks (#249)', () => {
+  it('keeps an absent id when protect returns true (its slice merely failed to fetch)', () => {
+    const triage: InboxTriage = {
+      readIds: ['security:octo/a:dependabot:5', 'ci:octo/a:1'],
+      dismissedIds: ['security:octo/a:dependabot:6'],
+      lastVisitedAt: null,
+    };
+    // `ci:octo/a:1` is live; the two security ids are absent but in a protected scope.
+    const pruned = pruneTriage(triage, new Set(['ci:octo/a:1']), {
+      protect: (id) => id.startsWith('security:octo/a:'),
+    });
+    expect(pruned.readIds).toEqual(['security:octo/a:dependabot:5', 'ci:octo/a:1']);
+    expect(pruned.dismissedIds).toEqual(['security:octo/a:dependabot:6']);
+  });
+
+  it('still GCs an absent id outside the protected scope (a resolved item forgets its mark)', () => {
+    const triage: InboxTriage = {
+      readIds: ['ci:octo/a:1', 'ci:octo/a:2'],
+      dismissedIds: [],
+      lastVisitedAt: null,
+    };
+    const pruned = pruneTriage(triage, new Set(['ci:octo/a:1']), {
+      protect: (id) => id.startsWith('security:'),
+    });
+    expect(pruned.readIds).toEqual(['ci:octo/a:1']);
+  });
+
+  it('still applies the LRU cap to protected ids (protection cannot defeat the hard bound)', () => {
+    const ids = Array.from({ length: MAX_TRIAGE_IDS + 5 }, (_, i) => `ci:octo/a:${i}`);
+    const triage: InboxTriage = { readIds: ids, dismissedIds: [], lastVisitedAt: null };
+    // Nothing live, but everything protected → still capped to the ceiling.
+    const pruned = pruneTriage(triage, new Set(), { protect: () => true });
+    expect(pruned.readIds).toHaveLength(MAX_TRIAGE_IDS);
+    expect(pruned.readIds[0]).toBe('ci:octo/a:5');
+  });
+
+  it('GCs an absent id when no protect predicate is supplied (back-compat)', () => {
+    const triage: InboxTriage = {
+      readIds: ['security:octo/a:dependabot:5'],
+      dismissedIds: [],
+      lastVisitedAt: null,
+    };
+    expect(pruneTriage(triage, new Set()).readIds).toEqual([]);
+  });
+});
+
 describe('InboxTriageSchema — hard ceiling rejects oversized/hostile payloads (AC-10 §3.3)', () => {
   it('rejects an id-set larger than MAX_TRIAGE_IDS', () => {
     const oversized = {

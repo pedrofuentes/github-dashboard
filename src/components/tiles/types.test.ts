@@ -50,6 +50,16 @@ describe('toneToVar', () => {
       expect(toneToVar(tone)).not.toMatch(/#[0-9a-f]/i);
     }
   });
+
+  it('falls back to the neutral token for an out-of-allowlist tone (runtime guard)', () => {
+    // Defense-in-depth: `tone` is already type-enforced + CSP-guarded, but a
+    // type-cast (e.g. unvalidated data coerced to AccentTone) must NOT
+    // interpolate an arbitrary string into `var(--color-…)`. Anything outside
+    // the canonical allowlist resolves to the neutral token instead.
+    expect(toneToVar('haxxor' as AccentTone)).toBe('var(--color-neutral)');
+    expect(toneToVar('' as AccentTone)).toBe('var(--color-neutral)');
+    expect(toneToVar('success); evil' as AccentTone)).toBe('var(--color-neutral)');
+  });
 });
 
 describe('toneTextClass', () => {
@@ -125,9 +135,18 @@ describe('iconKindTone', () => {
 });
 
 describe('TileTier', () => {
-  it('accepts the three documented density tiers', () => {
-    const tiers: TileTier[] = ['compact', 'standard', 'expanded'];
-    expect(tiers).toHaveLength(3);
+  it('is exactly the three documented density tiers (drift breaks compilation)', () => {
+    const ALL_TIERS = ['compact', 'standard', 'expanded'] as const;
+    // Bidirectional assignability pins the union to this tuple: adding,
+    // removing, or renaming a TileTier member makes one of these `true`
+    // assignments stop compiling under `npm run typecheck:test`, instead of
+    // silently passing like a hard-coded `toHaveLength(3)` would.
+    type Covers = TileTier extends (typeof ALL_TIERS)[number] ? true : false;
+    type NoExtra = (typeof ALL_TIERS)[number] extends TileTier ? true : false;
+    const covers: Covers = true;
+    const noExtra: NoExtra = true;
+    expect(covers && noExtra).toBe(true);
+    expect(ALL_TIERS).toEqual(['compact', 'standard', 'expanded']);
   });
 });
 

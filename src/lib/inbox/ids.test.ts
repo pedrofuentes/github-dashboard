@@ -9,6 +9,7 @@ import {
   isInboxId,
   parseInboxId,
 } from './ids';
+import type { SecurityAlertType, StaleTarget } from './ids';
 
 const REPO = 'octocat/hello-world';
 
@@ -126,6 +127,65 @@ describe('parseInboxId / isInboxId — round-trip, rejection, collisions (AC-2)'
     expect(isInboxId({ id: 'ci:octocat/hello-world:1' })).toBe(false);
   });
 
+  it('isInboxId rejects the full malformed corpus and every non-string (mutation-resistant, #224)', () => {
+    // Drive the malformed corpus straight through `isInboxId` (not only via
+    // `parseInboxId`) so a future wrapper rewrite that drops the parse check is
+    // caught here. Mirrors the `parseInboxId` rejection corpus above.
+    const malformed = [
+      '',
+      'octocat/hello-world',
+      'ci:octocat/hello-world',
+      'ci:octocat/hello-world:',
+      'ci:octocat/hello-world:abc',
+      'review:octocat/hello-world:42',
+      'review:octocat/hello-world:#',
+      'new-pr:octocat/hello-world:#1.2',
+      'security:octocat/hello-world:snyk:7',
+      'security:octocat/hello-world:dependabot',
+      'stale:octocat/hello-world:branch:#1',
+      'stale:octocat/hello-world:issue:13',
+      'unknown:octocat/hello-world:1',
+      'ci:octocat:1',
+      'ci:octo/cat/extra:1',
+      'ci:octo:cat:1',
+    ];
+    for (const bad of malformed) {
+      expect(isInboxId(bad)).toBe(false);
+    }
+
+    // Non-strings are rejected by the `typeof` guard. The toString-spoofing
+    // object would coerce to a *valid* id string, so it pins the guard: dropping
+    // the `typeof` check would let it through.
+    const nonStrings: unknown[] = [
+      null,
+      undefined,
+      42,
+      0,
+      Number.NaN,
+      true,
+      false,
+      {},
+      [],
+      ['ci:octocat/hello-world:1'],
+      () => 'ci:octocat/hello-world:1',
+      { toString: () => 'ci:octocat/hello-world:1' },
+    ];
+    for (const value of nonStrings) {
+      expect(isInboxId(value)).toBe(false);
+    }
+
+    // A well-formed id of every kind is still accepted (the guard is not a blanket reject).
+    for (const good of [
+      buildCiId(REPO, 1),
+      buildReviewId(REPO, 1),
+      buildNewPrId(REPO, 1),
+      buildSecurityId(REPO, 'dependabot', 1),
+      buildStaleId(REPO, 'issue', 1),
+    ]) {
+      expect(isInboxId(good)).toBe(true);
+    }
+  });
+
   it('ids are collision-free across kinds for an identical repo + number', () => {
     const n = 42;
     const ids = [
@@ -175,5 +235,36 @@ describe('builders validate inputs so output is always a valid id (grammar integ
     expect(() => buildReviewId(REPO, Number.NaN)).toThrow();
     expect(() => buildCiId(REPO, 'abc')).toThrow();
     expect(() => buildCiId(REPO, '')).toThrow();
+  });
+
+  it('rejects a numeric id beyond Number.MAX_SAFE_INTEGER (would stringify to exponential, #226)', () => {
+    // `String(1e21) === '1e+21'`, which would not round-trip through the §2.2
+    // digit grammar; reject before it can mint a malformed id.
+    expect(() => buildCiId(REPO, 1e21)).toThrow();
+    expect(() => buildReviewId(REPO, 1e21)).toThrow();
+    expect(() => buildNewPrId(REPO, 1e21)).toThrow();
+    expect(() => buildSecurityId(REPO, 'dependabot', 1e21)).toThrow();
+    expect(() => buildStaleId(REPO, 'pr', 1e21)).toThrow();
+    expect(() => buildReviewId(REPO, Number.MAX_SAFE_INTEGER + 1)).toThrow();
+    expect(() => buildCiId(REPO, Number.POSITIVE_INFINITY)).toThrow();
+  });
+
+  it('still accepts the largest safe integer run id (stringifies to plain digits, #226)', () => {
+    const safe = Number.MAX_SAFE_INTEGER;
+    expect(buildCiId(REPO, safe)).toBe(`ci:${REPO}:${safe}`);
+    expect(parseInboxId(buildCiId(REPO, safe))).toEqual({
+      kind: 'ci',
+      repo: REPO,
+      runId: String(safe),
+    });
+  });
+
+  it('rejects an out-of-grammar enum segment in the security/stale builders (defensive, #225)', () => {
+    // The enum segments are compile-time string-literal unions, but the builders
+    // assert them too so an internal mis-call can never mint an off-grammar id.
+    expect(() => buildSecurityId(REPO, 'snyk' as SecurityAlertType, 1)).toThrow();
+    expect(() => buildSecurityId(REPO, '' as SecurityAlertType, 1)).toThrow();
+    expect(() => buildStaleId(REPO, 'branch' as StaleTarget, 1)).toThrow();
+    expect(() => buildStaleId(REPO, '' as StaleTarget, 1)).toThrow();
   });
 });

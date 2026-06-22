@@ -43,6 +43,8 @@ const GLYPH: Record<SignalIconKind, ReactNode> = {
   ),
   // Three-quarter arc (the spinner shape, shown static here).
   running: <path d="M14 8a6 6 0 1 0-2.2 4.6" />,
+  // Clock face, intentionally shared with `stale` below; the two read apart by
+  // tone (info vs warning) and accessible label, never by shape.
   queued: (
     <>
       <circle cx="8" cy="8" r="6" />
@@ -79,6 +81,7 @@ const GLYPH: Record<SignalIconKind, ReactNode> = {
   // Loading spinner: a static arc unless motion is allowed (motion-reduce
   // disables the spin — DESIGN-TILES §2.2).
   loading: <path d="M14 8a6 6 0 1 0-2.2 4.6" />,
+  // Same minus-dash as `neutral`; distinguished by the “Unavailable” label.
   unknown: <line x1="3.5" y1="8" x2="12.5" y2="8" />,
   info: (
     <>

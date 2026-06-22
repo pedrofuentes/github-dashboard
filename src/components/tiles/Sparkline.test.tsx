@@ -21,6 +21,10 @@ function geometryNumbers(container: HTMLElement): number[] {
 
 function expectAllFinite(container: HTMLElement): void {
   const nums = geometryNumbers(container);
+  // Guard against a vacuous pass: every caller below renders real geometry, so
+  // an empty set means the markup/selector changed — not that all numbers are
+  // finite. The empty-data case asserts zero geometry directly instead.
+  expect(nums.length).toBeGreaterThan(0);
   for (const n of nums) {
     expect(Number.isFinite(n)).toBe(true);
   }
@@ -68,7 +72,9 @@ describe('Sparkline', () => {
     expect(getByText('No recent commit activity')).toBeInTheDocument();
     // No path should be drawn for empty data.
     expect(container.querySelector('path[d]')).toBeNull();
-    expectAllFinite(container);
+    // Empty data draws zero geometry — assert that explicitly rather than
+    // calling expectAllFinite (which would pass vacuously over an empty set).
+    expect(geometryNumbers(container)).toHaveLength(0);
   });
 
   it('renders an all-zero series as a flat line with finite geometry (no division by zero)', () => {
@@ -89,6 +95,43 @@ describe('Sparkline', () => {
     const { container } = render(<Sparkline data={[7]} srLabel="7 commits in 1 week" />);
     expect(container.querySelector('circle')).not.toBeNull();
     expectAllFinite(container);
+  });
+
+  it('sanitizes a non-finite (Infinity) value to zero so it never corrupts the scale (#165)', () => {
+    // 96×24 viewport → PADDING 3, baseY 21. Without the guard a single Infinity
+    // makes `max` Infinity, flattening every finite point onto the baseline and
+    // (via NaN→0 rounding) plotting the Infinity itself at the very top.
+    const { container } = render(
+      <Sparkline data={[2, 4, Infinity]} srLabel="summary" width={96} height={24} />,
+    );
+    expectAllFinite(container);
+    const line = container.querySelector('path[data-part="line"]');
+    const d = line?.getAttribute('d') ?? '';
+    const ys = [...d.matchAll(/[ML]\s*-?\d*\.?\d+[ ,]\s*(-?\d*\.?\d+)/gi)].map((m) => Number(m[1]));
+    expect(ys).toHaveLength(3);
+    // The finite max (4) reaches the top of the plot…
+    expect(ys[1]).toBeLessThanOrEqual(4);
+    // …and the non-finite value, treated as 0, sits on the baseline.
+    expect(ys[2]).toBeGreaterThanOrEqual(20);
+  });
+
+  it('sanitizes a NaN value to zero (no out-of-bounds geometry) (#165)', () => {
+    const { container } = render(
+      <Sparkline data={[2, 4, NaN]} srLabel="summary" width={96} height={24} />,
+    );
+    expectAllFinite(container);
+    const line = container.querySelector('path[data-part="line"]');
+    const d = line?.getAttribute('d') ?? '';
+    const ys = [...d.matchAll(/[ML]\s*-?\d*\.?\d+[ ,]\s*(-?\d*\.?\d+)/gi)].map((m) => Number(m[1]));
+    expect(ys).toHaveLength(3);
+    // The NaN must not blow up the scale: the finite max stays at the top and
+    // the NaN point sits on the baseline, all within [0, height].
+    expect(ys[1]).toBeLessThanOrEqual(4);
+    expect(ys[2]).toBeGreaterThanOrEqual(20);
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(24);
+    }
   });
 
   it('honours custom width and height on the SVG viewport', () => {
