@@ -159,6 +159,26 @@ describe('StaleTileBody — size tiers', () => {
     expect(bucket?.className).toMatch(/\bh-\d/);
   });
 
+  it('standard: AgeBucketBar encodes the exact per-bucket counts, not just presence', () => {
+    const { container } = renderBody(slice, 'standard');
+    // Ages 20/33/45/70 with boundaries `age > min && age <= max`:
+    // 20→>14d, 33+45→>30d, 70→>60d  ⇒  >14d:1, >30d:2, >60d:1.
+    const counts = [...container.querySelectorAll('[data-bucket]')].map((node) => ({
+      label: node.getAttribute('data-bucket'),
+      title: node.getAttribute('title'),
+    }));
+    expect(counts).toEqual([
+      { label: '>14d', title: '>14d: 1' },
+      { label: '>30d', title: '>30d: 2' },
+      { label: '>60d', title: '>60d: 1' },
+    ]);
+    // the screen-reader list mirrors the same counts for assistive tech
+    const srItems = [
+      ...(container.querySelector('[data-part="age-bucket-bar"]')?.querySelectorAll('li') ?? []),
+    ].map((node) => node.textContent);
+    expect(srItems).toEqual(expect.arrayContaining(['>14d: 1', '>30d: 2', '>60d: 1']));
+  });
+
   it('expanded: adds the type breakdown', () => {
     const { container } = renderBody(slice, 'expanded');
     expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
