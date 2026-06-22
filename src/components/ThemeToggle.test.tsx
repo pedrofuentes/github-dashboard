@@ -139,4 +139,17 @@ describe('ThemeToggle — keyboard (WAI-ARIA radiogroup roving tabindex)', () =>
     expect(screen.getByRole('radio', { name: /light/i })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /light/i })).toHaveFocus();
   });
+
+  it('leaves selection and focus untouched for keys outside the radio-group model', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(THEME_KEY, 'dark');
+    render(<ThemeToggle />);
+
+    const dark = screen.getByRole('radio', { name: /dark/i });
+    dark.focus();
+    await user.keyboard('a');
+
+    expect(dark).toHaveAttribute('aria-checked', 'true');
+    expect(dark).toHaveFocus();
+  });
 });
