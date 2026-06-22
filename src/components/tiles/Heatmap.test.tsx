@@ -226,7 +226,9 @@ describe('Heatmap — count > max clamp & max=0 tone fill (#167)', () => {
   it('still paints non-zero cells in the tone fill (not the empty fill) when max === 0', () => {
     // max=0 is non-positive, so the denominator falls back to the data max (5);
     // empty cells keep the raised-surface fill, non-zero cells keep the tone.
-    const { container } = render(<Heatmap weeks={[[0, 5]]} srLabel="commits" max={0} tone="info" />);
+    const { container } = render(
+      <Heatmap weeks={[[0, 5]]} srLabel="commits" max={0} tone="info" />,
+    );
     const [zeroCell, hotCell] = cells(container);
     expect(zeroCell.getAttribute('data-count')).toBe('0');
     expect(zeroCell.getAttribute('fill')).toBe('var(--color-surface-raised)');
