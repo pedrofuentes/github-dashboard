@@ -60,7 +60,7 @@ async function openDashboard(user: ReturnType<typeof userEvent.setup>): Promise<
 }
 
 describe('App — customize-layout contrast (#125)', () => {
-  it('uses sky-700 (AA-passing) for the active customize-layout toggle', async () => {
+  it('uses the accent-info token (sky-700 in light, AA-passing) for the active customize-layout toggle', async () => {
     const user = userEvent.setup();
     render(<App />);
     await openDashboard(user);

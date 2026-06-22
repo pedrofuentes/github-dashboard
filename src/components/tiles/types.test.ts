@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { TileSignalType } from '../../types/dashboard';
 import type { AccentTone, SignalIconKind, TileTier } from './types';
-import { SIGNAL_IDENTITY_TONE, iconKindTone, toneBgClass, toneTextClass, toneToVar } from './types';
+import {
+  SIGNAL_IDENTITY_TONE,
+  iconKindTone,
+  toneBgClass,
+  toneTextClass,
+  toneTintTextClass,
+  toneToVar,
+} from './types';
 
 const TONES: AccentTone[] = [
   'success',
@@ -54,6 +61,26 @@ describe('toneTextClass', () => {
 
   it('maps the ochre tone to its age-led Stale text token', () => {
     expect(toneTextClass('ochre')).toBe('text-accent-ochre');
+  });
+});
+
+describe('toneTintTextClass', () => {
+  it('routes coral and warning through their -ink variants for AA over a tint', () => {
+    expect(toneTintTextClass('coral')).toBe('text-accent-coral-ink');
+    expect(toneTintTextClass('warning')).toBe('text-accent-warning-ink');
+  });
+
+  it('keeps the plain accent text token for tones that already clear AA on a tint', () => {
+    for (const tone of TONES) {
+      if (tone === 'coral' || tone === 'warning') continue;
+      expect(toneTintTextClass(tone)).toBe(`text-accent-${tone}`);
+    }
+  });
+
+  it('never returns a raw hex value', () => {
+    for (const tone of TONES) {
+      expect(toneTintTextClass(tone)).not.toMatch(/#[0-9a-f]/i);
+    }
   });
 });
 
