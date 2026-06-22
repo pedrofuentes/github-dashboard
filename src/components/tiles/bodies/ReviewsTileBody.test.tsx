@@ -215,6 +215,21 @@ describe('ReviewsTileBody — defensive & a11y', () => {
     expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
+  it('hardens the oldest-age scan against a non-array requests value (no throw)', () => {
+    // Zod validates this upstream, but the body must still degrade gracefully if
+    // `requests` arrives as a non-array rather than throwing on `for…of` (#278).
+    const bogus = {
+      status: 'ready',
+      requestedCount: 3,
+      requests: {} as unknown as ReviewRequestedPullRequest[],
+    } as ReviewsSignalSlice;
+    expect(() => renderBody(bogus)).not.toThrow();
+    const { container } = renderBody(bogus);
+    // The count hero still renders; the oldest-age meta is simply omitted.
+    expect(container.querySelector('[data-state="ready"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="oldest"]')).toBeNull();
+  });
+
   it('contains no hard-coded hex colours', () => {
     const { container } = renderBody({ status: 'ready', requestedCount: 6 });
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
