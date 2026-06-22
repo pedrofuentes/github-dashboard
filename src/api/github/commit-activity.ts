@@ -37,6 +37,7 @@ import {
   type RateLimitInfo,
 } from './core';
 import { ETagCache } from './etag-cache';
+import { rateLimitStore } from './rate-limit-store';
 import { CommitActivityWeekSchema } from './schemas';
 
 /** Schema for the full commit-activity response (the last 52 weeks). */
@@ -145,6 +146,13 @@ export async function fetchCommitActivity(
       return { status: 'not-modified', weeks: cached.data };
     }
 
+    // Surface the freshly observed budget (and any secondary-limit Retry-After)
+    // to the shared store so the deferral guard, hooks and UI stay current even
+    // though this fetcher runs outside the fleet poll (#155). A 304 is free
+    // (handled above) so it never records.
+    const retryAfterSeconds = parseRetryAfter(response.headers);
+    rateLimitStore.record(rateLimit, { retryAfterSeconds });
+
     // 202: stats are still being computed. Optionally retry with bounded backoff
     // before surfacing the "computing" state — never an unbounded spin.
     if (response.status === 202) {
@@ -163,7 +171,7 @@ export async function fetchCommitActivity(
     }
 
     if (!response.ok) {
-      handleApiError(response.status, rateLimit, owner, repo, parseRetryAfter(response.headers));
+      handleApiError(response.status, rateLimit, owner, repo, retryAfterSeconds);
     }
 
     const weeks = CommitActivitySchema.parse(await response.json());
