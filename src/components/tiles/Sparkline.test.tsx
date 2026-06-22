@@ -116,3 +116,49 @@ describe('Sparkline', () => {
     expect(cy).toBeLessThanOrEqual(height);
   });
 });
+
+describe('Sparkline — full-path viewport bounds (#164)', () => {
+  const WIDTH = 96;
+  const HEIGHT = 24;
+
+  /**
+   * Asserts EVERY geometry number (line + area path coords AND the dot) lies in
+   * the [0, max(width, height)] box, so a future path-math regression — not just
+   * a stray endpoint dot — fails a test.
+   */
+  function expectGeometryWithinBounds(container: HTMLElement, width: number, height: number): void {
+    const bound = Math.max(width, height);
+    const nums = geometryNumbers(container);
+    expect(nums.length).toBeGreaterThan(0);
+    for (const n of nums) {
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThanOrEqual(bound);
+    }
+  }
+
+  it('keeps ALL path + dot coordinates within the viewport for a typical series', () => {
+    const { container } = render(
+      <Sparkline data={[3, 1, 4, 1, 5, 9, 2, 6]} srLabel="summary" width={WIDTH} height={HEIGHT} />,
+    );
+    expectGeometryWithinBounds(container, WIDTH, HEIGHT);
+  });
+
+  it('keeps geometry within bounds for a single point', () => {
+    const { container } = render(
+      <Sparkline data={[7]} srLabel="summary" width={WIDTH} height={HEIGHT} />,
+    );
+    expectGeometryWithinBounds(container, WIDTH, HEIGHT);
+  });
+
+  it('keeps geometry within bounds for extreme values', () => {
+    const { container } = render(
+      <Sparkline
+        data={[0, 1_000_000, 5, 999_999, 1]}
+        srLabel="summary"
+        width={WIDTH}
+        height={HEIGHT}
+      />,
+    );
+    expectGeometryWithinBounds(container, WIDTH, HEIGHT);
+  });
+});

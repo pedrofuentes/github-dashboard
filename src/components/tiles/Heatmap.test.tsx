@@ -162,3 +162,54 @@ describe('Heatmap — grayscale-safe low-cell floor', () => {
     expect(Number(lowCell.getAttribute('fill-opacity'))).toBeGreaterThanOrEqual(0.3);
   });
 });
+
+describe('Heatmap — max sanitization & intensity proportionality (#166)', () => {
+  /** `MIN_INTENSITY` floor from Heatmap.tsx — the faintest non-zero opacity. */
+  const MIN = 0.35;
+
+  /** Non-empty cell opacities in DOM (week → day) order. */
+  function nonEmptyOpacities(container: HTMLElement): number[] {
+    return cells(container)
+      .filter((cell) => Number(cell.getAttribute('data-count')) > 0)
+      .map((cell) => Number(cell.getAttribute('fill-opacity')));
+  }
+
+  it('encodes intensity proportional to count/max (monotonic — a constant-opacity impl fails)', () => {
+    const { container } = render(<Heatmap weeks={[[1, 2, 4]]} srLabel="commits" max={4} />);
+    const opacities = nonEmptyOpacities(container);
+    expect(opacities).toHaveLength(3);
+    // Expected = MIN + (1 - MIN) * (count / max).
+    expect(opacities[0]).toBeCloseTo(MIN + (1 - MIN) * (1 / 4), 5);
+    expect(opacities[1]).toBeCloseTo(MIN + (1 - MIN) * (2 / 4), 5);
+    expect(opacities[2]).toBeCloseTo(MIN + (1 - MIN) * (4 / 4), 5);
+    // Strictly increasing with count — flat MIN_INTENSITY output would not pass.
+    expect(opacities[0]).toBeLessThan(opacities[1]);
+    expect(opacities[1]).toBeLessThan(opacities[2]);
+  });
+
+  it('sanitizes a NaN max by falling back to the data max (finite, proportional intensities)', () => {
+    const { container } = render(<Heatmap weeks={[[1, 2, 4]]} srLabel="commits" max={NaN} />);
+    const opacities = nonEmptyOpacities(container);
+    expect(opacities).toHaveLength(3);
+    for (const opacity of opacities) {
+      expect(Number.isFinite(opacity)).toBe(true);
+      expect(opacity).toBeGreaterThanOrEqual(0);
+      expect(opacity).toBeLessThanOrEqual(1);
+    }
+    // Not flattened to a single constant — intensity still tracks count.
+    expect(opacities[0]).toBeLessThan(opacities[1]);
+    expect(opacities[1]).toBeLessThan(opacities[2]);
+  });
+
+  it('sanitizes an Infinity max by falling back to the data max (finite, proportional intensities)', () => {
+    const { container } = render(<Heatmap weeks={[[1, 2, 4]]} srLabel="commits" max={Infinity} />);
+    const opacities = nonEmptyOpacities(container);
+    expect(opacities).toHaveLength(3);
+    for (const opacity of opacities) {
+      expect(Number.isFinite(opacity)).toBe(true);
+      expect(opacity).toBeLessThanOrEqual(1);
+    }
+    expect(opacities[0]).toBeLessThan(opacities[1]);
+    expect(opacities[1]).toBeLessThan(opacities[2]);
+  });
+});
