@@ -18,6 +18,7 @@ import {
   MAX_ALERT_PAGES,
   assertGitHubApiOrigin,
   fetchCodeScanningAlerts,
+  fetchCommitActivityWeeks,
   fetchDependabotAlerts,
 } from './security-branches';
 import { ETagCache } from './etag-cache';
@@ -851,5 +852,66 @@ describe('alert feeds — diagnostics (#234, #235)', () => {
     expect(feed.rows).toEqual([]);
     expect(debug).toHaveBeenCalled();
     expect(debug.mock.calls[0]?.[0]).toMatch(/skipped code-scanning alert/i);
+  });
+});
+
+/**
+ * `fetchCommitActivityWeeks` is the aggregate weekly-stats reader colocated with
+ * the other security-branches fetchers. github-api.test.ts and
+ * network-graph-api.test.ts do not exercise it, so this suite covers the 202
+ * (computing), 204 (empty), success and error paths.
+ */
+describe('fetchCommitActivityWeeks', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('returns null while GitHub is still computing the stats (202)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(202, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toBeNull();
+  });
+
+  it('returns an empty array for an empty repository (204)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(204, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toEqual([]);
+  });
+
+  it('returns the parsed weekly activity on success', async () => {
+    const weeks = [
+      { total: 5, week: 1700000000, days: [0, 1, 2, 0, 1, 1, 0] },
+      { total: 0, week: 1700604800, days: [0, 0, 0, 0, 0, 0, 0] },
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(200, weeks));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toHaveLength(2);
+    expect(result?.[0].total).toBe(5);
+    expect(result?.[0].days).toHaveLength(7);
+  });
+
+  it('works without a token for a public repository', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(204, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo');
+    expect(result).toEqual([]);
+  });
+
+  it('throws a GitHubApiError on API failure', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(500, { message: 'server error' }));
+
+    await expect(fetchCommitActivityWeeks('owner', 'repo', 'ghp_test')).rejects.toThrow(
+      GitHubApiError,
+    );
   });
 });
