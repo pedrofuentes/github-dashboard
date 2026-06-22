@@ -1,23 +1,26 @@
 /**
- * StaleTileBody — the body content for the Stale signal tile
- * (DESIGN-TILES §4.6). The shared {@link TileFrame} owns the accent bar, header
- * and footer; this component renders only the body for `data.stale`.
+ * StaleTileBody — the body content for the Stale signal tile (DESIGN-TILES §4.6;
+ * redesign T12). The shared {@link TileFrame} owns the (calm, neutral) accent
+ * edge and the ochre header identity; this component renders only the body for
+ * `data.stale` and paints NO edge/glow.
  *
- * The hero is the {@link BigValue} stale-item count beside a clock
- * {@link StatusGlyph}, with the staleness duration spelled out ("no activity in
- * {@link STALE_THRESHOLD_DAYS} days"). Any stale item escalates the accent to
- * warning, but the clock icon, the count, and the word "stale" carry the meaning
- * redundantly — never colour alone. The threshold is imported from the stale
- * signal hook so the copy never drifts from the query. All colour comes from
- * semantic tokens (no hard-coded hex, AA), and any missing/garbage field
- * degrades to a safe neutral state rather than throwing or rendering blank.
+ * The body is **age-led**: staleness urgency is driven by HOW OLD the oldest
+ * item is, not how many there are. The hero is the oldest item's age (e.g.
+ * "34d"); the count and PR/issue split are demoted to a secondary meta line, and
+ * an {@link AgeBucketBar} shows the age distribution (`>14d` / `>30d` / `>60d`).
+ * The bucket bar survives grayscale via height-stepping + order + a
+ * screen-reader list — never colour alone. A redundant sr-only sentence repeats
+ * the count and oldest age. This is a CALM tile, so the hero is not announced
+ * with `aria-live` (redesign R6). All colour comes from the semantic `ochre`
+ * token (no hard-coded hex, AA in both themes), and any missing/garbage field
+ * degrades to a safe, labelled state rather than throwing or rendering blank.
  */
 import type { ReactElement } from 'react';
 
-import { STALE_THRESHOLD_DAYS } from '../../../hooks/signals/useStaleSignal';
-import type { Repo, RepoSignalData } from '../../../types/fleet';
+import type { Repo, RepoSignalData, StaleItem } from '../../../types/fleet';
+import { AgeBucketBar } from '../AgeBucketBar';
+import type { AgeBucket } from '../AgeBucketBar';
 import { BigValue } from '../BigValue';
-import { Chip } from '../Chip';
 import { StatusGlyph } from '../StatusGlyph';
 import type { AccentTone, TileTier } from '../types';
 
@@ -28,11 +31,47 @@ export interface StaleTileBodyProps {
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /** Injectable "current time" for deterministic age maths; defaults to now. */
+  now?: Date;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Age-bucket partition (ascending age); older buckets render taller in the bar. */
+const BUCKET_DEFS: readonly { label: string; min: number; max: number }[] = [
+  { label: '>14d', min: 14, max: 30 },
+  { label: '>30d', min: 30, max: 60 },
+  { label: '>60d', min: 60, max: Number.POSITIVE_INFINITY },
+];
 
 /** Coerce an optional count to a safe, non-negative integer (never NaN). */
 function safeCount(value: number | undefined): number {
   return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
+}
+
+/** Whole-day age of an ISO timestamp relative to `now` (0 when unparseable). */
+function ageInDays(updatedAt: string, now: Date): number {
+  const then = new Date(updatedAt).getTime();
+  if (!Number.isFinite(then)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((now.getTime() - then) / DAY_MS));
+}
+
+/** Age (in days) of the oldest item, or 0 when there are no items. */
+function oldestAgeDays(items: StaleItem[], now: Date): number {
+  return items.reduce((max, entry) => Math.max(max, ageInDays(entry.updated_at, now)), 0);
+}
+
+/** Partition items into the ascending-age buckets (each item lands in one). */
+function buildBuckets(items: StaleItem[], now: Date): AgeBucket[] {
+  return BUCKET_DEFS.map((def) => ({
+    label: def.label,
+    value: items.filter((entry) => {
+      const age = ageInDays(entry.updated_at, now);
+      return age > def.min && age <= def.max;
+    }).length,
+  }));
 }
 
 /** Neutral container for the loading / error / unavailable states (never blank). */
@@ -65,7 +104,7 @@ function CenteredState({
   );
 }
 
-export function StaleTileBody({ data, size }: StaleTileBodyProps): ReactElement {
+export function StaleTileBody({ data, size, now = new Date() }: StaleTileBodyProps): ReactElement {
   const stale = data.stale;
 
   if (stale?.status === 'loading') {
@@ -106,13 +145,8 @@ export function StaleTileBody({ data, size }: StaleTileBodyProps): ReactElement 
   }
 
   const count = safeCount(stale.staleCount);
-  const tone: AccentTone = count > 0 ? 'warning' : 'neutral';
+  const tone: AccentTone = count > 0 ? 'ochre' : 'neutral';
   const noun = count === 1 ? 'item' : 'items';
-  const durationText = `no activity in ${STALE_THRESHOLD_DAYS} days`;
-  const srLabel =
-    count === 0
-      ? 'No stale open pull requests or issues'
-      : `${count} open ${noun} with ${durationText}`;
 
   if (count === 0) {
     return (
@@ -126,12 +160,29 @@ export function StaleTileBody({ data, size }: StaleTileBodyProps): ReactElement 
         <span aria-hidden="true" className="text-sm">
           Nothing stale
         </span>
-        <span className="sr-only">{srLabel}</span>
+        <span className="sr-only">No stale open pull requests or issues</span>
       </div>
     );
   }
 
-  const clock = <StatusGlyph status="stale" size={14} title="Stale" />;
+  const items = stale.staleItems ?? [];
+  const oldest = oldestAgeDays(items, now);
+  const prCount = items.filter((entry) => entry.type === 'pr').length;
+  const issueCount = items.filter((entry) => entry.type === 'issue').length;
+  const buckets = buildBuckets(items, now);
+
+  // Age is the story: the hero is the oldest age when items are known. If a
+  // ready slice carries a positive count but no item details, fall back to the
+  // count so the tile never renders a misleading "0d".
+  const hasItems = items.length > 0;
+  const heroValue = hasItems ? `${String(oldest)}d` : String(count);
+  const metaText = hasItems
+    ? `${String(count)} ${noun} (${String(prCount)} PR · ${String(issueCount)} issue)`
+    : `${String(count)} ${noun}`;
+  const srLabel = hasItems
+    ? `${String(count)} stale ${noun}, oldest ${String(oldest)} days — ${String(prCount)} pull requests, ${String(issueCount)} issues`
+    : `${String(count)} stale ${noun}`;
+  const bucketSrLabel = `Stale items by age: ${String(count)} total`;
 
   return (
     <div
@@ -142,21 +193,35 @@ export function StaleTileBody({ data, size }: StaleTileBodyProps): ReactElement 
     >
       <div className="flex items-center gap-2">
         <StatusGlyph status="stale" size={size === 'compact' ? 18 : 22} title="Stale" />
-        <BigValue value={count} tone={tone} size={size} />
+        <BigValue value={heroValue} tone={tone} size={size} />
       </div>
-      {size === 'compact' ? (
-        <span aria-hidden="true" className="text-xs text-text-muted">
-          stale
-        </span>
-      ) : (
-        <Chip tone={tone} icon={clock}>
-          {count} stale
-        </Chip>
-      )}
-      {size === 'expanded' ? (
-        <span data-part="detail" aria-hidden="true" className="text-xs text-text-muted">
-          {count} open {noun} with {durationText}
-        </span>
+      <span data-part="meta" aria-hidden="true" className="text-xs text-text-muted">
+        {metaText}
+      </span>
+      {size !== 'compact' && hasItems ? (
+        <div data-part="age-bucket-bar" className="w-full max-w-[16rem]">
+          <AgeBucketBar buckets={buckets} srLabel={bucketSrLabel} />
+        </div>
+      ) : null}
+      {size === 'expanded' && hasItems ? (
+        <ul
+          data-part="breakdown"
+          aria-hidden="true"
+          className="flex w-full max-w-[16rem] flex-col gap-0.5 text-xs"
+        >
+          <li className="flex items-center justify-between">
+            <span className="text-text-muted">Pull requests</span>
+            <span className="tabular-nums text-text-muted">{prCount}</span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span className="text-text-muted">Issues</span>
+            <span className="tabular-nums text-text-muted">{issueCount}</span>
+          </li>
+          <li className="flex items-center justify-between">
+            <span className="text-accent-ochre">Oldest</span>
+            <span className="tabular-nums text-accent-ochre">{oldest}d</span>
+          </li>
+        </ul>
       ) : null}
       <span className="sr-only">{srLabel}</span>
     </div>
