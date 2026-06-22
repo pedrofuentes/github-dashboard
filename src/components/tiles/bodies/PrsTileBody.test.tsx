@@ -120,6 +120,15 @@ describe('PrsTileBody — hero + state attributes', () => {
     const { container } = renderBody({ status: 'ready', openCount: 5, externalCount: 0 });
     expect(srText(container)).toContain('octocat/hello-world');
   });
+
+  it('uses the singular open-PR noun in the sr text when exactly 1 PR is open (#183)', () => {
+    // openCount === 1 must read "1 open pull request" (singular) to assistive
+    // tech — a regression to the plural ("1 open pull requests") is a WCAG AA
+    // natural-language defect, so guard both the singular and against the plural.
+    const { container } = renderBody({ status: 'ready', openCount: 1, externalCount: 0 });
+    expect(srText(container)).toContain('1 open pull request in octocat/hello-world');
+    expect(srText(container)).not.toContain('open pull requests');
+  });
 });
 
 describe('PrsTileBody — new-contributor signal', () => {

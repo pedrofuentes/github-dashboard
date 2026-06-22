@@ -76,7 +76,11 @@ describe('DashboardView', () => {
         onRepoActivate={vi.fn()}
       />,
     );
-    expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
+    // Exactly twice for the single failing CI tile: the StatusGlyph's accessible
+    // <title> (role="img") + the visible BigValue span. Pinning the count guards
+    // against silently dropping the visible hero value (#193).
+    expect(screen.getByRole('img', { name: 'Failing' })).toBeInTheDocument();
+    expect(screen.getAllByText('Failing')).toHaveLength(2);
   });
 
   it('calls onRepoActivate when a tile is activated (opens the drill-down)', async () => {
