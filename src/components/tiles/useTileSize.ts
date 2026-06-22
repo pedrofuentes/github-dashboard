@@ -108,6 +108,18 @@ function warnResizeObserverUnavailable(): void {
 }
 
 /**
+ * Re-arm the module-level warn-once guard. The fallback above logs at most once
+ * for the lifetime of the module, which makes the warning observable in
+ * production but order-dependent under test (only the first RO-absent render
+ * warns). Test setup calls this to reset the guard between cases so the degraded
+ * path can be exercised deterministically in isolation (#359). Not used by app
+ * code — the once-only behaviour is the intended runtime contract.
+ */
+export function resetTileSizeWarnings(): void {
+  warnedResizeObserverUnavailable = false;
+}
+
+/**
  * Observe an element's size and report its {@link TileTier}. Attach the returned
  * `ref` to the element to measure. Falls back to {@link DEFAULT_TILE_TIER} when
  * `ResizeObserver` is unavailable (e.g. the jsdom test environment), warning once
