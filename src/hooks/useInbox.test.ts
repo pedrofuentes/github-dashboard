@@ -624,3 +624,39 @@ describe('useInbox — triage flush on page teardown (#241)', () => {
     expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
   });
 });
+
+describe('useInbox — transient fetch failure preserves triage (#249, #233)', () => {
+  it('keeps a read mark whose slice is transiently failing but GCs a resolved one', () => {
+    const TRANSIENT = 'security:octocat/alpha:dependabot:7'; // security errors → not derived
+    const RESOLVED = 'ci:octocat/alpha:999'; //                ci ready, run gone → GC'd
+    saveInboxTriage({ readIds: [TRANSIENT, RESOLVED], dismissedIds: [], lastVisitedAt: null });
+
+    const rows = fixtureRows();
+    const alpha = rows.get(ALPHA.nameWithOwner) ?? {};
+    // This refresh, alpha's security fetch fails: the slice is `error`, so its
+    // alert is not derived — but the triage mark must survive the blip (#249).
+    rows.set(ALPHA.nameWithOwner, { ...alpha, security: { status: 'error' } });
+
+    const { result } = renderInbox(REPOS, rows);
+    act(() => {
+      result.current.markRead(ID_CI);
+    });
+
+    const persisted = loadInboxTriage().readIds;
+    expect(persisted).toContain(TRANSIENT); // protected: the slice merely failed
+    expect(persisted).toContain(ID_CI); // the freshly read live item
+    expect(persisted).not.toContain(RESOLVED); // ci ready → resolved run forgets its mark
+  });
+
+  it('resets a watermark older than the 180-day horizon on the next triage write (#233)', () => {
+    // A stale watermark from years ago, far beyond the §3.3 horizon.
+    saveInboxTriage({ readIds: [], dismissedIds: [], lastVisitedAt: '2020-01-01T00:00:00Z' });
+
+    const { result } = renderInbox();
+    act(() => {
+      result.current.markRead(ID_CI);
+    });
+
+    expect(loadInboxTriage().lastVisitedAt).toBeNull();
+  });
+});
