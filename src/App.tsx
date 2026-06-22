@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { DashboardView } from './components/DashboardView';
+import { DefaultViewToggle } from './components/DefaultViewToggle';
 import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
@@ -13,7 +14,7 @@ import { useAuth } from './hooks/useAuth';
 import { useInbox } from './hooks/useInbox';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
-import { loadViewPreference, saveViewPreference } from './lib/view-preference';
+import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
 import type { FleetView } from './lib/view-preference';
 import type { AuthUser } from './types/auth';
 import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
@@ -96,7 +97,8 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const inbox = useInbox(repos, getRowData);
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-  const [view, setView] = useState<FleetView>(loadViewPreference);
+  const [view, setView] = useState<FleetView>(loadDefaultView);
+  const [defaultView, setDefaultView] = useState<FleetView>(loadDefaultView);
   const [editing, setEditing] = useState(false);
 
   // The per-repo signals load asynchronously after the repo list resolves, so a
@@ -133,8 +135,15 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const handleCloseDrawer = useCallback(() => setSelectedRepo(null), []);
   const handleViewChange = useCallback((next: FleetView) => {
     setView(next);
-    saveViewPreference(next);
     // Edit affordances only make sense on the dashboard; leave them when we go.
+    if (next !== 'dashboard') {
+      setEditing(false);
+    }
+  }, []);
+  const handleDefaultViewChange = useCallback((next: FleetView) => {
+    saveDefaultView(next);
+    setDefaultView(next);
+    setView(next);
     if (next !== 'dashboard') {
       setEditing(false);
     }
@@ -145,6 +154,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
+        <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
         {view === 'dashboard' ? (
           <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
         ) : null}
