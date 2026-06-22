@@ -55,4 +55,11 @@ describe('BigValue', () => {
     render(<BigValue value={5} />);
     expect(document.querySelector('[aria-live]')).toBeNull();
   });
+
+  it('uses a polite (never assertive) live region so poll updates do not interrupt (R6)', () => {
+    render(<BigValue value={6} live />);
+    const region = document.querySelector('[aria-live]');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(document.querySelector('[aria-live="assertive"]')).toBeNull();
+  });
 });
