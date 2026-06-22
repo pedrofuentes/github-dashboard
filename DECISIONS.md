@@ -22,6 +22,14 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-024: Configurable default view supersedes last-used reopen
+**Date**: 2026-06-21
+**Status**: Accepted — supersedes the AC-15 `fleet:view` last-used behaviour (DESIGN-INBOX §INBOX-7).
+**Context**: The app reopened to the last-used view (persisted under `fleet:view` via `loadViewPreference`/`saveViewPreference`); the cofounder wants a single, user-chosen default landing view rather than resuming whichever view happened to be active last.
+**Decision**: Persist a dedicated `fleet:default-view` (factory default `'dashboard'`) in `src/lib/default-view-preference.ts`; the app always opens to it, and a "Default view" control (`DefaultViewToggle`) lets the user change it. Drop the last-used reopen entirely — stop reading and writing `fleet:view` (`loadViewPreference`/`saveViewPreference` removed). In-session view switches are ephemeral and never persisted.
+**Alternatives considered**: Keep last-used **and** add a default (rejected — two overlapping persistence keys, `fleet:view` + `fleet:default-view`, conflate "where it opens" with "where I was"). Flip the existing `DEFAULT_VIEW` fallback constant to dashboard (rejected — conflates an internal fallback constant with a user-facing setting).
+**Consequences**: One source of truth for the landing view, so the app is predictable — it always opens to the chosen default, never a stale last-used view. Legacy `fleet:view` values become ignored dead data in users' browsers; in-session switches are intentionally ephemeral. The stale DESIGN-INBOX AC-15 paragraph is reconciled to match.
+
 ### ADR-023: Missing-states matrix — deferred SignalStatus metadata & per-tile retry
 **Date**: 2026-06-21
 **Status**: Accepted — Wave 2 / T16 of the dashboard tile redesign (`docs/superpowers/plans/2026-06-21-dashboard-tile-redesign.md`).

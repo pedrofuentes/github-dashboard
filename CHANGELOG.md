@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Configurable default view**: the **Dashboard** is now the out-of-the-box default landing view, and a new **Default view** control lets you choose which of **Grid / Dashboard / Inbox** the app opens to (persisted under `fleet:default-view`). The app no longer reopens to your last-used view — it always opens to your chosen default.
 - **Notifications Inbox** (M11): a third top-level view — a single, **newest-first**,
   triageable list that gathers everything across your fleet that needs attention
   into one queue. It aggregates **five actionable signals** — failing CI runs,
