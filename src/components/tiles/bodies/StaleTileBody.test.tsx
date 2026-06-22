@@ -1,8 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { STALE_THRESHOLD_DAYS } from '../../../hooks/signals/useStaleSignal';
-import type { Repo, StaleSignalSlice } from '../../../types/fleet';
+import type { Repo, StaleItem, StaleSignalSlice } from '../../../types/fleet';
 import { StaleTileBody } from './StaleTileBody';
 
 const repo: Repo = {
@@ -12,11 +11,30 @@ const repo: Repo = {
   isPrivate: false,
 };
 
+const NOW = new Date('2026-06-21T12:00:00.000Z');
+const DAY = 24 * 60 * 60 * 1000;
+
+/** ISO timestamp `n` whole days before {@link NOW} (UTC, DST-safe). */
+function daysAgo(n: number): string {
+  return new Date(NOW.getTime() - n * DAY).toISOString();
+}
+
+function item(type: 'pr' | 'issue', ageDays: number, number = ageDays): StaleItem {
+  return {
+    number,
+    title: `item ${String(number)}`,
+    html_url: `https://github.com/octocat/hello-world/issues/${String(number)}`,
+    updated_at: daysAgo(ageDays),
+    type,
+  };
+}
+
 function renderBody(
   stale: StaleSignalSlice | undefined,
   size: 'compact' | 'standard' | 'expanded' = 'standard',
+  now: Date = NOW,
 ) {
-  return render(<StaleTileBody repo={repo} data={{ stale }} size={size} />);
+  return render(<StaleTileBody repo={repo} data={{ stale }} size={size} now={now} />);
 }
 
 describe('StaleTileBody — states', () => {
@@ -47,49 +65,76 @@ describe('StaleTileBody — states', () => {
   });
 });
 
-describe('StaleTileBody — staleness escalation (DESIGN-TILES §4.6)', () => {
-  it('escalates to warning when there are stale items', () => {
-    const { getByText, container } = renderBody({ status: 'ready', staleCount: 6 });
-    expect(getByText('6')).toBeInTheDocument();
-    expect(container.querySelector('[data-tone="warning"]')).not.toBeNull();
+describe('StaleTileBody — age-led hero (redesign T12)', () => {
+  const slice: StaleSignalSlice = {
+    status: 'ready',
+    staleCount: 5,
+    staleItems: [
+      item('pr', 34),
+      item('pr', 18),
+      item('pr', 16),
+      item('issue', 65),
+      item('issue', 40),
+    ],
+  };
+
+  it('leads with the OLDEST item age as the hero, not the count', () => {
+    const { getByText, queryByText } = renderBody(slice, 'standard');
+    expect(getByText('65d')).toBeInTheDocument();
+    // the count is NOT the hero number
+    expect(queryByText('5')).toBeNull();
   });
 
-  it('renders the "N stale" chip when > 0', () => {
-    const { getAllByText } = renderBody({ status: 'ready', staleCount: 6 });
-    expect(getAllByText(/6 stale/i).length).toBeGreaterThan(0);
+  it('uses the ochre identity tone, not warning', () => {
+    const { container } = renderBody(slice, 'standard');
+    expect(container.querySelector('[data-tone="ochre"]')).not.toBeNull();
+    expect(container.querySelector('[data-tone="warning"]')).toBeNull();
   });
 
-  it('spells out the staleness duration using the shared threshold', () => {
-    const { getAllByText } = renderBody({ status: 'ready', staleCount: 6 }, 'expanded');
-    expect(
-      getAllByText(new RegExp(`no activity in ${STALE_THRESHOLD_DAYS} days`, 'i')).length,
-    ).toBeGreaterThan(0);
+  it('shows the count + PR/issue type split in the meta line', () => {
+    const { getByText } = renderBody(slice, 'standard');
+    expect(getByText(/5 items \(3 PR · 2 issue\)/)).toBeInTheDocument();
   });
 
-  it('uses singular "item" phrasing for a single stale item', () => {
-    const { getAllByText } = renderBody({ status: 'ready', staleCount: 1 }, 'expanded');
-    expect(getAllByText(/1 open item with no activity/i).length).toBeGreaterThan(0);
+  it('does not announce the calm hero with aria-live', () => {
+    const { container } = renderBody(slice, 'standard');
+    expect(container.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it('respects an injected now so age is deterministic', () => {
+    const later = new Date(NOW.getTime() + 10 * DAY);
+    const { getByText } = renderBody(slice, 'standard', later);
+    // oldest item was 65d before NOW → 75d before `later`
+    expect(getByText('75d')).toBeInTheDocument();
   });
 });
 
 describe('StaleTileBody — size tiers', () => {
-  const slice: StaleSignalSlice = { status: 'ready', staleCount: 3 };
+  const slice: StaleSignalSlice = {
+    status: 'ready',
+    staleCount: 4,
+    staleItems: [item('pr', 70), item('pr', 45), item('issue', 33), item('issue', 20)],
+  };
 
-  it('compact: shows the value with a minimal label', () => {
+  it('compact: shows the oldest-age hero without the age-bucket bar', () => {
     const { getByText, container } = renderBody(slice, 'compact');
-    expect(getByText('3')).toBeInTheDocument();
+    expect(getByText('70d')).toBeInTheDocument();
     expect(container.querySelector('[data-tier="compact"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).toBeNull();
   });
 
-  it('standard: shows the value and the "stale" chip', () => {
-    const { getByText, getAllByText } = renderBody(slice, 'standard');
-    expect(getByText('3')).toBeInTheDocument();
-    expect(getAllByText(/3 stale/i).length).toBeGreaterThan(0);
+  it('standard: adds the AgeBucketBar micro-viz', () => {
+    const { container } = renderBody(slice, 'standard');
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
+    // grayscale-safe height channel survives: each bucket carries an h-* class
+    const bucket = container.querySelector('[data-bucket]');
+    expect(bucket?.className).toMatch(/\bh-\d/);
   });
 
-  it('expanded: adds the descriptive line', () => {
+  it('expanded: adds the type breakdown', () => {
     const { container } = renderBody(slice, 'expanded');
-    expect(container.querySelector('[data-part="detail"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="breakdown"]')).not.toBeNull();
   });
 });
 
@@ -116,8 +161,30 @@ describe('StaleTileBody — defensive & a11y', () => {
     expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
   });
 
+  it('stays safe when a positive count carries no item details (no throw)', () => {
+    expect(() => renderBody({ status: 'ready', staleCount: 6 })).not.toThrow();
+    const { container } = renderBody({ status: 'ready', staleCount: 6 });
+    expect(container.querySelector('[data-tone="ochre"]')).not.toBeNull();
+  });
+
+  it('exposes a redundant screen-reader sentence naming the count and oldest age', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 2,
+      staleItems: [item('pr', 50), item('issue', 22)],
+    };
+    const { container } = renderBody(slice, 'standard');
+    const srTexts = [...container.querySelectorAll('.sr-only')].map((n) => n.textContent ?? '');
+    expect(srTexts.some((t) => /2 stale items/i.test(t) && /oldest 50 days/i.test(t))).toBe(true);
+  });
+
   it('contains no hard-coded hex colours', () => {
-    const { container } = renderBody({ status: 'ready', staleCount: 8 });
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 3,
+      staleItems: [item('pr', 80), item('issue', 35), item('issue', 19)],
+    };
+    const { container } = renderBody(slice, 'expanded');
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 });
