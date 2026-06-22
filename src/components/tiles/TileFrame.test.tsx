@@ -96,6 +96,16 @@ describe('TileFrame — activate overlay', () => {
     );
   });
 
+  it('uses the tokenised focus ring on the activate overlay so it flips with the theme', () => {
+    const { container } = renderFrame();
+    const activate = container.querySelector('[data-tile-activate]') as HTMLElement;
+    // The whole-tile activate button is non-text UI; its focus ring must use the
+    // semantic `focus` token so it re-themes (sky-700 in light, #58a6ff in dark)
+    // rather than the static sky-600 that never flipped with `.dark`.
+    expect(activate.className).toContain('focus-visible:outline-focus');
+    expect(activate.className).not.toContain('outline-sky-600');
+  });
+
   it('is tabbable when active and removed from the tab order when inactive', () => {
     const { rerender } = renderFrame({ active: true });
     expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
