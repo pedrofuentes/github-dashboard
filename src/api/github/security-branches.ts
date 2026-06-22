@@ -25,6 +25,7 @@ import {
   CommitListItemSchema,
   TagListItemSchema,
 } from './schemas';
+import type { CommitActivityWeek } from './commit-activity';
 import type { SecurityAlertRow } from '../../types/fleet';
 
 // ─── Security Alert APIs ────────────────────────────────────────────
@@ -567,16 +568,6 @@ export async function fetchBranchNetwork(
 
 // ─── Commit Activity API ─────────────────────────────────────
 
-/** Commit activity data from the GitHub stats API */
-export interface CommitActivityWeek {
-  /** Unix timestamp of the start of this week */
-  total: number;
-  /** Start of week as Unix timestamp */
-  week: number;
-  /** Daily commit counts (Sun=0 ... Sat=6) */
-  days: number[];
-}
-
 /**
  * Fetches commit activity (weekly commit counts) for a repository.
  * Uses the stats/commit_activity endpoint which returns the last 52 weeks.
@@ -588,7 +579,7 @@ export interface CommitActivityWeek {
  * @returns Commit count for the specified time range
  * @throws {GitHubApiError} on API errors
  */
-export async function fetchCommitActivity(
+export async function fetchCommitActivityCount(
   owner: string,
   repo: string,
   token?: string,
@@ -597,7 +588,7 @@ export async function fetchCommitActivity(
   const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stats/commit_activity`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers }, 'fetchCommitActivity');
+  const response = await fetchWithRetry(url, { headers }, 'fetchCommitActivityCount');
   const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
   // Stats endpoints return 202 while computing — treat as "data not ready"

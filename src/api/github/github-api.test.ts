@@ -16,7 +16,7 @@ import {
   fetchBranchNetwork,
   fetchPullRequestCount,
   fetchIssueCount,
-  fetchCommitActivity,
+  fetchCommitActivityCount,
   fetchBranchComparison,
   fetchLatestRelease,
   getStatValue,
@@ -960,10 +960,10 @@ describe('fetchIssueCount', () => {
 });
 
 // ──────────────────────────────────────────────
-// fetchCommitActivity
+// fetchCommitActivityCount
 // ──────────────────────────────────────────────
 
-describe('fetchCommitActivity', () => {
+describe('fetchCommitActivityCount', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
@@ -984,7 +984,7 @@ describe('fetchCommitActivity', () => {
       text: () => Promise.resolve(''),
     } as unknown as Response);
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test');
     expect(result).toBe(-1);
   });
 
@@ -997,7 +997,7 @@ describe('fetchCommitActivity', () => {
       text: () => Promise.resolve(''),
     } as unknown as Response);
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test');
     expect(result).toBe(0);
   });
 
@@ -1010,7 +1010,7 @@ describe('fetchCommitActivity', () => {
 
     vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(weeks));
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test', '7d');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test', '7d');
     expect(result).toBe(42);
   });
 
@@ -1023,7 +1023,7 @@ describe('fetchCommitActivity', () => {
 
     vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(weeks));
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test', '30d');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test', '30d');
     expect(result).toBe(40);
   });
 
@@ -1043,14 +1043,14 @@ describe('fetchCommitActivity', () => {
 
     vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(weeks));
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test', '24h');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test', '24h');
     expect(result).toBe(dailyCounts[dayOfWeek]);
   });
 
   it('returns 0 on empty array', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse([]));
 
-    const result = await fetchCommitActivity('owner', 'repo', 'ghp_test');
+    const result = await fetchCommitActivityCount('owner', 'repo', 'ghp_test');
     expect(result).toBe(0);
   });
 
@@ -1059,8 +1059,10 @@ describe('fetchCommitActivity', () => {
       mockFetchResponse({ message: 'Bad credentials' }, 401),
     );
 
-    await expect(fetchCommitActivity('owner', 'repo', 'bad_token')).rejects.toThrow(GitHubApiError);
-    await expect(fetchCommitActivity('owner', 'repo', 'bad_token')).rejects.toThrow(
+    await expect(fetchCommitActivityCount('owner', 'repo', 'bad_token')).rejects.toThrow(
+      GitHubApiError,
+    );
+    await expect(fetchCommitActivityCount('owner', 'repo', 'bad_token')).rejects.toThrow(
       /Invalid or expired/,
     );
   });

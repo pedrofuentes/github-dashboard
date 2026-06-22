@@ -37,24 +37,7 @@ import {
   type RateLimitInfo,
 } from './core';
 import { ETagCache } from './etag-cache';
-
-/**
- * Schema for a single week of commit activity as returned by the stats API.
- *
- * `days` is the seven daily commit counts (Sunday..Saturday), and the endpoint
- * always returns exactly seven, so the length is validated to catch a malformed
- * payload before it reaches the heatmap.
- */
-export const CommitActivityWeekSchema = z
-  .object({
-    /** Total commits in the week. */
-    total: z.number(),
-    /** Start of the week as a Unix timestamp in seconds (week starts Sunday). */
-    week: z.number(),
-    /** Daily commit counts, Sunday (0) .. Saturday (6). */
-    days: z.array(z.number()).length(7),
-  })
-  .passthrough();
+import { CommitActivityWeekSchema } from './schemas';
 
 /** Schema for the full commit-activity response (the last 52 weeks). */
 export const CommitActivitySchema = z.array(CommitActivityWeekSchema);

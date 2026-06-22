@@ -24,8 +24,8 @@ export type {
   SecurityAlertFeed,
   BranchComparison,
   BranchInfo,
-  CommitActivityWeek,
   NetworkGraphCommit,
   NetworkGraphTag,
 } from '../api/github/security-branches';
+export type { CommitActivityWeek } from '../api/github/commit-activity';
 export type { DataSourceItem } from '../api/github/datasources';
