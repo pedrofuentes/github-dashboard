@@ -15,8 +15,9 @@
  * animation), so it already honors `prefers-reduced-motion`.
  *
  * Robustness: ragged weeks (fewer than 7 days), an empty `weeks` array,
- * all-zero data, and `max === 0` are all handled without emitting `NaN` /
- * `Infinity` geometry or dividing by zero.
+ * all-zero data, and a non-finite or non-positive `max` (`NaN` / `Infinity` /
+ * `0`) are all handled without emitting `NaN` / `Infinity` geometry, dividing by
+ * zero, or flattening every cell to a constant intensity.
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
@@ -43,7 +44,11 @@ export interface HeatmapProps {
   weeks: number[][];
   /** Accent tone for non-empty cells. Defaults to `success` (activity ink). */
   tone?: AccentTone;
-  /** Intensity denominator. Defaults to the data maximum; guarded against 0. */
+  /**
+   * Intensity denominator. Defaults to the data maximum; a non-finite
+   * (`NaN` / `Infinity`) or non-positive value also falls back to the data
+   * maximum so intensities stay finite and proportional.
+   */
   max?: number;
   /** Accessible summary describing the whole heatmap (the `role="img"` name). */
   srLabel: string;
@@ -89,8 +94,12 @@ export function Heatmap({
     (peak, week) => week.reduce((rowPeak, day) => Math.max(rowPeak, toCount(day)), peak),
     0,
   );
-  // `max` may be explicitly 0 (or the data may be all-zero); guard the divide.
-  const effectiveMax = max !== undefined ? max : dataMax;
+  // A caller-supplied `max` is honoured only when it is a finite positive
+  // number; a non-finite (NaN/Infinity) or non-positive `max` falls back to the
+  // data maximum so intensities stay finite AND proportional rather than
+  // collapsing every non-zero cell to a constant (#166). An all-zero `dataMax`
+  // still guards the divide below.
+  const effectiveMax = max !== undefined && Number.isFinite(max) && max > 0 ? max : dataMax;
   const denominator = effectiveMax > 0 ? effectiveMax : 0;
 
   const toneVar = `var(--color-${tone})`;

@@ -15,8 +15,10 @@
  *
  * Degenerate inputs render gracefully and never emit `NaN`/`Infinity` geometry:
  * empty `data` draws no path (label only), an all-zero series draws a flat line
- * (max is clamped so there is no division by zero), and a single point places
- * the endpoint dot at the viewport centre.
+ * (max is clamped so there is no division by zero), and a single point is
+ * centred horizontally with its height still encoding the value — so a non-zero
+ * point sits at the top of the plot and a zero point on the baseline, not at the
+ * viewport centre.
  */
 import type { ReactElement } from 'react';
 
