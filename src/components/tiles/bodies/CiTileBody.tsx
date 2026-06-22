@@ -225,6 +225,12 @@ export function CiTileBody({
 
         {showRecency ? <span className="text-xs text-text-muted">{view.recency}</span> : null}
 
+        {/*
+          INTERIM (§4.1): the canonical "View latest run" affordance belongs in
+          the tile footer, but footer action wiring is not yet in place, so the
+          expanded tier renders the deep link in-body. Move to the footer once
+          that affordance lands; the GitHub-origin gate (`safeGitHubHref`) stays.
+        */}
         {href ? (
           <a
             href={href}

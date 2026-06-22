@@ -125,6 +125,19 @@ describe('CiTileBody', () => {
       expect(container.querySelector('[data-shape]')).toBeNull();
     });
 
+    it('compact all-clear suppresses the "No failing workflows" detail line', () => {
+      // showDetail is gated to `size !== 'compact' || failing > 0`; an all-clear
+      // (success, 0 failing) compact tile must therefore drop the detail line.
+      render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="compact"
+        />,
+      );
+      expect(screen.queryByText(/no failing workflows/i)).toBeNull();
+    });
+
     it('standard: glyph + status word + failing count + run-strip, but no run link', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data(fullSlice)} size="standard" />,
@@ -197,6 +210,8 @@ describe('CiTileBody', () => {
       expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
       expect(glyph(container, 'loading')).not.toBeNull();
       expect(screen.getByText(/loading ci/i)).toBeInTheDocument();
+      // The visible status word itself (distinct from the sr-only "Loading CI…").
+      expect(screen.getByText('Loading…', { selector: 'span' })).toBeInTheDocument();
     });
 
     it('error: routes through TileMessage (data-state="failed-to-load") + warning ⚠ glyph', () => {
