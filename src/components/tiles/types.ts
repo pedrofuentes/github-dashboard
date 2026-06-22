@@ -41,9 +41,26 @@ export type SignalIconKind =
 /**
  * Resolve a tone to its CSS custom property reference — for SVG `fill`/`stroke`
  * or inline `style` tints that must flip with the theme. Never returns raw hex.
+ *
+ * The lookup doubles as a **runtime allowlist**: a value outside the canonical
+ * `AccentTone` set (only reachable via a type-cast / unvalidated data) resolves
+ * to the neutral token instead of interpolating an arbitrary string into
+ * `var(--color-…)` — defense-in-depth on top of the type + CSP guards.
  */
+const TONE_VAR: Record<AccentTone, string> = {
+  success: 'var(--color-success)',
+  failure: 'var(--color-failure)',
+  warning: 'var(--color-warning)',
+  info: 'var(--color-info)',
+  neutral: 'var(--color-neutral)',
+  coral: 'var(--color-coral)',
+  purple: 'var(--color-purple)',
+  gold: 'var(--color-gold)',
+  ochre: 'var(--color-ochre)',
+};
+
 export function toneToVar(tone: AccentTone): string {
-  return `var(--color-${tone})`;
+  return TONE_VAR[tone] ?? TONE_VAR.neutral;
 }
 
 /**
