@@ -74,7 +74,9 @@ export function TileMessage({ kind, message, srText, onRetry }: TileMessageProps
       data-kind={kind}
       className={`flex h-full flex-col items-center justify-center gap-1 text-center ${spec.textClass}`}
     >
-      <StatusGlyph status={spec.glyph} size={22} title={message} />
+      <span aria-hidden="true" className="inline-flex">
+        <StatusGlyph status={spec.glyph} size={22} title={message} />
+      </span>
       <span aria-hidden="true" className="text-sm font-medium">
         {message}
       </span>
