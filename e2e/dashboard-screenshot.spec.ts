@@ -425,9 +425,7 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
   // The pinned fleet summary anchors the top; the tiles fill the grid below.
   await expect(page.getByRole('region', { name: 'Fleet summary' })).toBeVisible();
   await expect(page.getByRole('grid', { name: 'Dashboard tiles' })).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: /View CI details for acme\/payments-service/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /^CI:.*acme\/payments-service$/i })).toBeVisible();
 
   // No per-cell skeletons left animating (all signals resolved).
   await expect(page.locator('.animate-pulse')).toHaveCount(0);
