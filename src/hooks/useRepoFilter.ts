@@ -2,10 +2,13 @@
  * React state binding for the presentational repo-scope filter (Phase 3).
  *
  * Mirrors `useDashboardLayout`: the selection is loaded + reconciled on mount,
- * persisted on every change, and re-reconciled whenever the fleet *set* changes
- * (tracked via a stable `fleetKey` plus a `previousFleetKey` ref). An empty
- * selection means "all repos shown"; `isActive` reports whether a narrowing
- * filter is currently in effect.
+ * persisted on every user-driven change, and re-reconciled whenever the fleet
+ * *set* changes (tracked via a stable `fleetKey` plus a `previousFleetKey` ref).
+ * The reconcile path differs from a plain change in one way: it persists the
+ * reconciled selection only while the fleet is non-empty (the empty-fleet guard,
+ * I2), so a transiently empty initial fleet — common while repos load async —
+ * never wipes the saved filter. An empty selection means "all repos shown";
+ * `isActive` reports whether a narrowing filter is currently in effect.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
