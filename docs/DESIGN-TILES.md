@@ -172,7 +172,7 @@ escalates to `warning`/`failure` on threshold breach.
 | CI / Actions | by run status (§2.1) | `accent-failure` on failure |
 | Security | by grade (§4.2) | `accent-failure` at grade D–F |
 | Pull requests | `accent-info` | `accent-coral` when external/new-contributor PRs present |
-| Reviews | `accent-neutral` (none) | `accent-warning` when `requestedCount > 0` (urgency, §4.4) |
+| Reviews | `accent-neutral` (none) | urgency scale (§4.4): `accent-info` (1–2) → `accent-warning` (3–4) → `accent-failure` (5+) |
 | Issues | `accent-neutral` | `accent-warning` when over triage threshold |
 | Stale | `accent-neutral` | `accent-warning` when `staleCount > 0` |
 | Activity | `accent-success` (sparkline/heatmap ink) | — (informational; no alarm state) |
@@ -303,7 +303,7 @@ SVG primitives (`StatusGlyph`, §5) so they scale crisply on large tiles.
 | stale / inactive | `accent-warning` | ◷ clock | “Stale” | Stale |
 | neutral / none / skipped | `accent-neutral` | — minus line | “No runs” / “None” | CI, all empty states |
 | new-contributor / external | `accent-coral` | ★ star | “External” | Pull requests |
-| review-requested | `accent-warning` | ◉ eye / target | “Awaiting you” | Reviews |
+| review-requested | urgency scale (§4.4): `accent-info` → `accent-warning` → `accent-failure` | ◉ eye / target | “Awaiting you” | Reviews |
 | loading | `accent-neutral` | skeleton shimmer or spinner | sr-only “Loading…” | all |
 | unknown / no-access | `accent-neutral` | — / “n/a” | “Unavailable” | all |
 
@@ -502,9 +502,10 @@ follows §3.4. The underlying slice types are in `src/types/fleet.ts`.
   Urgency scales the accent (mirrors the Stream Deck PR-queue thresholds
   blue→amber→red): `0` neutral/clear · `1–2` info · `3–4` warning · `5+` failure
   emphasis. The count sits in an emphasized `Chip` when `> 0` (“N awaiting you”).
-- **Tokens:** `0` → `accent-neutral`; escalating per the thresholds above. Light
-  retains the existing rose badge for the “awaiting you” chip; dark uses the
-  warning/failure tint.
+- **Tokens:** `0` → `accent-neutral`; escalating per the thresholds above
+  (`accent-info` → `accent-warning` → `accent-failure`). The “awaiting you” chip
+  is tinted by the active urgency accent in both themes via the §1.5 accent-tint
+  pattern — semantic tokens only, never a raw `rose-*` / hard-coded colour.
 - **Redundant encoding:** eye icon + “awaiting you” text + sr-label
   (“N pull requests awaiting your review”). Urgency never rests on color — the
   count itself and the word convey it.
