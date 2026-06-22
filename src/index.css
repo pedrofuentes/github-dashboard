@@ -53,6 +53,19 @@
   /* Age-led Stale accent. #7c5e10 clears AA as text on white (~6.1:1) — the
    * DESIGN-TILES #8a6d3b only reaches ~4.85:1, too close to the 4.5:1 floor. */
   --color-ochre: #7c5e10;
+
+  /*
+   * Role tokens (UI reimagining). Semantic surfaces/accents for drawers,
+   * multi-select, hover affordances and the repos×signals matrix. `text` on
+   * each *-overlay/hover/selected surface clears AA normal text (>=4.5:1);
+   * selection/attention clear WCAG 1.4.11 non-text UI (>=3:1) on `surface`.
+   */
+  --color-surface-overlay: #ffffff; /* elevated drawer/modal/popover surface */
+  --color-surface-hover: #f1f5f9; /* slate-100 — row/cell hover bg */
+  --color-surface-selected: #e7eef6; /* selected row/cell bg (multi-select) */
+  --color-chart-track: #e2e8f0; /* slate-200 — unfilled bar/spark/heatmap track */
+  --color-selection: #0369a1; /* sky-700 — checkbox/active-outline accent */
+  --color-attention: #9a6700; /* needs-attention accent, more urgent than warning */
 }
 
 .dark {
@@ -89,6 +102,18 @@
   /* Age-led Stale accent. #bfa05a clears AA as text on the dark surface
    * (#161b22) at ~6.9:1. */
   --color-ochre: #bfa05a;
+
+  /*
+   * Role tokens (UI reimagining) — dark counterparts. `text` on each
+   * *-overlay/hover/selected surface clears AA normal text (>=4.5:1);
+   * selection/attention clear WCAG 1.4.11 non-text UI (>=3:1) on `surface`.
+   */
+  --color-surface-overlay: #1c2128; /* elevated drawer/modal/popover surface */
+  --color-surface-hover: #21262d; /* row/cell hover bg */
+  --color-surface-selected: #1b2b3a; /* selected row/cell bg (multi-select) */
+  --color-chart-track: #30363d; /* unfilled bar/spark/heatmap track */
+  --color-selection: #58a6ff; /* checkbox/active-outline accent */
+  --color-attention: #d29922; /* needs-attention accent, more urgent than warning */
 }
 
 /*
