@@ -71,3 +71,72 @@ describe('ThemeToggle', () => {
     expect(localStorage.getItem(THEME_KEY)).toBe('light');
   });
 });
+
+describe('ThemeToggle — keyboard (WAI-ARIA radiogroup roving tabindex)', () => {
+  it('keeps only the checked radio in the tab order', () => {
+    localStorage.setItem(THEME_KEY, 'dark');
+    render(<ThemeToggle />);
+    expect(screen.getByRole('radio', { name: /dark/i })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('radio', { name: /light/i })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('radio', { name: /system/i })).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('moves selection and focus to the next option on ArrowRight, wrapping at the end', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(THEME_KEY, 'dark');
+    render(<ThemeToggle />);
+
+    screen.getByRole('radio', { name: /dark/i }).focus();
+    await user.keyboard('{ArrowRight}');
+
+    const system = screen.getByRole('radio', { name: /system/i });
+    expect(system).toHaveAttribute('aria-checked', 'true');
+    expect(system).toHaveFocus();
+    expect(localStorage.getItem(THEME_KEY)).toBe('system');
+
+    await user.keyboard('{ArrowRight}');
+    const light = screen.getByRole('radio', { name: /light/i });
+    expect(light).toHaveAttribute('aria-checked', 'true');
+    expect(light).toHaveFocus();
+  });
+
+  it('moves selection and focus to the previous option on ArrowLeft, wrapping at the start', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(THEME_KEY, 'light');
+    render(<ThemeToggle />);
+
+    screen.getByRole('radio', { name: /light/i }).focus();
+    await user.keyboard('{ArrowLeft}');
+
+    const system = screen.getByRole('radio', { name: /system/i });
+    expect(system).toHaveAttribute('aria-checked', 'true');
+    expect(system).toHaveFocus();
+  });
+
+  it('treats ArrowDown/ArrowUp as forward/backward movement', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(THEME_KEY, 'light');
+    render(<ThemeToggle />);
+
+    screen.getByRole('radio', { name: /light/i }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('radio', { name: /dark/i })).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByRole('radio', { name: /light/i })).toHaveFocus();
+  });
+
+  it('jumps to the first and last option with Home and End', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(THEME_KEY, 'dark');
+    render(<ThemeToggle />);
+
+    screen.getByRole('radio', { name: /dark/i }).focus();
+    await user.keyboard('{End}');
+    expect(screen.getByRole('radio', { name: /system/i })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /system/i })).toHaveFocus();
+
+    await user.keyboard('{Home}');
+    expect(screen.getByRole('radio', { name: /light/i })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /light/i })).toHaveFocus();
+  });
+});
