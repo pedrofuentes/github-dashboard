@@ -291,6 +291,27 @@ describe('useInbox — triage state & actions (AC-11)', () => {
     expect(persisted.dismissedIds).not.toContain(ID_STALE);
   });
 
+  it('markAllRead is idempotent: a second call adds no duplicate read ids (#242)', () => {
+    // Calling markAllRead twice (each in its own commit, so the second sees the
+    // first's committed state) must not re-append already-read ids — the
+    // duplicate-free guard keeps storage bounded (§3.3).
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markAllRead();
+    });
+    act(() => {
+      result.current.markAllRead();
+    });
+
+    const persisted = loadInboxTriage();
+    expect([...persisted.readIds].sort()).toEqual([...NEWEST_FIRST].sort());
+    for (const id of NEWEST_FIRST) {
+      expect(persisted.readIds.filter((readId) => readId === id)).toHaveLength(1);
+    }
+    expect(result.current.unreadCount).toBe(0);
+  });
+
   it('prunes triage marks for ids no longer derived when it persists', () => {
     // A stale read mark whose item is no longer in the fleet must be GC'd on the
     // next persist so storage cannot grow unbounded (§3.3).
