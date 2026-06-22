@@ -19,6 +19,14 @@ import type { RepoSignalData } from '../types/fleet';
 /** A repo's fleet-health bucket, worst-first. */
 export type RepoHealth = 'broken' | 'warning' | 'healthy';
 
+/** A single repo's classified health, keyed by its `nameWithOwner`. */
+export interface RepoHealthEntry {
+  /** The repo's `nameWithOwner` (e.g. "octo/app"). */
+  repo: string;
+  /** Its worst-first health band, from {@link classifyRepoHealth}. */
+  health: RepoHealth;
+}
+
 /** Aggregated fleet health plus the per-signal rollups the summary tile shows. */
 export interface FleetHealthSummary {
   /** Total repositories in the fleet. */
@@ -130,4 +138,20 @@ export function summarizeFleetHealth(rows: Iterable<RepoSignalData>): FleetHealt
   }
 
   return summary;
+}
+
+/**
+ * Maps each `[nameWithOwner, RepoSignalData]` pair to a {@link RepoHealthEntry},
+ * preserving input order. Pure mirror of {@link summarizeFleetHealth} at the
+ * per-repo grain: the summary tile uses these entries to render a per-repo
+ * worst-state strip and name its worst child without re-resolving signal data.
+ */
+export function perRepoHealth(
+  rows: Iterable<readonly [string, RepoSignalData]>,
+): RepoHealthEntry[] {
+  const entries: RepoHealthEntry[] = [];
+  for (const [repo, data] of rows) {
+    entries.push({ repo, health: classifyRepoHealth(data) });
+  }
+  return entries;
 }
