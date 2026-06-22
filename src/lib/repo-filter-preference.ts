@@ -15,8 +15,17 @@ import { MAX_STRING_LENGTH } from './dashboard-layout';
 /** Namespaced key holding the persisted repo-filter selection. */
 const STORAGE_KEY = 'fleet:repo-filter';
 
+/**
+ * Defensive cap on how many repos a stored selection may contain. A selection
+ * holds at most one entry per repo, so this is sized with generous headroom
+ * above the fleet ceiling — a large fleet still persists rather than silently
+ * failing the schema cap, mirroring dashboard-layout's {@link MAX_TILES}. It
+ * exists to bound a corrupt/hostile payload, not to limit legitimate use.
+ */
+export const MAX_REPO_FILTER = 1000;
+
 /** A selection is a bounded array of `owner/repo` strings. */
-const RepoFilterSchema = z.array(z.string().min(1).max(MAX_STRING_LENGTH));
+const RepoFilterSchema = z.array(z.string().min(1).max(MAX_STRING_LENGTH)).max(MAX_REPO_FILTER);
 
 function safeGet(key: string): string | null {
   try {

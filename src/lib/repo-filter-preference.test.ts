@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import type { Repo } from '../types/fleet';
-import { loadRepoFilter, saveRepoFilter } from './repo-filter-preference';
+import { MAX_REPO_FILTER, loadRepoFilter, saveRepoFilter } from './repo-filter-preference';
 
 const repo = (n: string): Repo => ({ nameWithOwner: n, isPrivate: false }) as Repo;
 const KEY = 'fleet:repo-filter';
@@ -55,5 +55,20 @@ it('falls back to [] when getItem throws', () => {
 
 it('skips writing a non-string-array payload', () => {
   saveRepoFilter(['x'.repeat(300)]); // exceeds MAX_STRING_LENGTH
+  expect(localStorage.getItem(KEY)).toBeNull();
+});
+
+it('falls back to [] on a stored selection over the cap', () => {
+  const names = Array.from({ length: MAX_REPO_FILTER + 1 }, (_, i) => `octo/r${i}`);
+  localStorage.setItem(KEY, JSON.stringify(names));
+  // Every name is present in the fleet, so WITHOUT the schema cap this would
+  // reconcile to the full oversized array; the cap rejects the payload first,
+  // degrading to the default [] rather than feeding an unbounded selection.
+  expect(loadRepoFilter(names.map((n) => repo(n)))).toEqual([]);
+});
+
+it('skips writing a selection over the cap', () => {
+  const names = Array.from({ length: MAX_REPO_FILTER + 1 }, (_, i) => `octo/r${i}`);
+  saveRepoFilter(names);
   expect(localStorage.getItem(KEY)).toBeNull();
 });

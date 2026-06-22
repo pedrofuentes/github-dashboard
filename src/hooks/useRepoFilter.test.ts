@@ -48,3 +48,16 @@ it('does NOT persist a narrowed set while the fleet is empty (I2 guard)', () => 
   renderHook(() => useRepoFilter([]));
   expect(JSON.parse(localStorage.getItem(KEY) ?? '[]')).toEqual(['octo/a']);
 });
+
+it('does NOT narrow storage on a populated→empty transition (I2 guard)', () => {
+  // A STABLE empty mount early-returns before the `repos.length > 0` guard, so it
+  // can't catch a removed guard. Drive the populated→empty transition: mount with
+  // repos, then re-render with [] so the effect reaches the guard with an empty
+  // fleet — storage must survive (removing the guard would persist the wiped set).
+  localStorage.setItem(KEY, JSON.stringify(['octo/a']));
+  const { rerender } = renderHook(({ repos }) => useRepoFilter(repos), {
+    initialProps: { repos: [repo('octo/a')] as Repo[] },
+  });
+  rerender({ repos: [] });
+  expect(JSON.parse(localStorage.getItem(KEY) ?? '[]')).toEqual(['octo/a']);
+});

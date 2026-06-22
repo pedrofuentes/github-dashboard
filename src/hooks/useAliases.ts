@@ -1,8 +1,10 @@
 /**
  * React state binding for per-repo display aliases (Phase 3 customization).
- * Loads the persisted alias map on mount and, like {@link useDashboardLayout},
- * re-reconciles it against the fleet whenever the fleet *identity* changes —
- * dropping aliases for repos no longer present.
+ * Loads + reconciles the persisted alias map on mount and, like
+ * {@link useDashboardLayout}, re-reconciles it against the fleet whenever the
+ * fleet *identity* changes — dropping aliases for repos no longer present.
+ * Reconciliation on mount is display-only; a narrowed map is never persisted
+ * until the fleet is confirmed non-empty (the I2 empty-fleet guard).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -40,7 +42,12 @@ function reconcile(map: Record<string, string>, repos: Repo[]): Record<string, s
  * @param repos - Repositories driving alias reconciliation.
  */
 export function useAliases(repos: Repo[]): UseAliasesResult {
-  const [aliases, setAliasesState] = useState<Record<string, string>>(() => loadAliases());
+  // Reconcile against the fleet present at mount (display-only, never persisted
+  // here) so a pre-populated fleet drops absent repos' aliases immediately,
+  // mirroring useDashboardLayout's reconcile-on-init.
+  const [aliases, setAliasesState] = useState<Record<string, string>>(() =>
+    reconcile(loadAliases(), repos),
+  );
 
   // A stable identity for the fleet, independent of array reference or order, so
   // we only re-reconcile when the *set* of repos actually changes.
