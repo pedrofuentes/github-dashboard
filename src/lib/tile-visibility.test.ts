@@ -46,6 +46,19 @@ describe('flipRepoVisibility', () => {
     expect(next.filter((t) => t.repo === 'octo/a').every((t) => !t.visible)).toBe(true);
     expect(next.find((t) => t.repo === 'octo/b')?.visible).toBe(true);
   });
+  it('preserves array length and tile referential identity (structural contract)', () => {
+    const next = flipRepoVisibility(layout, 'octo/a', false);
+    // Never appends/drops (MAX_TILES stays structurally respected, like the sibling flip).
+    expect(next).toHaveLength(layout.length);
+    // A flipped tile is a NEW object (immutable update, not in-place mutation)...
+    expect(next.find((t) => t.i === 'octo/a:ci')).not.toBe(layout[0]);
+    // ...while an UNCHANGED tile keeps referential identity (cheap no-op detection).
+    expect(next.find((t) => t.i === 'octo/b:ci')).toBe(layout[2]);
+  });
+  it('is idempotent when the flag already matches', () => {
+    const next = flipRepoVisibility(layout, 'octo/a', true);
+    expect(next).toEqual(layout);
+  });
 });
 
 describe('isAllHidden', () => {
