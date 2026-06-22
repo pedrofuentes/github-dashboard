@@ -82,6 +82,15 @@ describe('PrsTileBody — states (§3.6)', () => {
     expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
+  it('clamps an out-of-contract negative open-count to the all-clear state', () => {
+    // A negative count is never valid; it must degrade to all-clear rather than
+    // render a misleading "-3" hero (DESIGN-TILES §3.6).
+    const { container } = renderBody({ status: 'ready', openCount: -3, externalCount: 0 });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="ready"]')).toBeNull();
+    expect(screen.queryByText('-3')).not.toBeInTheDocument();
+  });
+
   it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
     const { container: clear } = renderBody({ status: 'ready', openCount: 0, externalCount: 0 });
     const { container: failed } = renderBody({ status: 'error' });
