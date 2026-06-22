@@ -23,7 +23,11 @@ export type AccentTone =
 /** Density tier a tile renders at (DESIGN-TILES §3.4). */
 export type TileTier = 'compact' | 'standard' | 'expanded';
 
-/** Canonical status-glyph kinds (DESIGN-TILES §2.1). */
+/**
+ * Status-glyph kinds. The first eleven mirror DESIGN-TILES §2.1's canonical
+ * CI / PR / review statuses; `info` extends the set for the neutral
+ * informational glyph used by data-display tile bodies — it is not a run state.
+ */
 export type SignalIconKind =
   | 'success'
   | 'failure'
