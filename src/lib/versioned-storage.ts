@@ -81,9 +81,14 @@ export function createVersionedStore<T>(config: VersionedStoreConfig<T>): Versio
         return fallback();
       }
 
-      const candidate = migrate ? migrate(parsed) : parsed;
-      const result = schema.safeParse(candidate);
-      return result.success ? result.data : fallback();
+      try {
+        const candidate = migrate ? migrate(parsed) : parsed;
+        const result = schema.safeParse(candidate);
+        return result.success ? result.data : fallback();
+      } catch {
+        // A throwing `migrate` (corrupt/legacy payload) must never escape `load`.
+        return fallback();
+      }
     },
 
     save(value: T): void {
