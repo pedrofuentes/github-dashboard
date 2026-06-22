@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DefaultViewToggle } from './components/DefaultViewToggle';
 import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FleetGrid } from './components/FleetGrid';
 import { InboxView } from './components/inbox/InboxView';
+import { RepoScopeFilter } from './components/RepoScopeFilter';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
+import { useAliases } from './hooks/useAliases';
 import { useAuth } from './hooks/useAuth';
+import { useDashboardLayout } from './hooks/useDashboardLayout';
 import { useInbox } from './hooks/useInbox';
+import { useRepoFilter } from './hooks/useRepoFilter';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
@@ -94,6 +99,12 @@ function repoSignalsResolved(data: RepoSignalData): boolean {
 function FleetPanel({ token }: { token: string | null }): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
+  // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
+  // DashboardView grid and the sibling CustomizePanel, so the tile picker and
+  // the grid never desync. Aliases + repo filter are owned alongside it.
+  const { layout, setLayout, reset } = useDashboardLayout(repos);
+  const aliases = useAliases(repos);
+  const filter = useRepoFilter(repos);
   const inbox = useInbox(repos, getRowData);
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
@@ -149,6 +160,9 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
     }
   }, []);
   const handleToggleEditing = useCallback(() => setEditing((current) => !current), []);
+  // Closing the CustomizePanel (Esc, backdrop, ✕) leaves edit mode, which also
+  // unmounts the panel via the `editing` coupling and returns focus to the opener.
+  const handleCloseCustomize = useCallback(() => setEditing(false), []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -156,19 +170,46 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
         <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
         <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
         {view === 'dashboard' ? (
-          <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+          <>
+            <RepoScopeFilter
+              repos={repos}
+              selected={filter.selected}
+              onToggleRepo={filter.toggleRepo}
+              onClear={filter.clear}
+              isActive={filter.isActive}
+            />
+            <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+          </>
         ) : null}
       </div>
       {view === 'dashboard' ? (
-        <DashboardView
-          repos={repos}
-          getRowData={getRowData}
-          onRepoActivate={handleRepoActivate}
-          editing={editing}
-          loading={status === 'loading'}
-          error={status === 'error' ? error : null}
-          onRetry={reload}
-        />
+        <>
+          <DashboardView
+            repos={repos}
+            getRowData={getRowData}
+            onRepoActivate={handleRepoActivate}
+            editing={editing}
+            layout={layout}
+            onLayoutChange={setLayout}
+            repoFilter={filter.selected}
+            onClearFilter={filter.clear}
+            aliases={aliases.aliases}
+            loading={status === 'loading'}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+          />
+          {editing ? (
+            <CustomizePanel
+              layout={layout}
+              onLayoutChange={setLayout}
+              onReset={reset}
+              aliases={aliases.aliases}
+              onSetAlias={aliases.setAlias}
+              onClearAlias={aliases.clearAlias}
+              onClose={handleCloseCustomize}
+            />
+          ) : null}
+        </>
       ) : view === 'inbox' ? (
         <InboxView
           inbox={inbox}

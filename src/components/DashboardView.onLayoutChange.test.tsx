@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import type { ComponentProps, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import { DEFAULT_LAYOUT } from '../lib/dashboard-layout';
 import type { GetRowData, Repo } from '../types/fleet';
 
@@ -50,7 +51,17 @@ vi.mock('../hooks/useCommitActivity', () => ({
 }));
 
 // Imported after the mock so DashboardView picks up the stubbed grid.
-const { DashboardView } = await import('./DashboardView');
+const { DashboardView: DashboardViewImpl } = await import('./DashboardView');
+
+// The layout hook was lifted to the parent (App) in Phase 3 (C1). This wrapper
+// calls the real hook so the drag-to-persist wiring under test keeps its
+// original localStorage semantics with the new required props.
+function DashboardView(
+  props: Omit<ComponentProps<typeof DashboardViewImpl>, 'layout' | 'onLayoutChange'>,
+): ReactElement {
+  const { layout, setLayout } = useDashboardLayout(props.repos);
+  return <DashboardViewImpl {...props} layout={layout} onLayoutChange={setLayout} />;
+}
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
 

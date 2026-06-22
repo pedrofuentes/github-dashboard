@@ -1,16 +1,29 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import { DEFAULT_LAYOUT } from '../lib/dashboard-layout';
 import type { GetRowData, Repo } from '../types/fleet';
-import { DashboardView } from './DashboardView';
+import { DashboardView as DashboardViewImpl } from './DashboardView';
 
 // Activity tiles self-fetch via `useCommitActivity` (which reads the auth
 // context); stub it so the full grid mounts without an AuthProvider or network.
 vi.mock('../hooks/useCommitActivity', () => ({
   useCommitActivity: vi.fn(() => ({ state: 'empty' })),
 }));
+
+// The layout hook was lifted to the parent (App) in Phase 3 (C1), so the view
+// now takes `layout`/`onLayoutChange` as props. This wrapper restores the prior
+// self-contained behavior for these tests by calling the real hook — identical
+// localStorage load/persist semantics — so existing assertions stand unchanged.
+function DashboardView(
+  props: Omit<ComponentProps<typeof DashboardViewImpl>, 'layout' | 'onLayoutChange'>,
+): ReactElement {
+  const { layout, setLayout } = useDashboardLayout(props.repos);
+  return <DashboardViewImpl {...props} layout={layout} onLayoutChange={setLayout} />;
+}
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
 
@@ -87,7 +100,7 @@ describe('DashboardView', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(hidden));
     render(<DashboardView repos={repos} getRowData={emptyData} onRepoActivate={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /: .*\u2014 octo/i })).toBeNull();
-    expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
+    expect(screen.getByText(/all tiles hidden/i)).toBeInTheDocument();
   });
 
   it('renders a static, non-draggable grid by default (not editing)', () => {
