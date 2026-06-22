@@ -25,6 +25,8 @@ import { BigValue } from '../BigValue';
 import { StatusGlyph } from '../StatusGlyph';
 import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
+import { CenteredState } from './CenteredState';
+import { safeCount } from './safeCount';
 
 export interface StaleTileBodyProps {
   /** The repository this tile represents (reserved for deep links/labels). */
@@ -51,11 +53,6 @@ const BUCKET_DEFS: readonly { label: string; min: number; max: number }[] = [
   { label: '>30d', min: 30, max: 60 },
   { label: '>60d', min: 60, max: Number.POSITIVE_INFINITY },
 ];
-
-/** Coerce an optional count to a safe, non-negative integer (never NaN). */
-function safeCount(value: number | undefined): number {
-  return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
-}
 
 /**
  * Whole-day age of an ISO timestamp relative to `now`, or `null` when the
@@ -94,36 +91,6 @@ function buildBuckets(items: StaleItem[], now: Date): AgeBucket[] {
       return age !== null && age > def.min && age <= def.max;
     }).length,
   }));
-}
-
-/** Neutral container for the loading / error / unavailable states (never blank). */
-function CenteredState({
-  state,
-  tone,
-  glyph,
-  message,
-  srText,
-}: {
-  state: string;
-  tone: 'muted' | 'error';
-  glyph: ReactElement;
-  message: string;
-  srText: string;
-}): ReactElement {
-  return (
-    <div
-      data-state={state}
-      className={`flex h-full flex-col items-center justify-center ${
-        tone === 'error' ? 'text-accent-failure' : 'text-text-muted'
-      }`}
-    >
-      {glyph}
-      <span aria-hidden="true" className="mt-1 text-sm">
-        {message}
-      </span>
-      <span className="sr-only">{srText}</span>
-    </div>
-  );
 }
 
 export function StaleTileBody({

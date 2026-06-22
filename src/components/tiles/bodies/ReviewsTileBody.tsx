@@ -28,6 +28,8 @@ import { Chip } from '../Chip';
 import { StatusGlyph } from '../StatusGlyph';
 import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
+import { CenteredState } from './CenteredState';
+import { safeCount } from './safeCount';
 
 export interface ReviewsTileBodyProps {
   /** The repository this tile represents (reserved for deep links/labels). */
@@ -42,11 +44,6 @@ export interface ReviewsTileBodyProps {
    * it, and compact/expanded are unaffected.
    */
   density?: Density;
-}
-
-/** Coerce an optional count to a safe, non-negative integer (never NaN). */
-function safeCount(value: number | undefined): number {
-  return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
 }
 
 /** Review-queue urgency → accent (DESIGN-TILES §4.4). */
@@ -75,36 +72,6 @@ function oldestRequestAge(requests: ReviewRequestedPullRequest[] | undefined): s
     }
   }
   return Number.isFinite(oldestMs) ? formatRelativeTime(new Date(oldestMs)) : null;
-}
-
-/** Neutral container for the loading / error / unavailable states (never blank). */
-function CenteredState({
-  state,
-  tone,
-  glyph,
-  message,
-  srText,
-}: {
-  state: string;
-  tone: 'muted' | 'error';
-  glyph: ReactElement;
-  message: string;
-  srText: string;
-}): ReactElement {
-  return (
-    <div
-      data-state={state}
-      className={`flex h-full flex-col items-center justify-center ${
-        tone === 'error' ? 'text-accent-failure' : 'text-text-muted'
-      }`}
-    >
-      {glyph}
-      <span aria-hidden="true" className="mt-1 text-sm">
-        {message}
-      </span>
-      <span className="sr-only">{srText}</span>
-    </div>
-  );
 }
 
 export function ReviewsTileBody({
