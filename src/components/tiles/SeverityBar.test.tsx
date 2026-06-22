@@ -82,18 +82,27 @@ describe('SeverityBar', () => {
 });
 
 describe('SeverityBar — grayscale-safe channels', () => {
-  it('renders no divider borders by default (colour-only legacy mode)', () => {
+  it('renders a 1px inter-segment divider by default so adjacent fills survive grayscale', () => {
     const { container } = render(
       <SeverityBar
         segments={[
           { tone: 'failure', value: 2, label: 'Critical' },
           { tone: 'coral', value: 3, label: 'High' },
+          { tone: 'info', value: 1, label: 'Medium' },
         ]}
       />,
     );
     const segs = container.querySelectorAll<HTMLElement>('[data-tone]');
-    expect(segs[0].className).not.toContain('border-l-2');
+    // The first segment has no leading divider…
+    expect(segs[0].className).not.toContain('border-l');
+    // …every later segment carries the 1px surface divider (WCAG 1.4.1) — the
+    // baseline grayscale channel, not the opt-in 2px reinforcement.
+    expect(segs[1].className).toContain('border-l');
+    expect(segs[1].className).toContain('border-surface');
     expect(segs[1].className).not.toContain('border-l-2');
+    expect(segs[2].className).toContain('border-l');
+    expect(segs[2].className).toContain('border-surface');
+    expect(segs[2].className).not.toContain('border-l-2');
   });
 
   it('adds a 2px divider before every segment after the first when dividers are on', () => {
