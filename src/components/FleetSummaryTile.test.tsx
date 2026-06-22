@@ -21,23 +21,26 @@ function makeSummary(overrides: Partial<FleetHealthSummary> = {}): FleetHealthSu
 
 describe('FleetSummaryTile', () => {
   it('renders an accessible fleet-summary region', () => {
-    render(<FleetSummaryTile summary={makeSummary({ total: 5, healthy: 5 })} />);
+    render(<FleetSummaryTile summary={makeSummary({ total: 5, healthy: 5 })} entries={[]} />);
     expect(screen.getByRole('region', { name: /fleet summary/i })).toBeInTheDocument();
   });
 
   it('shows the total repo count', () => {
-    render(<FleetSummaryTile summary={makeSummary({ total: 12, healthy: 12 })} />);
+    render(<FleetSummaryTile summary={makeSummary({ total: 12, healthy: 12 })} entries={[]} />);
     expect(screen.getByRole('region', { name: /fleet summary/i })).toHaveTextContent('12 repos');
   });
 
   it('uses the singular noun for a single repo', () => {
-    render(<FleetSummaryTile summary={makeSummary({ total: 1, healthy: 1 })} />);
+    render(<FleetSummaryTile summary={makeSummary({ total: 1, healthy: 1 })} entries={[]} />);
     expect(screen.getByRole('region', { name: /fleet summary/i })).toHaveTextContent('1 repo');
   });
 
   it('renders a three-way health-split bar segment for each non-zero bucket', () => {
     const { container } = render(
-      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
+      <FleetSummaryTile
+        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
+        entries={[]}
+      />,
     );
     // The coloured bar carries one proportional segment per non-zero bucket,
     // tinted with the health tone (failure / warning / success).
@@ -48,7 +51,10 @@ describe('FleetSummaryTile', () => {
 
   it('exposes the health split to assistive tech via labelled regions', () => {
     render(
-      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
+      <FleetSummaryTile
+        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
+        entries={[]}
+      />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
     // SeverityBar emits an sr-only "Label: value" breakdown so meaning never
@@ -60,7 +66,10 @@ describe('FleetSummaryTile', () => {
 
   it('breaks the fleet down by health bucket with icon + count + word labels', () => {
     render(
-      <FleetSummaryTile summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })} />,
+      <FleetSummaryTile
+        summary={makeSummary({ total: 12, broken: 3, warning: 2, healthy: 7 })}
+        entries={[]}
+      />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
     expect(within(region).getByText(/3\s+need attention/i)).toBeInTheDocument();
@@ -70,7 +79,7 @@ describe('FleetSummaryTile', () => {
 
   it('only paints bar segments for non-zero buckets', () => {
     const { container } = render(
-      <FleetSummaryTile summary={makeSummary({ total: 4, broken: 4 })} />,
+      <FleetSummaryTile summary={makeSummary({ total: 4, broken: 4 })} entries={[]} />,
     );
     expect(container.querySelector('[data-tone="failure"]')).toBeInTheDocument();
     expect(container.querySelector('[data-tone="warning"]')).not.toBeInTheDocument();
@@ -91,6 +100,7 @@ describe('FleetSummaryTile', () => {
           staleRepos: 1,
           reviewRequested: 3,
         })}
+        entries={[]}
       />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
@@ -115,6 +125,7 @@ describe('FleetSummaryTile', () => {
     render(
       <FleetSummaryTile
         summary={makeSummary({ total: 3, broken: 1, warning: 0, healthy: 2, failingCi: 1 })}
+        entries={[]}
       />,
     );
     const region = screen.getByRole('region', { name: /fleet summary/i });
@@ -126,17 +137,27 @@ describe('FleetSummaryTile', () => {
   });
 
   it('renders an empty fleet as "0 repos" with no health split or rollups', () => {
-    const { container } = render(<FleetSummaryTile summary={makeSummary({ total: 0 })} />);
+    const { container } = render(
+      <FleetSummaryTile summary={makeSummary({ total: 0 })} entries={[]} />,
+    );
     const region = screen.getByRole('region', { name: /fleet summary/i });
     expect(region).toHaveTextContent('0 repos');
     expect(within(region).queryByText(/need attention/i)).not.toBeInTheDocument();
     expect(within(region).queryByText(/failing CI/i)).not.toBeInTheDocument();
-    expect(container.querySelector('[data-tone]')).toBeNull();
+    // The only painted accent is the calm neutral edge rail — no health-split
+    // or rollup segments (failure / warning / success) for an empty fleet.
+    expect(container.querySelector('[data-tone="failure"]')).toBeNull();
+    expect(container.querySelector('[data-tone="warning"]')).toBeNull();
+    expect(container.querySelector('[data-tone="success"]')).toBeNull();
+    expect(container.querySelector('[data-part="repo-strip"]')).toBeNull();
   });
 
   it('keeps decorative glyphs hidden from assistive tech', () => {
     const { container } = render(
-      <FleetSummaryTile summary={makeSummary({ total: 3, broken: 1, warning: 1, healthy: 1 })} />,
+      <FleetSummaryTile
+        summary={makeSummary({ total: 3, broken: 1, warning: 1, healthy: 1 })}
+        entries={[]}
+      />,
     );
     for (const hidden of container.querySelectorAll('[aria-hidden="true"]')) {
       // A decorative wrapper must not expose an accessible label of its own.
