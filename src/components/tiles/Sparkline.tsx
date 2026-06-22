@@ -18,7 +18,9 @@
  * (max is clamped so there is no division by zero), and a single point is
  * centred horizontally with its height still encoding the value — so a non-zero
  * point sits at the top of the plot and a zero point on the baseline, not at the
- * viewport centre.
+ * viewport centre. Non-finite (`NaN`/`Infinity`) or negative values are treated
+ * as `0`, so a single out-of-contract point can neither corrupt the `max` scale
+ * nor push geometry out of bounds.
  */
 import type { ReactElement } from 'react';
 
@@ -59,6 +61,16 @@ interface Point {
   y: number;
 }
 
+/**
+ * Coerce a series value to a finite, non-negative number. Non-finite
+ * (`NaN` / `Infinity`) and negative values become `0` so a single
+ * out-of-contract point can neither corrupt the `max` scale nor emit
+ * out-of-bounds geometry (defense-in-depth; the slice is Zod-validated).
+ */
+function toValue(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 /** Computes the plotted points for `data` within the padded viewport. */
 function computePoints(data: number[], width: number, height: number): Point[] {
   const n = data.length;
@@ -67,14 +79,14 @@ function computePoints(data: number[], width: number, height: number): Point[] {
   const innerW = Math.max(0, width - PADDING * 2);
   const innerH = Math.max(0, height - PADDING * 2);
   const baseY = PADDING + innerH;
-  // Clamp the denominator so an all-zero (or negative) series cannot divide by
-  // zero — it renders as a flat baseline rather than producing NaN.
-  const max = Math.max(0, ...data) || 1;
+  // Clamp the denominator so an all-zero (or non-finite) series cannot divide
+  // by zero — it renders as a flat baseline rather than producing NaN.
+  const max = Math.max(0, ...data.map(toValue)) || 1;
 
   return data.map((value, i) => {
     const ratio = n === 1 ? 0.5 : i / (n - 1);
     const x = PADDING + ratio * innerW;
-    const normalised = Math.max(0, value) / max;
+    const normalised = toValue(value) / max;
     const y = baseY - normalised * innerH;
     return { x: round(x), y: round(y) };
   });
