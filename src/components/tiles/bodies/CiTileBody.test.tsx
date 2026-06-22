@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CiSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
 import type { TileTier } from '../types';
@@ -21,6 +21,17 @@ function data(ci?: CiSignalSlice): RepoSignalData {
 function glyph(container: HTMLElement, status: string): Element | null {
   return container.querySelector(`svg[data-status="${status}"]`);
 }
+
+/**
+ * A fixed reference instant for relative-time assertions. `formatRelativeTime`
+ * reads the real clock (`new Date()`), so the recency tests freeze `Date` here
+ * to remove the ~5-min-boundary flake (#273).
+ */
+const FIXED_NOW = new Date('2024-01-15T12:00:00Z');
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('CiTileBody', () => {
   it('exports a named CiTileBody component', () => {
@@ -325,6 +336,8 @@ describe('CiTileBody', () => {
     });
 
     it('shows the latest-run recency (formatRelativeTime(updatedAt)) at standard tier', () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(FIXED_NOW);
       const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       render(
         <CiTileBody
@@ -460,6 +473,8 @@ describe('CiTileBody — density-aware standard tier (T15)', () => {
   });
 
   it('balanced standard: keeps the latest-run recency meta (contrast)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_NOW);
     const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     render(
       <CiTileBody
@@ -473,6 +488,8 @@ describe('CiTileBody — density-aware standard tier (T15)', () => {
   });
 
   it('glanceable expanded: keeps the latest-run recency meta (expanded unaffected)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_NOW);
     const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     render(
       <CiTileBody
