@@ -283,6 +283,21 @@ describe('CiTileBody', () => {
       expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
     });
 
+    it('an Object.prototype member as the conclusion still falls back to neutral (#204)', () => {
+      // A prototype-chain key ("toString", "constructor", …) is reachable via the
+      // `in` operator even though it is NOT a real conclusion, so an `in`-based
+      // guard would resolve it to `Object.prototype.toString` and destructure an
+      // undefined glyph/word — a blank/garbage hero. The own-property guard must
+      // reject it and fall back to the neutral "No runs" render.
+      const slice = { status: 'ready', conclusion: 'toString' } as unknown as CiSignalSlice;
+      let container: HTMLElement | undefined;
+      expect(() => {
+        container = render(<CiTileBody repo={repo} data={data(slice)} size="standard" />).container;
+      }).not.toThrow();
+      expect(glyph(container as HTMLElement, 'neutral')).not.toBeNull();
+      expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
+    });
+
     it('all-clear ready state is never blank', () => {
       const { container } = render(
         <CiTileBody

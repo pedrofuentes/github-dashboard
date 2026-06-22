@@ -303,6 +303,33 @@ describe('StaleTileBody — unparseable updated_at (#283)', () => {
     expect(breakdown?.textContent).toContain('—');
     expect(breakdown?.textContent).not.toContain('0d');
   });
+
+  it('counts undatable items in the total but excludes them from the age buckets (#342)', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 4,
+      staleItems: [item('pr', 20), item('issue', 45), item('pr', 70), unparseable('issue', 2)],
+    };
+    const { container } = renderBody(slice, 'standard');
+
+    // Each datable item lands in exactly one ascending-age bucket; the undatable
+    // item lands in NONE — it must neither throw nor masquerade as a fresh entry.
+    const titles = [...container.querySelectorAll('[data-bucket]')].map((node) =>
+      node.getAttribute('title'),
+    );
+    expect(titles).toEqual(['>14d: 1', '>30d: 1', '>60d: 1']);
+
+    // The bucketed total (3) is exactly the datable subset — one fewer than the
+    // headline count (4), confirming the undatable item is summarised but never
+    // placed in a bucket.
+    const bucketSum = titles.reduce((sum, title) => sum + Number(title?.split(': ')[1] ?? 0), 0);
+    expect(bucketSum).toBe(3);
+    expect(bucketSum).toBeLessThan(4);
+
+    // The screen-reader summary still reports the full headline count (all 4).
+    const srLabel = container.querySelector('[data-part="age-bucket-bar"] li')?.textContent;
+    expect(srLabel).toBe('Stale items by age: 4 total');
+  });
 });
 
 describe('StaleTileBody — density-aware standard tier (T15)', () => {
