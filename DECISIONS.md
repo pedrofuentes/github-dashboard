@@ -22,6 +22,14 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-021: Fleet edge thickness doubles as the inflame cue (5px calm / 6px broken)
+**Date**: 2026-06-21
+**Status**: Accepted
+**Context**: DESIGN-TILES spec §4.2 specifies the pinned Fleet summary card carry a 6px accent edge **at all times**. The tile-redesign plan's T14 (Red-Team revision R4) instead wants the Fleet edge to **inflame** — turn red — when any child repo is broken, so the anchor visibly escalates the moment the fleet needs attention. Carrying a constant 6px edge would leave thickness unused as a salience channel.
+**Decision**: Make the Fleet edge **state-driven**: a calm **neutral 5px** rail (`AccentBar thickness="calm"`, tone `neutral`) when no child is broken, inflaming to a **failure 6px** bar (`thickness="problem"`, tone `failure`) when `summary.broken > 0`. "Broken" reuses `classifyRepoHealth` ("any child unhealthy" — failing CI, D–F security, or over-threshold issues), matching the cofounder's intent. Thickness thus doubles as the inflame cue alongside colour, and the change is encoded redundantly (text/glyph rollups + worst-child chip) so it never rests on colour alone.
+**Alternatives considered**: Keep the spec's constant 6px edge and inflame via colour only (rejected — wastes the thickness channel and weakens the grayscale/colour-blind escalation signal); a separate inflame banner (rejected — adds chrome to a deliberately compact anchor).
+**Consequences**: A deliberate, documented deviation from spec §4.2's "Fleet 6px-always". The calm state is visually lighter (5px), so the inflamed state reads as a clear step-up in both colour and weight; this is the single source of truth for the Fleet edge treatment.
+
 ### ADR-020: Ochre accent token for age-led Stale tiles uses AA-corrected inks
 **Date**: 2026-06-21
 **Status**: Accepted
