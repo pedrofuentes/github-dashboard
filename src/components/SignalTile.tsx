@@ -82,6 +82,13 @@ export interface SignalTileProps {
    * expanded tiers are unaffected.
    */
   density?: Density;
+  /**
+   * Drops the redundant visible repo header line (Phase 3 D1). Forwarded to the
+   * frame; set by {@link DashboardView} when the repo-scope filter is narrowed
+   * to a single repo. The real `nameWithOwner` is still announced via the title,
+   * the activate summary, and the visually-hidden alias note (AC-10).
+   */
+  hideRepoHeader?: boolean;
 }
 
 /**
@@ -162,6 +169,7 @@ export function SignalTile({
   rowIndex,
   alias,
   density = 'balanced',
+  hideRepoHeader,
 }: SignalTileProps): ReactElement {
   const isActivity = tile.signal === 'activity';
   // Narrow inline (not via `isActivity`) so `data[...]` is keyed by a non-activity
@@ -205,6 +213,7 @@ export function SignalTile({
       identityTone={identityTone}
       alias={alias}
       accessibleSummary={accessibleSummary}
+      hideRepoHeader={hideRepoHeader}
     >
       <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
     </TileFrame>
