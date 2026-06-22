@@ -272,3 +272,36 @@ describe('TileFrame — alias and accessible summary', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('TileFrame — hideRepoHeader (filtered-to-one header drop, AC-10)', () => {
+  it('drops the visible repo header line but keeps the real repo in the title and activate label', () => {
+    // When the dashboard is filtered to a single repo every tile belongs to that
+    // repo, so the per-tile repo header line is redundant and visually dropped.
+    // The repo identity must NEVER leave the a11y tree (AC-10): the heading is
+    // only visually hidden (sr-only) while its title + the activate control's
+    // accessible name still announce the real `nameWithOwner`.
+    renderFrame({ hideRepoHeader: true, accessibleSummary: 'CI: 2 failing, problem — octo/a' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveClass('sr-only');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    expect(
+      screen.getByRole('button', { name: 'CI: 2 failing, problem — octo/a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the visually-hidden alias note announcing the real repo when header-dropped', () => {
+    renderFrame({ hideRepoHeader: true, alias: 'api' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveClass('sr-only');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    const aliasNote = within(heading).getByText('(alias for octo/a)');
+    expect(aliasNote).toHaveClass('sr-only');
+  });
+
+  it('renders the visible repo header normally when hideRepoHeader is absent', () => {
+    renderFrame();
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).not.toHaveClass('sr-only');
+    expect(heading).toHaveTextContent('octo/a');
+  });
+});
