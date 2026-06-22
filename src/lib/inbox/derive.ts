@@ -77,6 +77,12 @@ function pushGated(
  * throw here degrades that row to a skip rather than aborting the whole fleet
  * derive (#238). The transform stays pure: the skip is silent — no clock, no
  * logging (§1).
+ *
+ * The catch is deliberately broad, but id construction is the only thing that
+ * throws inside `build`: {@link pushGated} just runs the origin guard and an
+ * array push, neither of which throws. So under normal (Zod-validated) data no
+ * row is ever dropped unexpectedly — the breadth only guards a hypothetical
+ * future throw, never a reachable normal-usage path.
  */
 function emitRow(build: () => void): void {
   try {

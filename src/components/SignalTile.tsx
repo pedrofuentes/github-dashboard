@@ -94,7 +94,12 @@ export interface SignalTileProps {
 /**
  * Map the data lifecycle status to the status glyph kind whose tone the accent
  * bar paints (DESIGN-TILES §3.6). The per-signal escalation accents (§1.4) land
- * with the bespoke bodies; for now the frame reflects the lifecycle state.
+ * with the bespoke bodies; for now the frame reflects only the lifecycle state.
+ *
+ * Note `ready` maps to `info`, not §3.6's success/neutral all-clear tone: the
+ * generic frame cannot yet tell "all-clear" from "has items" without the
+ * per-signal slice, so it holds a neutral "data loaded" cue until the bespoke
+ * bodies own that distinction. Deliberate and transitional, not a §3.6 miss.
  */
 const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
   loading: 'loading',
