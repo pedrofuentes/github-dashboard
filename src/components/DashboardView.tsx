@@ -25,7 +25,7 @@ import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import { cn } from '../lib/cn';
 import { toRglLayout } from '../lib/dashboard-layout';
 import { mergeLayoutGeometry } from '../lib/dashboard-layout-merge';
-import { summarizeFleetHealth } from '../lib/fleet-summary';
+import { perRepoHealth, summarizeFleetHealth } from '../lib/fleet-summary';
 import {
   SIGNAL_LABELS,
   arrowDirection,
@@ -137,6 +137,10 @@ export function DashboardView({
   // Fleet-wide rollup for the pinned summary anchor. Reuses the per-repo data
   // resolved above (never re-invokes getRowData) so it stays in sync and cheap.
   const summary = useMemo(() => summarizeFleetHealth(repoData.values()), [repoData]);
+
+  // Per-repo health entries (worst-state strip + worst-child chip), derived from
+  // the same resolved data so they stay in sync with the aggregate rollup.
+  const fleetEntries = useMemo(() => perRepoHealth(repoData.entries()), [repoData]);
 
   // Grid extent for SC 1.3.1 context: the grid is a fixed 12 columns wide; the
   // row count is the deepest tile's bottom edge (1-based, in grid-row units).
@@ -338,7 +342,7 @@ export function DashboardView({
   if (tiles.length === 0) {
     return (
       <section aria-label="Dashboard">
-        <FleetSummaryTile summary={summary} />
+        <FleetSummaryTile summary={summary} entries={fleetEntries} />
         <p className="mt-4 rounded-md border border-border bg-surface px-4 py-10 text-center text-sm text-text-muted">
           No repositories to display.
         </p>
@@ -348,7 +352,7 @@ export function DashboardView({
 
   return (
     <section aria-label="Dashboard">
-      <FleetSummaryTile summary={summary} />
+      <FleetSummaryTile summary={summary} entries={fleetEntries} />
       <div
         ref={gridRef}
         role="grid"
