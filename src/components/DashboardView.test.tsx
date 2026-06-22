@@ -288,6 +288,21 @@ describe('DashboardView', () => {
     expect(screen.queryByRole('button', { name: /: .*\u2014 octo/i })).toBeNull();
   });
 
+  it('paints the loading-skeleton placeholders with the shared border token', () => {
+    const { container } = render(
+      <DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} loading />,
+    );
+    const pulses = container.querySelectorAll('.animate-pulse');
+    expect(pulses.length).toBeGreaterThan(0);
+    // The decorative skeleton uses the shared `bg-border` token (slate-200 in
+    // light, like every other skeleton in the app) instead of the fainter
+    // surface-raised slate-50, so the light hue is exact and it still flips dark.
+    pulses.forEach((pulse) => {
+      expect(pulse.className).toContain('bg-border');
+      expect(pulse.className).not.toContain('bg-surface-raised');
+    });
+  });
+
   it('renders an alert with a retry control when the fetch fails', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
