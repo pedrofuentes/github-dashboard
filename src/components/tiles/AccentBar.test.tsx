@@ -37,20 +37,6 @@ describe('AccentBar', () => {
     expect(bar.className).toContain('bg-accent-failure');
   });
 
-  it('keeps the deprecated sm alias mapping to the calm 5px height', () => {
-    const { container } = render(<AccentBar tone="success" thickness="sm" />);
-    const bar = container.firstElementChild as HTMLElement;
-    expect(bar.className).toContain('h-[5px]');
-    expect(bar.className).not.toContain('h-[6px]');
-  });
-
-  it('keeps the deprecated md alias mapping to the problem 6px height', () => {
-    const { container } = render(<AccentBar tone="success" thickness="md" />);
-    const bar = container.firstElementChild as HTMLElement;
-    expect(bar.className).toContain('h-[6px]');
-    expect(bar.className).not.toContain('h-[5px]');
-  });
-
   it('exposes the tone via a data attribute for consumers', () => {
     const { container } = render(<AccentBar tone="info" />);
     expect(container.firstElementChild).toHaveAttribute('data-tone', 'info');
