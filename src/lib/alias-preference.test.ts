@@ -76,4 +76,29 @@ describe('saveAliases', () => {
     saveAliases({ 'octo/a': 'z'.repeat(ALIAS_MAX_LENGTH + 1) });
     expect(localStorage.getItem(KEY)).toBeNull();
   });
+  it('swallows a setItem write failure without throwing', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    // safeSet's catch (alias-preference.ts) makes persistence best-effort: a
+    // failing write must degrade silently, never propagate.
+    expect(() => saveAliases({ 'octo/a': 'Alpha' })).not.toThrow();
+  });
+});
+
+describe('setAlias under a failing write', () => {
+  it('returns the computed next map but persists nothing when setItem throws', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    // Assert via VALUE (not a spy count — Node-20 jsdom storage is spy-hostile):
+    // the in-memory result is still returned, and because the write was swallowed
+    // a subsequent read sees nothing persisted.
+    let next: Record<string, string> | undefined;
+    expect(() => {
+      next = setAlias('octo/a', 'Alpha');
+    }).not.toThrow();
+    expect(next).toEqual({ 'octo/a': 'Alpha' });
+    expect(loadAliases()).toEqual({});
+  });
 });

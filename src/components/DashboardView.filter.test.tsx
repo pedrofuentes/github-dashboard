@@ -344,6 +344,37 @@ describe('DashboardView — empty-state discrimination (I1)', () => {
     await user.click(screen.getByRole('button', { name: /clear filter/i }));
     expect(onClearFilter).toHaveBeenCalledTimes(1);
   });
+
+  it('falls back to the neutral empty copy when a visible tile has no matching repo (defensive)', () => {
+    // A visible tile whose repo is absent from the current fleet projects out of
+    // `tiles` (the repo lookup misses), yet the layout is not "all hidden" and no
+    // filter is active — so the discriminated empty state lands on its final
+    // neutral fallback branch rather than rendering a blank region.
+    const orphanTile: DashboardTile = {
+      i: 'octo/ghost:ci',
+      signal: 'ci',
+      repo: 'octo/ghost',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={[orphanTile]}
+        onLayoutChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
+    // Distinguishes the fallback from the filtered-empty branch: with no active
+    // filter, no Clear-filter recovery is offered. The summary still anchors.
+    expect(screen.queryByRole('button', { name: /clear filter/i })).toBeNull();
+    expect(screen.getByRole('region', { name: /fleet summary/i })).toBeInTheDocument();
+  });
 });
 
 describe('DashboardView — hideRepoHeader derivation reaches the tiles (#335)', () => {
