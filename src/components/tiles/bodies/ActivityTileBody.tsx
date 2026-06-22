@@ -47,6 +47,7 @@
 import type { ReactElement } from 'react';
 
 import { useCommitActivity } from '../../../hooks/useCommitActivity';
+import type { Density } from '../../../lib/density-preference';
 import { formatDelta } from '../../../lib/format';
 import type { Repo } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
@@ -59,6 +60,12 @@ export interface ActivityTileBodyProps {
   repo: Repo;
   /** Density tier the surrounding TileFrame measured (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier drops
+   * the sparkline so only the hero + delta remain; `balanced` (the default)
+   * keeps it, and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 /**
@@ -94,7 +101,11 @@ function deltaPhrase(latest: number, previous: number | undefined): string {
  * hero + week-over-week delta, with a purple sparkline (standard) and heatmap
  * (expanded), plus a meaning-bearing fallback for every load state.
  */
-export function ActivityTileBody({ repo, size }: ActivityTileBodyProps): ReactElement {
+export function ActivityTileBody({
+  repo,
+  size,
+  density = 'balanced',
+}: ActivityTileBodyProps): ReactElement {
   const activity = useCommitActivity(repo);
 
   if (activity.state === 'loading') {
@@ -162,7 +173,10 @@ export function ActivityTileBody({ repo, size }: ActivityTileBodyProps): ReactEl
   const sparkSrLabel = `${plural(totalCommits, 'commit')} over ${plural(weekCount, 'week')} in ${repo.nameWithOwner}`;
   const heatmapSrLabel = `Commit activity heatmap for ${repo.nameWithOwner}: ${plural(totalCommits, 'commit')} over ${plural(weekCount, 'week')}`;
 
-  const showSparkline = size !== 'compact';
+  // Glanceable standard drops the sparkline so only the hero + delta remain;
+  // balanced and expanded keep it (compact never shows it).
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
+  const showSparkline = size !== 'compact' && showStandardExtras;
   const showHeatmap = size === 'expanded';
 
   return (

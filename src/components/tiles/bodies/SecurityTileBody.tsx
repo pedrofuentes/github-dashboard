@@ -20,6 +20,7 @@
 import type { ReactElement, ReactNode } from 'react';
 
 import type { SecurityCounts } from '../../../hooks/signals/securityGrade';
+import type { Density } from '../../../lib/density-preference';
 import { formatRelativeTime } from '../../../lib/format';
 import type { Repo, RepoSignalData, SecurityAlertRow } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
@@ -35,6 +36,12 @@ export interface SecurityTileBodyProps {
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier
+   * drops the severity bar + meta so only the hero remains; `balanced` (the
+   * default) keeps them, and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 /** One severity row: counts key, bar-fill tone, AA text class, glyph + labels. */
@@ -129,7 +136,11 @@ function NeutralState({ message, srText }: { message: string; srText: string }):
   );
 }
 
-export function SecurityTileBody({ data, size }: SecurityTileBodyProps): ReactElement {
+export function SecurityTileBody({
+  data,
+  size,
+  density = 'balanced',
+}: SecurityTileBodyProps): ReactElement {
   const security = data.security;
 
   if (!security || security.status === 'unknown') {
@@ -198,6 +209,10 @@ export function SecurityTileBody({ data, size }: SecurityTileBodyProps): ReactEl
   const recency = newestAlertRecency(security.alerts);
   const spoken = spokenSummary(counts);
 
+  // Glanceable standard drops the severity bar + meta so only the hero remains;
+  // balanced and expanded keep them (compact already shows neither).
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
+
   const totalText = `${truncated ? '≥ ' : ''}${total} total`;
   const srLabel = truncated
     ? `Security: at least ${spoken} (partial — more alerts not counted), ${total} total`
@@ -263,7 +278,7 @@ export function SecurityTileBody({ data, size }: SecurityTileBodyProps): ReactEl
   );
 
   const severityBar =
-    size === 'compact' ? null : (
+    size === 'compact' || !showStandardExtras ? null : (
       <div data-part="severity-bar" className="w-full max-w-[16rem]">
         <SeverityBar segments={buildSegments(counts)} stepped dividers />
       </div>
@@ -300,7 +315,7 @@ export function SecurityTileBody({ data, size }: SecurityTileBodyProps): ReactEl
       ) : (
         <>
           {severityBar}
-          {meta}
+          {showStandardExtras ? meta : null}
           {breakdown}
         </>
       )}
