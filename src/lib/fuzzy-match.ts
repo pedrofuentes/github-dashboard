@@ -84,7 +84,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
       const currChar = target[idx];
 
       // After separator: space, -, _, ., /
-      if (/[\s\-_.\/]/.test(prevChar)) {
+      if (/[\s\-_./]/.test(prevChar)) {
         score += 20;
       }
       // CamelCase boundary: lowercase followed by uppercase
@@ -136,11 +136,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
  * 2. Shorter key length wins
  * 3. Original order preserved (stable sort)
  */
-export function fuzzyRank<T>(
-  query: string,
-  items: readonly T[],
-  keyFn: (item: T) => string,
-): T[] {
+export function fuzzyRank<T>(query: string, items: readonly T[], keyFn: (item: T) => string): T[] {
   // Empty query returns all items in original order
   if (query.length === 0) {
     return [...items];
