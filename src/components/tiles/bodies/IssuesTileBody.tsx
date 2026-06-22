@@ -106,12 +106,25 @@ export function IssuesTileBody({ data, size }: IssuesTileBodyProps): ReactElemen
   const overThreshold = openCount > 0 && issues.overThreshold === true;
   const tone: AccentTone = overThreshold ? 'warning' : 'neutral';
   const noun = openCount === 1 ? 'issue' : 'issues';
+
+  // Cross-slice meta: count stale *issues* from the stale slice (filtered to
+  // `type === 'issue'`). The body already receives the full RepoSignalData, so
+  // this needs no extra fetch. Undefined while stale is absent/loading/errored.
+  // GAP (no new request): a "▲N new" delta and a counts sparkline both need an
+  // issue counts time-series the signal hook does not retain — deferred.
+  const staleIssueCount =
+    data.stale?.status === 'ready'
+      ? (data.stale.staleItems ?? []).filter((item) => item.type === 'issue').length
+      : undefined;
+  const showStaleMeta = size !== 'compact' && staleIssueCount !== undefined && staleIssueCount > 0;
+
   const srLabel =
     openCount === 0
       ? 'No open issues'
       : overThreshold
         ? `${openCount} open ${noun}, over the triage threshold`
         : `${openCount} open ${noun}`;
+  const staleSrLabel = showStaleMeta ? `, ${staleIssueCount} stale` : '';
 
   if (openCount === 0) {
     return (
@@ -155,13 +168,26 @@ export function IssuesTileBody({ data, size }: IssuesTileBodyProps): ReactElemen
           <span aria-hidden="true">Over triage threshold</span>
         </span>
       ) : null}
+      {showStaleMeta ? (
+        <span
+          data-part="stale-meta"
+          aria-hidden="true"
+          className="inline-flex items-center gap-1 text-xs text-text-muted"
+        >
+          <StatusGlyph status="neutral" size={12} title="Stale issues" />
+          <span>{staleIssueCount} stale</span>
+        </span>
+      ) : null}
       {size === 'expanded' ? (
         <span data-part="detail" aria-hidden="true" className="text-xs text-text-muted">
           {openCount} open {noun}
           {overThreshold ? ', over the triage threshold' : ''}
         </span>
       ) : null}
-      <span className="sr-only">{srLabel}</span>
+      <span className="sr-only">
+        {srLabel}
+        {staleSrLabel}
+      </span>
     </div>
   );
 }
