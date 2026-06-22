@@ -27,6 +27,7 @@ import { BigValue } from '../BigValue';
 import type { SeveritySegment } from '../SeverityBar';
 import { SeverityBar } from '../SeverityBar';
 import { StatusGlyph } from '../StatusGlyph';
+import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
 
 export interface SecurityTileBodyProps {
@@ -148,30 +149,11 @@ export function SecurityTileBody({
   }
 
   if (security.status === 'loading') {
-    return (
-      <div
-        data-state="loading"
-        className="flex h-full flex-col items-center justify-center text-text-muted"
-      >
-        <StatusGlyph status="loading" size={20} title="Loading security…" />
-        <span className="sr-only">Loading security…</span>
-      </div>
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading security…" />;
   }
 
   if (security.status === 'error') {
-    return (
-      <div
-        data-state="error"
-        className="flex h-full flex-col items-center justify-center text-accent-failure"
-      >
-        <StatusGlyph status="failure" size={20} title="Couldn't load security" />
-        <span aria-hidden="true" className="mt-1 text-sm">
-          Couldn't load security
-        </span>
-        <span className="sr-only">Couldn't load security</span>
-      </div>
-    );
+    return <TileMessage kind="failed" message="Couldn't load" srText="Couldn't load security" />;
   }
 
   // status === 'ready'
@@ -181,25 +163,23 @@ export function SecurityTileBody({
 
   const counts = security.counts;
   const total = totalAlerts(counts);
+  // T16 missing-states matrix: `truncated` is Security's `partial` member. Unlike
+  // loading/empty/failed it is NOT a takeover — the alert data is present and
+  // shown — so it surfaces as an inline "≥"/"partial" hint on the ready view
+  // rather than a full TileMessage `partial` row (which TileMessage still
+  // supports for data-less partials, e.g. the Fleet placeholder).
   const truncated = security.truncated === true;
 
   // All-clear: a calm, positive success state — visually unmistakable from an
-  // alarm (no live region, success glyph). T16 will later route this through the
-  // shared TileMessage; until then the body owns the treatment.
+  // alarm. Routed through the shared TileMessage (success glyph, data-state
+  // "empty"), so it can never be confused with the ⚠ failed-to-load row (§7).
   if (total === 0) {
     return (
-      <div
-        data-state="ready"
-        data-tone="success"
-        data-tier={size}
-        className="flex h-full flex-col items-center justify-center gap-1 text-center text-accent-success"
-      >
-        <StatusGlyph status="success" size={size === 'compact' ? 18 : 22} title="No open alerts" />
-        <span aria-hidden="true" className="text-sm font-medium">
-          All clear
-        </span>
-        <span className="sr-only">Security: all clear, no open alerts</span>
-      </div>
+      <TileMessage
+        kind="all-clear"
+        message="All clear"
+        srText="Security: all clear, no open alerts"
+      />
     );
   }
 

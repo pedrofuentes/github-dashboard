@@ -12,6 +12,7 @@ import type { AccentTone, TileTier } from '../types';
 import { BigValue } from '../BigValue';
 import { Chip } from '../Chip';
 import { SeverityBar } from '../SeverityBar';
+import { TileMessage } from '../TileMessage';
 
 export interface PrsTileBodyProps {
   /** The repo this tile represents — used for accessible context. */
@@ -101,26 +102,16 @@ export function PrsTileBody({
   const status = slice?.status ?? 'unknown';
 
   if (status === 'loading') {
-    return (
-      <div data-state="loading" className="flex flex-col gap-2" aria-busy="true">
-        <span
-          aria-hidden="true"
-          className="h-8 w-16 animate-pulse rounded bg-surface-raised motion-reduce:animate-none"
-        />
-        <span className="sr-only">Loading pull requests…</span>
-      </div>
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading pull requests…" />;
   }
 
   if (status === 'error') {
     return (
-      <div data-state="error" className="flex items-center gap-2 text-accent-failure">
-        <span aria-hidden="true" className="text-lg font-semibold leading-none">
-          ✗
-        </span>
-        <span className="text-sm">Couldn’t load pull requests</span>
-        <span className="sr-only">in {repo.nameWithOwner}</span>
-      </div>
+      <TileMessage
+        kind="failed"
+        message="Couldn't load"
+        srText={`Couldn't load pull requests in ${repo.nameWithOwner}`}
+      />
     );
   }
 
@@ -141,13 +132,11 @@ export function PrsTileBody({
 
   if (openCount === 0) {
     return (
-      <div data-state="empty" className="flex items-center gap-2 text-accent-success">
-        <span aria-hidden="true" className="text-lg font-semibold leading-none">
-          ✓
-        </span>
-        <span className="text-sm">No open PRs</span>
-        <span className="sr-only">No open pull requests in {repo.nameWithOwner}</span>
-      </div>
+      <TileMessage
+        kind="all-clear"
+        message="All clear"
+        srText={`No open pull requests in ${repo.nameWithOwner}`}
+      />
     );
   }
 

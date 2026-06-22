@@ -17,6 +17,7 @@ import type { Density } from '../../../lib/density-preference';
 import type { Repo, RepoSignalData } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
 import { StatusGlyph } from '../StatusGlyph';
+import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
 
 export interface IssuesTileBodyProps {
@@ -77,27 +78,11 @@ export function IssuesTileBody({
   const issues = data.issues;
 
   if (issues?.status === 'loading') {
-    return (
-      <CenteredState
-        state="loading"
-        tone="muted"
-        glyph={<StatusGlyph status="loading" size={20} title="Loading issues…" />}
-        message="Loading…"
-        srText="Loading issues…"
-      />
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading issues…" />;
   }
 
   if (issues?.status === 'error') {
-    return (
-      <CenteredState
-        state="error"
-        tone="error"
-        glyph={<StatusGlyph status="failure" size={20} title="Issue count unavailable" />}
-        message="Issue count unavailable"
-        srText="Issue count unavailable"
-      />
-    );
+    return <TileMessage kind="failed" message="Couldn't load" srText="Issue count unavailable" />;
   }
 
   // `unknown`, an absent slice, or any unexpected status → safe neutral.
@@ -144,20 +129,7 @@ export function IssuesTileBody({
   const staleSrLabel = showStaleMeta ? `, ${staleIssueCount} stale` : '';
 
   if (openCount === 0) {
-    return (
-      <div
-        data-state="ready"
-        data-tone={tone}
-        data-tier={size}
-        className="flex h-full flex-col items-center justify-center gap-1 text-center text-text-muted"
-      >
-        <StatusGlyph status="neutral" size={size === 'compact' ? 18 : 22} title="No open issues" />
-        <span aria-hidden="true" className="text-sm">
-          No open issues
-        </span>
-        <span className="sr-only">{srLabel}</span>
-      </div>
-    );
+    return <TileMessage kind="all-clear" message="All clear" srText={srLabel} />;
   }
 
   const issueGlyph = <StatusGlyph status="info" size={14} title="Open issues" />;
