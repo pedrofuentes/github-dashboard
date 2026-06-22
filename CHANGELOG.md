@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Dashboard customization & repo-scope filter** (Phase 3): a **Customize layout** panel to show or hide tiles per repository and set short per-repo **display aliases** (the real `owner/name` is still announced to assistive tech), plus a toolbar **repo filter** to focus the Dashboard on just the repositories you pick. While a filter is active the grid is read-only — drag, resize and keyboard rearrange are paused — so a focused, partial view can never be compacted and saved over your real tile arrangement. Empty states are now actionable: distinct messages for no repositories, **all tiles hidden** (with a nudge to add some back), and **nothing matching the current filter** (with a one-click **Clear filter**). All client-only and stored per-device.
 - **Configurable default view**: the **Dashboard** is now the out-of-the-box default landing view, and a new **Default view** control lets you choose which of **Grid / Dashboard / Inbox** the app opens to (persisted under `fleet:default-view`). The app no longer reopens to your last-used view — it always opens to your chosen default.
 - **Notifications Inbox** (M11): a third top-level view — a single, **newest-first**,
   triageable list that gathers everything across your fleet that needs attention

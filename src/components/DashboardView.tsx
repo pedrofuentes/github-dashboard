@@ -21,7 +21,6 @@ import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 
-import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import { useDensity } from '../hooks/useDensity';
 import { cn } from '../lib/cn';
 import { toRglLayout } from '../lib/dashboard-layout';
@@ -37,6 +36,7 @@ import {
   resizeCell,
 } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
+import { isAllHidden } from '../lib/tile-visibility';
 import type { DashboardTile } from '../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import { FleetSummaryTile } from './FleetSummaryTile';
@@ -61,8 +61,33 @@ export interface DashboardViewProps {
   getRowData: GetRowData;
   /** Opens the drill-down drawer for the activated tile's repo. */
   onRepoActivate: (repo: Repo) => void;
+  /**
+   * The dashboard layout (hidden tiles included). Owned by the parent so the
+   * sibling CustomizePanel and this grid mutate the SAME instance — a single
+   * `useDashboardLayout` lifted to App (red-team B-1). Replaces the formerly
+   * internal hook call, which would otherwise desync from the panel's copy.
+   */
+  layout: DashboardTile[];
+  /** Emits the next layout after a pointer/keyboard edit — wires to `setLayout`. */
+  onLayoutChange: (next: DashboardTile[]) => void;
   /** When true, the grid items can be dragged and resized with a pointer. */
   editing?: boolean;
+  /**
+   * Active repo-scope selection (empty/undefined ⇒ all shown). A *presentational*
+   * filter: tiles whose repo is excluded are projected out of the grid without
+   * mutating `layout` or tile visibility. While a narrowing filter is active the
+   * arrange affordances are guarded (no persist, no drag/resize, no keyboard
+   * rail) so a partially-rendered layout can never be compacted and saved over
+   * the real geometry.
+   */
+  repoFilter?: Set<string>;
+  /** Clears the active repo filter — wires the filtered-empty recovery button. */
+  onClearFilter?: () => void;
+  /**
+   * Per-repo display aliases (parent-owned). Shown as the tile name while the
+   * real `nameWithOwner` is still announced (title + activate label).
+   */
+  aliases?: Record<string, string>;
   /** True while the repo fetch is in flight (skeleton on first load). */
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the tiles. */
@@ -91,12 +116,24 @@ export function DashboardView({
   repos,
   getRowData,
   onRepoActivate,
+  layout,
+  onLayoutChange,
   editing = false,
+  repoFilter,
+  onClearFilter,
+  aliases,
   loading = false,
   error = null,
   onRetry,
 }: DashboardViewProps): ReactElement {
-  const { layout, setLayout } = useDashboardLayout(repos);
+  // A narrowing repo filter is active only when a non-empty selection is set.
+  // The tile projection below is purely presentational; while it is active every
+  // arrange affordance is also guarded so a filtered (partial) layout can never
+  // be compacted and persisted over the real geometry (red-team B1).
+  const filterActive = repoFilter !== undefined && repoFilter.size > 0;
+  // Drag, resize, the keyboard rail and the editing visual all gate on this so a
+  // filtered layout can be neither rearranged nor compacted.
+  const editControlsActive = editing && !filterActive;
 
   // The active tile density (DESIGN-TILES §6; T15). Threaded to every SignalTile
   // so `glanceable` sheds the standard-tier micro-viz while `balanced` keeps it.
@@ -129,13 +166,20 @@ export function DashboardView({
       if (!tile.visible) {
         continue;
       }
+      // Presentational repo-scope projection: drop tiles whose repo is outside a
+      // non-empty selection. Applied AFTER the visibility check and BEFORE the
+      // RGL layout is built, so it never mutates `layout` or `visible` (AC-7).
+      // An empty selection (size 0) means "all shown", so it filters nothing.
+      if (repoFilter !== undefined && repoFilter.size > 0 && !repoFilter.has(tile.repo)) {
+        continue;
+      }
       const repo = repoIndex.get(tile.repo);
       if (repo !== undefined) {
         resolved.push({ tile, repo });
       }
     }
     return resolved;
-  }, [layout, repoIndex]);
+  }, [layout, repoIndex, repoFilter]);
 
   const rglLayout = useMemo(() => toRglLayout(tiles.map((entry) => entry.tile)), [tiles]);
 
@@ -170,13 +214,20 @@ export function DashboardView({
   // onLayoutChange on mount and on responsive breakpoint switches.
   const handleLayoutChange = useCallback(
     (next: Layout) => {
+      // Persistence guard: while a filter is active the grid only renders a
+      // subset of tiles, so RGL's vertical compaction fires onLayoutChange with
+      // a partial geometry. Refuse it (belt to the `onLayoutChange={...}` gate on
+      // the grid) so the filtered layout is never saved over the real one.
+      if (filterActive) {
+        return;
+      }
       const merged = mergeLayoutGeometry(layout, next);
       const changed = merged.some((tile, index) => tile !== layout[index]);
       if (changed) {
-        setLayout(merged);
+        onLayoutChange(merged);
       }
     },
-    [layout, setLayout],
+    [layout, onLayoutChange, filterActive],
   );
 
   // Roving tabindex: exactly one tile is the grid's tab stop. Default to the
@@ -257,14 +308,21 @@ export function DashboardView({
         // layout update, no persistence write, no announcement.
         return;
       }
-      setLayout(layout.map((entry) => (entry.i === tile.i ? { ...entry, ...geometry } : entry)));
+      onLayoutChange(
+        layout.map((entry) => (entry.i === tile.i ? { ...entry, ...geometry } : entry)),
+      );
       setAnnouncement(message);
     },
-    [layout, setLayout],
+    [layout, onLayoutChange],
   );
 
   const handleMove = useCallback(
     (tileId: string, direction: MoveDirection) => {
+      // Keyboard arrange guard: never mutate geometry while filtered. The rail is
+      // suppressed when filtered, but guard the handler defensively too.
+      if (filterActive) {
+        return;
+      }
       const tile = layout.find((entry) => entry.i === tileId);
       if (tile === undefined) {
         return;
@@ -276,11 +334,15 @@ export function DashboardView({
         formatMoveAnnouncement(SIGNAL_LABELS[tile.signal], tile.repo, geometry.x, geometry.y),
       );
     },
-    [layout, applyGeometry],
+    [layout, applyGeometry, filterActive],
   );
 
   const handleResize = useCallback(
     (tileId: string, dimension: ResizeDimension, delta: number) => {
+      // Keyboard arrange guard: mirror handleMove — no resize while filtered.
+      if (filterActive) {
+        return;
+      }
       const tile = layout.find((entry) => entry.i === tileId);
       if (tile === undefined) {
         return;
@@ -292,7 +354,7 @@ export function DashboardView({
         formatResizeAnnouncement(SIGNAL_LABELS[tile.signal], tile.repo, geometry.w, geometry.h),
       );
     },
-    [layout, applyGeometry],
+    [layout, applyGeometry, filterActive],
   );
 
   if (error !== null) {
@@ -345,12 +407,37 @@ export function DashboardView({
   }
 
   if (tiles.length === 0) {
+    // Discriminate WHY the grid is empty so the copy is actionable (I1). The
+    // FleetSummaryTile anchors every case. The all-hidden recovery takes priority
+    // over the filter (hidden is the more fundamental state to recover from); the
+    // final fallback still renders copy rather than a blank region.
+    const noRepos = repos.length === 0;
+    const allHidden = !noRepos && isAllHidden(layout);
+    const filteredEmpty = !noRepos && !allHidden && filterActive;
+    const emptyStateMessage = noRepos
+      ? 'No repositories to display.'
+      : allHidden
+        ? 'All tiles hidden — add some back.'
+        : filteredEmpty
+          ? 'No tiles match the current filter.'
+          : 'No repositories to display.';
     return (
       <section aria-label="Dashboard">
         <FleetSummaryTile summary={summary} entries={fleetEntries} />
         <p className="mt-4 rounded-md border border-border bg-surface px-4 py-10 text-center text-sm text-text-muted">
-          No repositories to display.
+          {emptyStateMessage}
         </p>
+        {filteredEmpty && onClearFilter ? (
+          <div className="mt-3 text-center">
+            <button
+              type="button"
+              onClick={onClearFilter}
+              className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              Clear filter
+            </button>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -358,6 +445,14 @@ export function DashboardView({
   return (
     <section aria-label="Dashboard">
       <FleetSummaryTile summary={summary} entries={fleetEntries} />
+      {editing && filterActive ? (
+        <p
+          role="status"
+          className="mt-4 rounded-md border border-border bg-surface-raised px-4 py-2 text-sm text-text-muted"
+        >
+          Clear the filter to rearrange tiles.
+        </p>
+      ) : null}
       <div
         ref={gridRef}
         role="grid"
@@ -368,19 +463,19 @@ export function DashboardView({
         className="mt-4"
       >
         <ResponsiveGridLayout
-          className={cn('layout', editing && 'dashboard-editing')}
+          className={cn('layout', editControlsActive && 'dashboard-editing')}
           layouts={layouts}
           breakpoints={BREAKPOINTS}
           cols={COLS}
           rowHeight={ROW_HEIGHT}
           margin={MARGIN}
-          isDraggable={editing}
-          isResizable={editing}
+          isDraggable={editControlsActive}
+          isResizable={editControlsActive}
           isDroppable={false}
           draggableCancel={DRAG_CANCEL_SELECTOR}
           compactType="vertical"
           useCSSTransforms={!reducedMotion}
-          onLayoutChange={handleLayoutChange}
+          onLayoutChange={filterActive ? undefined : handleLayoutChange}
         >
           {tiles.map(({ tile, repo }) => (
             <div key={tile.i} role="row" aria-rowindex={tile.y + 1}>
@@ -390,13 +485,14 @@ export function DashboardView({
                 data={repoData.get(repo.nameWithOwner) ?? {}}
                 onActivate={onRepoActivate}
                 active={tile.i === activeTileId}
-                editing={editing}
+                editing={editControlsActive}
                 onTileFocus={handleTileFocus}
                 onMove={handleMove}
                 onResize={handleResize}
                 rowIndex={tile.y + 1}
                 colIndex={tile.x + 1}
                 density={density}
+                alias={aliases?.[tile.repo]}
               />
             </div>
           ))}

@@ -1,15 +1,27 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useDashboardLayout } from '../hooks/useDashboardLayout';
 import type { GetRowData, Repo } from '../types/fleet';
-import { DashboardView } from './DashboardView';
+import { DashboardView as DashboardViewImpl } from './DashboardView';
 
 // Activity tiles self-fetch via `useCommitActivity` (which reads the auth
 // context); stub it so the full grid mounts without an AuthProvider or network.
 vi.mock('../hooks/useCommitActivity', () => ({
   useCommitActivity: vi.fn(() => ({ state: 'empty' })),
 }));
+
+// The layout hook was lifted to the parent (App) in Phase 3 (C1). This wrapper
+// calls the real hook so these keyboard reorder/resize/persistence tests keep
+// their original localStorage semantics with the new required props.
+function DashboardView(
+  props: Omit<ComponentProps<typeof DashboardViewImpl>, 'layout' | 'onLayoutChange'>,
+): ReactElement {
+  const { layout, setLayout } = useDashboardLayout(props.repos);
+  return <DashboardViewImpl {...props} layout={layout} onLayoutChange={setLayout} />;
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
