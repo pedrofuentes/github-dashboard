@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDashboardLayout } from '../hooks/useDashboardLayout';
+import { parseColorTokens } from '../lib/css-tokens';
 import { DEFAULT_LAYOUT } from '../lib/dashboard-layout';
 import type { GetRowData, Repo } from '../types/fleet';
 import { DashboardView as DashboardViewImpl } from './DashboardView';
@@ -26,6 +31,24 @@ function DashboardView(
 }
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+
+// The set of `--color-*` custom properties actually declared in src/index.css
+// (light `:root` block). Used by the error-alert test to prove every
+// `var(--color-*)` the alert references resolves to a DEFINED token — the prior
+// substring assertions passed identically whether the arbitrary `color-mix()`
+// tint referenced a defined token (`var(--color-failure)`) or an undefined one
+// (`var(--color-accent-failure)`), the exact regression that shipped green in
+// #209 and was caught only by building the bundle (#210).
+const indexCss = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../index.css'),
+  'utf8',
+);
+const DEFINED_COLOR_VARS = new Set(Object.keys(parseColorTokens(indexCss, ':root')));
+
+/** Every `var(--color-NAME)` referenced inside a (possibly arbitrary-value) className. */
+function referencedColorVars(className: string): string[] {
+  return [...className.matchAll(/var\(\s*(--color-[\w-]+)\s*\)/g)].map((match) => match[1]);
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -308,6 +331,27 @@ describe('DashboardView', () => {
     expect(retry.className).toContain('text-accent-failure');
     expect(retry.className).toContain('outline-focus');
     expect(retry.className).not.toMatch(/-red-\d/);
+
+    // STRENGTHEN (#210): the substring assertions above pass even if an arbitrary
+    // `color-mix(...)` tint references an UNDEFINED custom property (e.g.
+    // `var(--color-accent-failure)` instead of the defined `var(--color-failure)`),
+    // which renders inert — transparent bg / currentColor border — yet keeps every
+    // asserted class string intact. jsdom can't resolve the compiled CSS, so we
+    // cross-check statically: every `var(--color-*)` the alert + retry reference
+    // must be DECLARED in src/index.css.
+    const referenced = [
+      ...referencedColorVars(alert.className),
+      ...referencedColorVars(retry.className),
+    ];
+    // Teeth: the alert's color-mix tints DO reference custom properties, so an
+    // empty set would mean the styling (or the regex) silently changed.
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const name of referenced) {
+      expect(
+        DEFINED_COLOR_VARS.has(name),
+        `${name} is referenced by the error alert but is not declared in src/index.css`,
+      ).toBe(true);
+    }
   });
 
   it('prefers the error state over the empty state even with no repos', () => {
