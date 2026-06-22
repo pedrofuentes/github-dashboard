@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import resolveConfig from 'tailwindcss/resolveConfig';
 import tailwindConfig from '../../tailwind.config.js';
+
+import { parseColorTokens } from '../lib/css-tokens';
 
 /**
  * Token-system contract (DESIGN-TILES §1.1–§1.3). These assertions lock the
@@ -8,7 +14,16 @@ import tailwindConfig from '../../tailwind.config.js';
  * `src/index.css` (`:root` / `.dark`); this test owns the *mapping*, not the hex.
  */
 const resolved = resolveConfig(tailwindConfig);
+// `resolved.theme.colors` is typed as Tailwind's `DefaultColors` (no string
+// index signature), so the double-cast through `unknown` is required to index
+// it by an arbitrary token name — a direct `as Record<string, string>` is a
+// TS2352 error.
 const colors = resolved.theme.colors as unknown as Record<string, string>;
+
+const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../index.css');
+const css = readFileSync(cssPath, 'utf8');
+const lightVars = parseColorTokens(css, ':root');
+const darkVars = parseColorTokens(css, '.dark');
 
 describe('theme design tokens', () => {
   it('enables class-based dark mode', () => {
@@ -37,6 +52,18 @@ describe('theme design tokens', () => {
   it.each(Object.entries(semanticTokens))('maps the "%s" color utility to %s', (token, cssVar) => {
     expect(colors[token]).toBe(cssVar);
   });
+
+  const referencedVars = Object.values(semanticTokens).map((value) =>
+    value.replace(/^var\((--color-[\w-]+)\)$/, '$1'),
+  );
+
+  it.each(referencedVars)(
+    'backs %s with a custom property declared in both :root and .dark',
+    (cssVar) => {
+      expect(lightVars[cssVar], `${cssVar} missing from :root (light)`).toBeDefined();
+      expect(darkVars[cssVar], `${cssVar} missing from .dark (dark)`).toBeDefined();
+    },
+  );
 
   it('preserves the default Tailwind palette alongside the semantic tokens', () => {
     expect(colors.transparent).toBe('transparent');
