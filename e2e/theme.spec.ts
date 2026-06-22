@@ -66,8 +66,43 @@ function githubApiBody(url: string): string {
     });
   }
   if (pathname === '/user/repos') {
+    // A richer fleet than a single repo so the authenticated dark-mode sweep
+    // renders several tiles (public/private, described/undescribed, plus a fork
+    // and an archived repo via passthrough fields). All Zod-valid per
+    // UserRepoResponseSchema (full_name/private/description + passthrough).
     return JSON.stringify([
-      { full_name: 'octo-org/hello-world', private: false, description: null },
+      {
+        full_name: 'octo-org/hello-world',
+        private: false,
+        description: 'The flagship demo service.',
+        fork: false,
+        archived: false,
+        pushed_at: '2026-06-20T12:00:00Z',
+      },
+      {
+        full_name: 'octo-org/internal-tools',
+        private: true,
+        description: null,
+        fork: false,
+        archived: false,
+        pushed_at: '2026-06-19T09:30:00Z',
+      },
+      {
+        full_name: 'octo-org/legacy-api',
+        private: false,
+        description: 'Deprecated REST gateway, kept for back-compat.',
+        fork: false,
+        archived: true,
+        pushed_at: '2026-04-01T08:00:00Z',
+      },
+      {
+        full_name: 'octocat/spoon-knife',
+        private: false,
+        description: 'A forked sandbox repo.',
+        fork: true,
+        archived: false,
+        pushed_at: '2026-06-18T16:45:00Z',
+      },
     ]);
   }
   if (pathname.includes('/actions/runs')) {
@@ -137,7 +172,9 @@ function htmlHasDarkClass(page: Page): Promise<boolean> {
  * stand-in for an axe sweep — so they are proven to hold under the dark theme.
  */
 async function assertStructuralA11y(page: Page): Promise<void> {
-  // Landmarks + a single h1 that lives in the banner, not in main.
+  // Landmarks plus exactly one h1 on the page. This asserts cardinality only
+  // (not which landmark the h1 sits in); the light-theme a11y spec proves the
+  // heading's placement and the natural tab order.
   await expect(page.getByRole('banner')).toBeVisible();
   await expect(page.getByRole('main')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
@@ -204,7 +241,7 @@ test.describe('theme toggle: accessibility holds in dark mode', () => {
       .getByRole('radiogroup', { name: 'Theme' })
       .getByRole('radio', { name: 'Dark' })
       .click();
-    expect(await htmlHasDarkClass(page)).toBe(true);
+    await expect.poll(() => htmlHasDarkClass(page)).toBe(true);
 
     await assertStructuralA11y(page);
   });
@@ -220,7 +257,7 @@ test.describe('theme toggle: accessibility holds in dark mode', () => {
       .getByRole('radiogroup', { name: 'Theme' })
       .getByRole('radio', { name: 'Dark' })
       .click();
-    expect(await htmlHasDarkClass(page)).toBe(true);
+    await expect.poll(() => htmlHasDarkClass(page)).toBe(true);
 
     await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
     await page.getByRole('button', { name: 'Connect to GitHub' }).click();
@@ -228,7 +265,7 @@ test.describe('theme toggle: accessibility holds in dark mode', () => {
 
     // The fleet UI rendered under the dark theme; the structural invariants and
     // the persisted choice still hold.
-    expect(await htmlHasDarkClass(page)).toBe(true);
+    await expect.poll(() => htmlHasDarkClass(page)).toBe(true);
     expect(await storedThemeChoice(page)).toBe('dark');
     await assertStructuralA11y(page);
   });
