@@ -43,6 +43,16 @@ describe('toneToVar', () => {
       expect(toneToVar(tone)).not.toMatch(/#[0-9a-f]/i);
     }
   });
+
+  it('falls back to the neutral token for an out-of-allowlist tone (runtime guard)', () => {
+    // Defense-in-depth: `tone` is already type-enforced + CSP-guarded, but a
+    // type-cast (e.g. unvalidated data coerced to AccentTone) must NOT
+    // interpolate an arbitrary string into `var(--color-…)`. Anything outside
+    // the canonical allowlist resolves to the neutral token instead.
+    expect(toneToVar('haxxor' as AccentTone)).toBe('var(--color-neutral)');
+    expect(toneToVar('' as AccentTone)).toBe('var(--color-neutral)');
+    expect(toneToVar('success); evil' as AccentTone)).toBe('var(--color-neutral)');
+  });
 });
 
 describe('toneTextClass', () => {
