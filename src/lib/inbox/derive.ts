@@ -70,6 +70,22 @@ function pushGated(
   items.push({ ...candidate, url });
 }
 
+/**
+ * Builds and pushes a single row in isolation. Id construction
+ * ({@link buildCiId}, {@link buildSecurityId}, …) asserts its segments, so one
+ * malformed row (e.g. a non-safe-integer alert number) throws. Confining that
+ * throw here degrades that row to a skip rather than aborting the whole fleet
+ * derive (#238). The transform stays pure: the skip is silent — no clock, no
+ * logging (§1).
+ */
+function emitRow(build: () => void): void {
+  try {
+    build();
+  } catch {
+    // A row whose id cannot be built is skipped, never emitted (#238).
+  }
+}
+
 function collectCi(repo: Repo, data: RepoSignalData, items: InboxItem[]): void {
   const ci = data.ci;
   if (ci?.status !== 'ready' || ci.conclusion !== 'failure') {
@@ -79,17 +95,23 @@ function collectCi(repo: Repo, data: RepoSignalData, items: InboxItem[]): void {
   if (typeof ci.runId !== 'number' || typeof ci.updatedAt !== 'string') {
     return;
   }
-  pushGated(
-    items,
-    {
-      id: buildCiId(repo.nameWithOwner, ci.runId),
-      kind: 'ci',
-      repo,
-      title: 'CI failing',
-      timestamp: ci.updatedAt,
-      accent: 'failure',
-    },
-    ci.latestRunUrl,
+  // Capture the narrowed values: control-flow narrowing of `ci.runId` /
+  // `ci.updatedAt` does not survive into the `emitRow` closure.
+  const runId = ci.runId;
+  const updatedAt = ci.updatedAt;
+  emitRow(() =>
+    pushGated(
+      items,
+      {
+        id: buildCiId(repo.nameWithOwner, runId),
+        kind: 'ci',
+        repo,
+        title: 'CI failing',
+        timestamp: updatedAt,
+        accent: 'failure',
+      },
+      ci.latestRunUrl,
+    ),
   );
 }
 
@@ -99,17 +121,19 @@ function collectReviews(repo: Repo, data: RepoSignalData, items: InboxItem[]): v
     return;
   }
   for (const pr of reviews.requests) {
-    pushGated(
-      items,
-      {
-        id: buildReviewId(repo.nameWithOwner, pr.number),
-        kind: 'review',
-        repo,
-        title: pr.title,
-        timestamp: pr.created_at,
-        accent: 'warning',
-      },
-      pr.html_url,
+    emitRow(() =>
+      pushGated(
+        items,
+        {
+          id: buildReviewId(repo.nameWithOwner, pr.number),
+          kind: 'review',
+          repo,
+          title: pr.title,
+          timestamp: pr.created_at,
+          accent: 'warning',
+        },
+        pr.html_url,
+      ),
     );
   }
 }
@@ -120,17 +144,19 @@ function collectNewPrs(repo: Repo, data: RepoSignalData, items: InboxItem[]): vo
     return;
   }
   for (const pr of pullRequests.externalPullRequests) {
-    pushGated(
-      items,
-      {
-        id: buildNewPrId(repo.nameWithOwner, pr.number),
-        kind: 'new-pr',
-        repo,
-        title: pr.title,
-        timestamp: pr.created_at,
-        accent: 'coral',
-      },
-      pr.html_url,
+    emitRow(() =>
+      pushGated(
+        items,
+        {
+          id: buildNewPrId(repo.nameWithOwner, pr.number),
+          kind: 'new-pr',
+          repo,
+          title: pr.title,
+          timestamp: pr.created_at,
+          accent: 'coral',
+        },
+        pr.html_url,
+      ),
     );
   }
 }
@@ -141,18 +167,20 @@ function collectSecurity(repo: Repo, data: RepoSignalData, items: InboxItem[]): 
     return;
   }
   for (const alert of security.alerts) {
-    pushGated(
-      items,
-      {
-        id: buildSecurityId(repo.nameWithOwner, alert.type, alert.number),
-        kind: 'security',
-        repo,
-        title: securityTitle(alert),
-        timestamp: alert.created_at,
-        severity: alert.severity,
-        accent: SECURITY_SEVERITY_ACCENT[alert.severity],
-      },
-      alert.html_url,
+    emitRow(() =>
+      pushGated(
+        items,
+        {
+          id: buildSecurityId(repo.nameWithOwner, alert.type, alert.number),
+          kind: 'security',
+          repo,
+          title: securityTitle(alert),
+          timestamp: alert.created_at,
+          severity: alert.severity,
+          accent: SECURITY_SEVERITY_ACCENT[alert.severity],
+        },
+        alert.html_url,
+      ),
     );
   }
 }
@@ -163,17 +191,19 @@ function collectStale(repo: Repo, data: RepoSignalData, items: InboxItem[]): voi
     return;
   }
   for (const item of stale.staleItems) {
-    pushGated(
-      items,
-      {
-        id: buildStaleId(repo.nameWithOwner, item.type, item.number),
-        kind: 'stale',
-        repo,
-        title: item.title,
-        timestamp: item.updated_at,
-        accent: 'warning',
-      },
-      item.html_url,
+    emitRow(() =>
+      pushGated(
+        items,
+        {
+          id: buildStaleId(repo.nameWithOwner, item.type, item.number),
+          kind: 'stale',
+          repo,
+          title: item.title,
+          timestamp: item.updated_at,
+          accent: 'warning',
+        },
+        item.html_url,
+      ),
     );
   }
 }
