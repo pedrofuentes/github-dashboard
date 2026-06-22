@@ -79,6 +79,16 @@ describe('SeverityBar', () => {
     );
     expect(container.querySelectorAll('[data-tone]')).toHaveLength(0);
   });
+
+  it('marks the coloured bar decorative (aria-hidden) so meaning rests on the sr-only list', () => {
+    const { container } = render(
+      <SeverityBar segments={[{ tone: 'failure', value: 1, label: 'Critical' }]} />,
+    );
+    const seg = container.querySelector('[data-tone]') as HTMLElement;
+    expect(seg.closest('[aria-hidden="true"]')).not.toBeNull();
+    const list = container.querySelector('.sr-only');
+    expect(list?.closest('[aria-hidden="true"]')).toBeNull();
+  });
 });
 
 describe('SeverityBar — grayscale-safe channels', () => {

@@ -72,6 +72,17 @@ describe('TileMessage', () => {
     expect(sr?.textContent).toBe('Security: all clear');
   });
 
+  it('marks the state glyph decorative (aria-hidden) so meaning rests on the sr-text', () => {
+    const { container } = render(
+      <TileMessage kind="failed" message="Couldn't load" srText="CI could not be loaded" />,
+    );
+    // The glyph is a redundant shape channel — the sr-only sentence carries the
+    // state, so the glyph must not double-announce in the accessible name.
+    const glyphSvg = container.querySelector('svg[data-status]');
+    expect(glyphSvg).not.toBeNull();
+    expect(glyphSvg?.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it('renders a Retry button for failed ONLY when onRetry is provided', () => {
     const onRetry = vi.fn();
     const { getByRole } = render(

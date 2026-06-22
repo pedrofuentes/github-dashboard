@@ -109,4 +109,16 @@ describe('AgeBucketBar', () => {
     );
     expect(container.querySelectorAll('[data-bucket]')).toHaveLength(0);
   });
+
+  it('marks the coloured bar decorative (aria-hidden) so meaning rests on the sr-only list', () => {
+    const { container } = render(
+      <AgeBucketBar buckets={[{ label: '>60d', value: 1 }]} srLabel="Age distribution" />,
+    );
+    const seg = container.querySelector('[data-bucket]') as HTMLElement;
+    // every visible segment lives inside an aria-hidden subtree
+    expect(seg.closest('[aria-hidden="true"]')).not.toBeNull();
+    // the textual channel is NOT hidden
+    const list = container.querySelector('.sr-only');
+    expect(list?.closest('[aria-hidden="true"]')).toBeNull();
+  });
 });

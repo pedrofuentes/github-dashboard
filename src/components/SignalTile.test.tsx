@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -213,6 +213,28 @@ describe('SignalTile', () => {
       />,
     );
     expect(container.querySelector('[data-salience="calm"]')).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Issues: 7 open, calm — octo/a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('threads a display alias to the frame while still announcing the real repo (a11y)', () => {
+    render(
+      <SignalTile
+        tile={makeTile('issues')}
+        repo={makeRepo()}
+        data={{ issues: { status: 'ready', openCount: 7 } }}
+        onActivate={vi.fn()}
+        alias="api"
+      />,
+    );
+    // The alias shows as the visible heading text…
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('api');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    // …plus a visually-hidden "(alias for octo/a)" so the real repo is reachable.
+    expect(within(heading).getByText('(alias for octo/a)')).toHaveClass('sr-only');
+    // The activate label still announces the real owner/repo via accessibleSummary.
     expect(
       screen.getByRole('button', { name: 'Issues: 7 open, calm — octo/a' }),
     ).toBeInTheDocument();
