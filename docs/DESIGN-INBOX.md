@@ -39,7 +39,7 @@ live design session with the cofounder.
 | Fact | Value | Source |
 | --- | --- | --- |
 | Fleet view union | `'grid' \| 'dashboard'` (Inbox adds `'inbox'`) | `src/lib/view-preference.ts` `FleetView` |
-| View persistence key | `fleet:view` (localStorage, default `'grid'`) | `src/lib/view-preference.ts` |
+| View persistence key | `fleet:default-view` (localStorage, default `'dashboard'`) | `src/lib/default-view-preference.ts` |
 | Row-data seam | `getRowData(repo): RepoSignalData` | `src/hooks/useRepoSignals.ts`; `src/types/fleet.ts` `GetRowData` |
 | Per-repo signal payload | `{ ci?, security?, reviews?, pullRequests?, issues?, stale? }` | `src/types/fleet.ts` `RepoSignalData` |
 | Signal lifecycle | `'unknown' \| 'loading' \| 'ready' \| 'error'` | `src/types/fleet.ts` `SignalStatus` |
@@ -463,9 +463,10 @@ its kind/severity (§6), exactly as the cells do.
   (carries the §2 "never color alone" invariant).
 - **Full keyboard operability.** The list uses an appropriate semantic pattern
   (a `list`/`feed` of rows or a single-column grid): every row is reachable and
-  operable by keyboard; `Enter`/`Space` opens the item's GitHub link (and marks
-  it read); the dismiss/restore control is a real, labelled `button` reachable
-  in tab order; focus is visible via the `focus` token ring.
+  operable by keyboard; `Enter` opens the item's GitHub link and marks it read,
+  while `Space` marks it read without navigating (an anchor does not natively
+  activate on `Space`); the dismiss/restore control is a real, labelled `button`
+  reachable in tab order; focus is visible via the `focus` token ring.
 - **Links are origin-gated.** Every `url` passes through `safeGitHubHref` before
   it is rendered as an `href`; a value that fails degrades to plain text (no
   off-origin navigation — the privacy invariant, `MISSION.md` §5).

@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Dashboard customization & repo-scope filter** (Phase 3): a **Customize layout** panel to show or hide tiles per repository and set short per-repo **display aliases** (the real `owner/name` is still announced to assistive tech), plus a toolbar **repo filter** to focus the Dashboard on just the repositories you pick. While a filter is active the grid is read-only — drag, resize and keyboard rearrange are paused — so a focused, partial view can never be compacted and saved over your real tile arrangement. Empty states are now actionable: distinct messages for no repositories, **all tiles hidden** (with a nudge to add some back), and **nothing matching the current filter** (with a one-click **Clear filter**). All client-only and stored per-device.
+- **Dashboard customization & repo-scope filter** (Phase 3): a **Customize layout** panel to show or hide tiles per repository and set short per-repo **display aliases** (the real `owner/name` is still announced to assistive tech), plus a toolbar **repo filter** to focus the Dashboard on just the repositories you pick. While a filter is active the grid is read-only — drag, resize and keyboard rearrange are paused — so a focused, partial view can never be compacted and saved over your real tile arrangement. Empty states are now actionable: distinct messages for no repositories, **all tiles hidden** (with a nudge to add some back), and **nothing matching the current filter** (with a one-click **Clear filter**). All client-only and stored per-device. When the filter narrows the grid to a **single repository**, each tile's now-redundant `owner/name` header line is visually dropped — still announced to assistive tech — so the focused view reads as one clean board.
 - **Configurable default view**: the **Dashboard** is now the out-of-the-box default landing view, and a new **Default view** control lets you choose which of **Grid / Dashboard / Inbox** the app opens to (persisted under `fleet:default-view`). The app no longer reopens to your last-used view — it always opens to your chosen default.
 - **Notifications Inbox** (M11): a third top-level view — a single, **newest-first**,
   triageable list that gathers everything across your fleet that needs attention
@@ -137,6 +137,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Tinted-badge label contrast (light theme)**: the **warning** and **coral**
+  badge/chip text now uses darker **amber-800 (`#92400e`)** / **orange-800
+  (`#9a3412`)** ink instead of the amber-700 / orange-700 accent, so small labels
+  on a 10% accent tint clear WCAG 2.1 AA 4.5:1 (the -700 accents only reached
+  ~4.4:1); borders and rings keep the -700 accent (non-text UI, ≥3:1). Surfaced
+  while building the dark theme's per-theme token system (#171).
 - **Dashboard tile focus no longer throws on exotic ids**: restoring roving focus
   to a tile interpolated the tile id (`owner/repo:signal`) straight into a
   `querySelector`, so a repository name containing a CSS-selector metacharacter

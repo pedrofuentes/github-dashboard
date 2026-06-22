@@ -35,7 +35,7 @@ white space. We are fixing two things at once:
 | Default tile | `w: 3, h: 2` → ≈ 287×208px at the `lg` (≥1200px) breakpoint | `dashboard-layout.ts` `TILE_WIDTH`/`TILE_HEIGHT` |
 | Breakpoints | `lg 1200 / md 996 / sm 768 / xs 480 / xxs 0` | `DashboardView.tsx` `BREAKPOINTS` |
 
-So the smallest reasonable tile (`w:2, h:1` ≈ 175×96px) is still bigger than a
+So the smallest reasonable tile (`w:2, h:1` ≈ 181×96px) is still bigger than a
 Stream Deck key, and a stretched tile (`w:6, h:4` ≈ 590×432px) has room for rich
 visuals. **Tiles must adapt their content to their measured size** (§3.4).
 
@@ -69,6 +69,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     --color-warning: #b45309;       /* amber-700 */
     --color-info: #0369a1;          /* sky-700 */
     --color-neutral: #475569;       /* slate-600 */
+    --color-warning-ink: #92400e;   /* amber-800 — tinted-badge text (§1.5) */
+    --color-coral-ink: #9a3412;     /* orange-800 — tinted-badge text (§1.5) */
+    --color-coral: #c2410c;         /* orange-700 — extended accent */
+    --color-purple: #7e22ce;        /* purple-700 — extended accent */
+    --color-gold: #a16207;          /* yellow-700 — extended accent */
+    --color-ochre: #7c5e10;         /* age-led stale, AA-corrected (ADR-020) */
     --color-focus: #0369a1;         /* sky-700 */
   }
   .dark {
@@ -84,6 +90,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     --color-warning: #d29922;
     --color-info: #58a6ff;
     --color-neutral: #8b949e;
+    --color-warning-ink: #d29922;
+    --color-coral-ink: #f78166;
+    --color-coral: #f78166;
+    --color-purple: #a371f7;
+    --color-gold: #e3b341;
+    --color-ochre: #bfa05a;
     --color-focus: #58a6ff;
   }
   ```
@@ -103,6 +115,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     'accent-warning': 'var(--color-warning)',
     'accent-info': 'var(--color-info)',
     'accent-neutral': 'var(--color-neutral)',
+    'accent-warning-ink': 'var(--color-warning-ink)',
+    'accent-coral': 'var(--color-coral)',
+    'accent-coral-ink': 'var(--color-coral-ink)',
+    'accent-purple': 'var(--color-purple)',
+    'accent-gold': 'var(--color-gold)',
+    'accent-ochre': 'var(--color-ochre)',
     focus: 'var(--color-focus)',
   }
   ```
@@ -139,7 +157,7 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
 > that conveys meaning (selected, focused, the keyboard Move/Resize controls, a
 > chip outline) uses **`border-strong`** which clears 3:1 (dark `#6e7681` on
 > `#161b22` = **3.77:1**; light `#64748b` on white = **4.76:1**). Today’s
-> `slate-300` control borders (`#cbd5e1` ≈ 1.6:1) and `slate-400` (**2.56:1**)
+> `slate-300` control borders (`#cbd5e1` ≈ 1.48:1) and `slate-400` (**2.56:1**)
 > both **fail** and must move to `border-strong`.
 
 ### 1.3 Status / accent tokens
@@ -387,7 +405,7 @@ density. **Three tiers**, keyed off width × height in grid units:
 
 | Tier | Trigger (approx) | Body content |
 | --- | --- | --- |
-| **Compact** | `w ≤ 2` or `h ≤ 1` (≈ ≤175px wide / ≤96px tall) | Hero glyph **or** big value + one-line label. No sparkline/gauge. Footer hidden. This is the closest analog to the 144px Stream Deck key. |
+| **Compact** | `w ≤ 2` or `h ≤ 1` (≈ ≤181px wide / ≤96px tall) | Hero glyph **or** big value + one-line label. No sparkline/gauge. Footer hidden. This is the closest analog to the 144px Stream Deck key. |
 | **Standard** (default) | `w 3–4, h 2–3` | Glyph/value + secondary detail (counts, mini-list, small gauge/sparkline) + footer meta. |
 | **Expanded** | `w ≥ 5` or `h ≥ 4` | Full visual (large arc gauge / full sparkline + heatmap / multi-row breakdown) + footer with deep link and last-updated. |
 
@@ -403,7 +421,7 @@ Rules:
 ### 3.5 Edit-mode controls
 
 Unchanged behavior from today: in edit mode the active tile exposes the activate
-overlay + 8 Move/Resize buttons (`TileControls` in `SignalTile.tsx`). Restyle
+overlay + 8 Move/Resize buttons (`TileControls` in `TileFrame.tsx`). Restyle
 only: control buttons use `surface` bg, `text` ink, **`border-strong`** outline
 (replacing today’s failing `slate-300`), and the `focus` ring token. Persistently
 visible resize handles (the `.dashboard-editing` rule in `index.css`) move from

@@ -31,18 +31,26 @@ describe('DefaultViewToggle', () => {
     expect(screen.getByText('Inbox')).toBeInTheDocument();
   });
 
-  it('exposes a visible focus ring on each option for keyboard users', () => {
-    render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
-    expect(screen.getByRole('radio', { name: /grid/i }).className).toMatch(
-      /focus-visible:outline-focus/,
-    );
-  });
+  it.each([/grid/i, /dashboard/i, /inbox/i])(
+    'exposes a visible focus ring on the %s option for keyboard users',
+    (name) => {
+      render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+      expect(screen.getByRole('radio', { name }).className).toMatch(/focus-visible:outline-focus/);
+    },
+  );
 
-  it('calls onChange with the chosen view when a radio is clicked', async () => {
+  it.each([
+    { name: /grid/i, expected: 'grid' as const },
+    { name: /dashboard/i, expected: 'dashboard' as const },
+    { name: /inbox/i, expected: 'inbox' as const },
+  ])('calls onChange with $expected when that radio is clicked', async ({ name, expected }) => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<DefaultViewToggle value="dashboard" onChange={onChange} />);
-    await user.click(screen.getByRole('radio', { name: /inbox/i }));
-    expect(onChange).toHaveBeenCalledWith('inbox');
+    // `value="grid"` so the grid click re-selects the already-active radio while
+    // dashboard/inbox are genuine changes; the toggle calls `onChange`
+    // unconditionally, so every option — re-select included — reports its value.
+    render(<DefaultViewToggle value="grid" onChange={onChange} />);
+    await user.click(screen.getByRole('radio', { name }));
+    expect(onChange).toHaveBeenCalledWith(expected);
   });
 });
