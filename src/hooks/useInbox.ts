@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { deriveInboxItems } from '../lib/inbox/derive';
+import { parseInboxId } from '../lib/inbox/ids';
 import {
   loadInboxTriage,
   pruneTriage,
@@ -31,7 +32,7 @@ import {
   type InboxTriage,
 } from '../lib/inbox/triage-store';
 import type { InboxItem, InboxKind } from '../types/inbox';
-import type { GetRowData, Repo } from '../types/fleet';
+import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 
 /** A derived item decorated with its per-device triage state (§3.1). */
 export interface InboxItemView extends InboxItem {
@@ -110,6 +111,28 @@ function triageEquals(a: InboxTriage, b: InboxTriage): boolean {
 }
 
 /**
+ * The inbox-relevant signal slices paired with the {@link InboxKind} their items
+ * carry. `issues` is intentionally absent — a raw issue count never becomes an
+ * item (§1), so it has no triage scope to protect.
+ */
+const SLICE_KINDS: ReadonlyArray<readonly [keyof RepoSignalData, InboxKind]> = [
+  ['ci', 'ci'],
+  ['reviews', 'review'],
+  ['pullRequests', 'new-pr'],
+  ['security', 'security'],
+  ['stale', 'stale'],
+];
+
+/**
+ * Keys a triage scope by `(kind, repo)`. The `\u0000` separator cannot occur in
+ * either an {@link InboxKind} literal or a `nameWithOwner`, so the join is
+ * unambiguous.
+ */
+function scopeKey(kind: InboxKind, repo: string): string {
+  return `${kind}\u0000${repo}`;
+}
+
+/**
  * Builds the Inbox view-model from the fleet and its `getRowData` seam.
  *
  * @param repos - The fleet repositories (same list the grid/dashboard receive).
@@ -126,6 +149,35 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
   const derived = useMemo(() => deriveInboxItems(repos, getRowData), [repos, getRowData]);
   const liveIds = useMemo(() => derived.map((item) => item.id), [derived]);
 
+  // Scopes whose signal slice is not `ready` this refresh (loading / error /
+  // unknown / absent). An item in such a scope is not derived, so its id drops
+  // out of `liveIds` — but the failure is transient, so its triage mark must be
+  // protected from GC rather than silently forgotten (#249).
+  const unreadyScopes = useMemo(() => {
+    const scopes = new Set<string>();
+    for (const repo of repos) {
+      const data = getRowData(repo);
+      for (const [slice, kind] of SLICE_KINDS) {
+        if (data[slice]?.status !== 'ready') {
+          scopes.add(scopeKey(kind, repo.nameWithOwner));
+        }
+      }
+    }
+    return scopes;
+  }, [repos, getRowData]);
+
+  // Retains a triage id whose item is currently underived only because its slice
+  // is unready (a transient fetch failure), so a momentary error does not lose
+  // triage (#249). A resolved item — slice `ready`, id simply gone — is in a
+  // ready scope and still GCs normally.
+  const isUnreadyScope = useCallback(
+    (id: string): boolean => {
+      const parsed = parseInboxId(id);
+      return parsed !== null && unreadyScopes.has(scopeKey(parsed.kind, parsed.repo));
+    },
+    [unreadyScopes],
+  );
+
   const baselineInstant = useMemo(
     () => (visitBaseline === null ? null : Date.parse(visitBaseline)),
     [visitBaseline],
@@ -136,16 +188,20 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
   // instead of a shared pre-batch closure — no write can clobber another in the
   // same commit. Each result is pruned against the live ids so a resolved run /
   // merged PR / fixed alert forgets its triage mark and storage stays bounded
-  // (§3.3). A mutation that returns `prev` unchanged is a no-op: React bails out,
-  // so there is no re-render and no persist (preserving the dedupe guards).
+  // (§3.3). A transiently-failing slice's marks are protected from that GC
+  // (#249), and a `lastVisitedAt` past the §3.3 horizon resets (#233). A
+  // mutation that returns `prev` unchanged is a no-op: React bails out, so there
+  // is no re-render and no persist (preserving the dedupe guards).
   const applyTriage = useCallback(
     (mutate: (prev: InboxTriage) => InboxTriage) => {
       setTriage((prev) => {
         const next = mutate(prev);
-        return next === prev ? prev : pruneTriage(next, liveIds);
+        return next === prev
+          ? prev
+          : pruneTriage(next, liveIds, { protect: isUnreadyScope, now: Date.now() });
       });
     },
-    [liveIds],
+    [liveIds, isUnreadyScope],
   );
 
   // Persist the committed (already-pruned) triage once per change, after render.
