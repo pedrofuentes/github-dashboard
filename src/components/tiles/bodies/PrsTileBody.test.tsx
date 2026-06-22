@@ -46,15 +46,17 @@ function srText(container: HTMLElement): string {
 }
 
 describe('PrsTileBody — states (§3.6)', () => {
-  it('shows a skeleton and sr-only text while loading', () => {
+  it('routes loading through TileMessage (data-state="loading") with sr-only text', () => {
     const { container } = renderBody({ status: 'loading' });
-    expect(screen.getByText('Loading pull requests…')).toBeInTheDocument();
-    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
+    expect(srText(container)).toContain('Loading pull requests');
   });
 
-  it('shows an error message when the slice errored', () => {
-    renderBody({ status: 'error' });
-    expect(screen.getByText('Couldn’t load pull requests')).toBeInTheDocument();
+  it('routes errors through TileMessage (data-state="failed-to-load")', () => {
+    const { container } = renderBody({ status: 'error' });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(screen.getAllByText(/couldn't load/i).length).toBeGreaterThan(0);
+    expect(srText(container)).toContain('octocat/hello-world');
   });
 
   it('shows a neutral n/a when the slice is missing entirely', () => {
@@ -68,14 +70,25 @@ describe('PrsTileBody — states (§3.6)', () => {
     expect(screen.getByText('n/a')).toBeInTheDocument();
   });
 
-  it('shows a positive empty state when ready with zero open PRs (never blank)', () => {
-    renderBody({ status: 'ready', openCount: 0, externalCount: 0 });
-    expect(screen.getByText('No open PRs')).toBeInTheDocument();
+  it('routes a zero-open ready slice through TileMessage all-clear (data-state="empty")', () => {
+    const { container } = renderBody({ status: 'ready', openCount: 0, externalCount: 0 });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(screen.getByText(/all clear/i, { selector: 'span' })).toBeInTheDocument();
+    expect(srText(container)).toContain('No open pull requests in octocat/hello-world');
   });
 
-  it('treats a ready slice with no openCount field as the empty state', () => {
-    renderBody({ status: 'ready' });
-    expect(screen.getByText('No open PRs')).toBeInTheDocument();
+  it('treats a ready slice with no openCount field as the all-clear state', () => {
+    const { container } = renderBody({ status: 'ready' });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+  });
+
+  it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
+    const { container: clear } = renderBody({ status: 'ready', openCount: 0, externalCount: 0 });
+    const { container: failed } = renderBody({ status: 'error' });
+    expect(clear.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(clear.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 

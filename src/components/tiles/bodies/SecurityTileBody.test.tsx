@@ -19,13 +19,15 @@ function renderBody(
 }
 
 describe('SecurityTileBody — states', () => {
-  it('shows a loading state with sr text', () => {
-    const { getAllByText } = renderBody({ status: 'loading' });
+  it('shows a loading state via TileMessage (data-state="loading") with sr text', () => {
+    const { getAllByText, container } = renderBody({ status: 'loading' });
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
     expect(getAllByText(/loading security/i).length).toBeGreaterThan(0);
   });
 
-  it('shows an error state', () => {
-    const { getAllByText } = renderBody({ status: 'error' });
+  it('shows a failed-to-load state via TileMessage (data-state="failed-to-load")', () => {
+    const { getAllByText, container } = renderBody({ status: 'error' });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(getAllByText(/couldn.t load security/i).length).toBeGreaterThan(0);
   });
 
@@ -52,9 +54,24 @@ describe('SecurityTileBody — states', () => {
     });
     expect(getAllByText(/all clear/i).length).toBeGreaterThan(0);
     expect(getAllByText(/no open alerts/i).length).toBeGreaterThan(0);
-    // All-clear is calm/success — not a problem hero, no live region.
-    expect(container.querySelector('[data-tone="success"]')).not.toBeNull();
+    // All-clear routes through the shared TileMessage: a calm success glyph +
+    // data-state="empty" (NOT a problem hero, no live region).
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(container.querySelector('svg[data-status="success"]')).not.toBeNull();
     expect(container.querySelector('[aria-live="polite"]')).toBeNull();
+  });
+
+  it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
+    const { container: clear } = renderBody({
+      status: 'ready',
+      grade: 'A',
+      counts: { critical: 0, high: 0, medium: 0, low: 0 },
+    });
+    const { container: failed } = renderBody({ status: 'error' });
+    expect(clear.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(clear.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 

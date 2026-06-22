@@ -168,7 +168,7 @@ describe('SignalTile', () => {
     expect(container.querySelector('[data-tone="success"]')).toBeNull();
     // Proof the bespoke ActivityTileBody rendered (its empty-state copy), not the
     // exhaustive-switch fallback.
-    expect(screen.getByText(/no recent commit activity/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/no recent commit activity/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/unknown signal/i)).toBeNull();
   });
 

@@ -38,13 +38,15 @@ function renderBody(
 }
 
 describe('StaleTileBody — states', () => {
-  it('shows a loading state with sr text', () => {
-    const { getAllByText } = renderBody({ status: 'loading' });
+  it('routes loading through TileMessage (data-state="loading") with sr text', () => {
+    const { getAllByText, container } = renderBody({ status: 'loading' });
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
     expect(getAllByText(/loading stale/i).length).toBeGreaterThan(0);
   });
 
-  it('shows an error state', () => {
-    const { getAllByText } = renderBody({ status: 'error' });
+  it('routes errors through TileMessage (data-state="failed-to-load")', () => {
+    const { getAllByText, container } = renderBody({ status: 'error' });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(getAllByText(/stale activity unavailable/i).length).toBeGreaterThan(0);
   });
 
@@ -58,10 +60,22 @@ describe('StaleTileBody — states', () => {
     expect(getByText(/n\/a/i)).toBeInTheDocument();
   });
 
-  it('shows a positive clear state at zero (never blank)', () => {
+  it('routes a zero-count ready slice through TileMessage all-clear (data-state="empty")', () => {
     const { getAllByText, container } = renderBody({ status: 'ready', staleCount: 0 });
-    expect(getAllByText(/nothing stale/i).length).toBeGreaterThan(0);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(getAllByText(/all clear/i).length).toBeGreaterThan(0);
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /no stale open pull requests/i,
+    );
+  });
+
+  it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
+    const { container: clear } = renderBody({ status: 'ready', staleCount: 0 });
+    const { container: failed } = renderBody({ status: 'error' });
+    expect(clear.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(clear.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 
@@ -155,8 +169,8 @@ describe('StaleTileBody — size tiers', () => {
 describe('StaleTileBody — defensive & a11y', () => {
   it('degrades a ready slice with a missing count to the clear state (no throw)', () => {
     expect(() => renderBody({ status: 'ready' })).not.toThrow();
-    const { getAllByText } = renderBody({ status: 'ready' });
-    expect(getAllByText(/nothing stale/i).length).toBeGreaterThan(0);
+    const { container } = renderBody({ status: 'ready' });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
   it('degrades an unexpected status to a safe neutral state (no throw)', () => {
@@ -172,7 +186,7 @@ describe('StaleTileBody — defensive & a11y', () => {
     const bogus = { status: 'ready', staleCount: -4 } as StaleSignalSlice;
     expect(() => renderBody(bogus)).not.toThrow();
     const { container } = renderBody(bogus);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
   it('stays safe when a positive count carries no item details (no throw)', () => {

@@ -20,13 +20,15 @@ function renderBody(
 }
 
 describe('IssuesTileBody — states', () => {
-  it('shows a loading state with sr text', () => {
-    const { getAllByText } = renderBody({ status: 'loading' });
+  it('routes loading through TileMessage (data-state="loading") with sr text', () => {
+    const { getAllByText, container } = renderBody({ status: 'loading' });
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
     expect(getAllByText(/loading issues/i).length).toBeGreaterThan(0);
   });
 
-  it('shows an error state', () => {
-    const { getAllByText } = renderBody({ status: 'error' });
+  it('routes errors through TileMessage (data-state="failed-to-load")', () => {
+    const { getAllByText, container } = renderBody({ status: 'error' });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(getAllByText(/issue count unavailable/i).length).toBeGreaterThan(0);
   });
 
@@ -40,10 +42,20 @@ describe('IssuesTileBody — states', () => {
     expect(getByText(/n\/a/i)).toBeInTheDocument();
   });
 
-  it('shows a positive clear state at zero (never blank)', () => {
+  it('routes a zero-open ready slice through TileMessage all-clear (data-state="empty")', () => {
     const { getAllByText, container } = renderBody({ status: 'ready', openCount: 0 });
-    expect(getAllByText(/no open issues/i).length).toBeGreaterThan(0);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(getAllByText(/all clear/i).length).toBeGreaterThan(0);
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(/no open issues/i);
+  });
+
+  it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
+    const { container: clear } = renderBody({ status: 'ready', openCount: 0 });
+    const { container: failed } = renderBody({ status: 'error' });
+    expect(clear.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(clear.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 
@@ -202,7 +214,7 @@ describe('IssuesTileBody — defensive & a11y', () => {
     const bogus = { status: 'ready', openCount: -8 } as IssuesSignalSlice;
     expect(() => renderBody(bogus)).not.toThrow();
     const { container } = renderBody(bogus);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
   it('contains no hard-coded hex colours', () => {

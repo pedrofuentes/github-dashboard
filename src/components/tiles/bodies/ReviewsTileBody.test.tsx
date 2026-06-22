@@ -38,13 +38,15 @@ function renderBody(
 }
 
 describe('ReviewsTileBody — states', () => {
-  it('shows a loading state with sr text', () => {
-    const { getAllByText } = renderBody({ status: 'loading' });
+  it('routes loading through TileMessage (data-state="loading") with sr text', () => {
+    const { getAllByText, container } = renderBody({ status: 'loading' });
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
     expect(getAllByText(/loading reviews/i).length).toBeGreaterThan(0);
   });
 
-  it('shows an error state', () => {
-    const { getAllByText } = renderBody({ status: 'error' });
+  it('routes errors through TileMessage (data-state="failed-to-load")', () => {
+    const { getAllByText, container } = renderBody({ status: 'error' });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(getAllByText(/review queue unavailable/i).length).toBeGreaterThan(0);
   });
 
@@ -58,16 +60,27 @@ describe('ReviewsTileBody — states', () => {
     expect(getByText(/n\/a/i)).toBeInTheDocument();
   });
 
-  it('shows a positive clear state at zero (never blank)', () => {
+  it('routes a zero-count ready slice through TileMessage all-clear (data-state="empty")', () => {
     const { getAllByText, container } = renderBody({ status: 'ready', requestedCount: 0 });
-    expect(getAllByText(/none awaiting your review/i).length).toBeGreaterThan(0);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(getAllByText(/all clear/i).length).toBeGreaterThan(0);
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(/awaiting your review/i);
+  });
+
+  it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
+    const { container: clear } = renderBody({ status: 'ready', requestedCount: 0 });
+    const { container: failed } = renderBody({ status: 'error' });
+    expect(clear.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(clear.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 
 describe('ReviewsTileBody — urgency escalation (DESIGN-TILES §4.4)', () => {
+  // Zero requests no longer paints a tone — it routes through TileMessage
+  // all-clear (data-state="empty"); urgency tones apply only to non-zero counts.
   const cases: Array<[number, string]> = [
-    [0, 'neutral'],
     [1, 'info'],
     [2, 'info'],
     [3, 'warning'],
@@ -182,8 +195,8 @@ describe('ReviewsTileBody — actionable hero a11y (R6)', () => {
 describe('ReviewsTileBody — defensive & a11y', () => {
   it('degrades a ready slice with a missing count to the clear state (no throw)', () => {
     expect(() => renderBody({ status: 'ready' })).not.toThrow();
-    const { getAllByText } = renderBody({ status: 'ready' });
-    expect(getAllByText(/none awaiting your review/i).length).toBeGreaterThan(0);
+    const { container } = renderBody({ status: 'ready' });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
   it('degrades an unexpected status to a safe neutral state (no throw)', () => {
@@ -199,7 +212,7 @@ describe('ReviewsTileBody — defensive & a11y', () => {
     const bogus = { status: 'ready', requestedCount: -3 } as ReviewsSignalSlice;
     expect(() => renderBody(bogus)).not.toThrow();
     const { container } = renderBody(bogus);
-    expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
   it('contains no hard-coded hex colours', () => {
