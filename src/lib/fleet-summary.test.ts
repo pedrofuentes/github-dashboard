@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RepoSignalData } from '../types/fleet';
-import { classifyRepoHealth, summarizeFleetHealth } from './fleet-summary';
+import { classifyRepoHealth, perRepoHealth, summarizeFleetHealth } from './fleet-summary';
 
 describe('classifyRepoHealth', () => {
   it('classifies a repo with failing CI as broken', () => {
@@ -151,5 +151,48 @@ describe('summarizeFleetHealth', () => {
     expect(summary.total).toBe(2);
     expect(summary.broken).toBe(1);
     expect(summary.healthy).toBe(1);
+  });
+});
+
+describe('perRepoHealth', () => {
+  it('returns an empty list for an empty fleet', () => {
+    expect(perRepoHealth([])).toEqual([]);
+    expect(perRepoHealth(new Map<string, RepoSignalData>().entries())).toEqual([]);
+  });
+
+  it('maps each [repo, data] pair to its classified health entry', () => {
+    const rows: Array<readonly [string, RepoSignalData]> = [
+      ['octo/broken', { ci: { status: 'ready', conclusion: 'failure' } }],
+      ['octo/warning', { reviews: { status: 'ready', requestedCount: 2 } }],
+      ['octo/healthy', { ci: { status: 'ready', conclusion: 'success' } }],
+    ];
+    expect(perRepoHealth(rows)).toEqual([
+      { repo: 'octo/broken', health: 'broken' },
+      { repo: 'octo/warning', health: 'warning' },
+      { repo: 'octo/healthy', health: 'healthy' },
+    ]);
+  });
+
+  it('reuses classifyRepoHealth precedence (broken outranks a warning signal)', () => {
+    const rows: Array<readonly [string, RepoSignalData]> = [
+      [
+        'octo/mixed',
+        {
+          ci: { status: 'ready', conclusion: 'failure' },
+          stale: { status: 'ready', staleCount: 4 },
+        },
+      ],
+    ];
+    expect(perRepoHealth(rows)).toEqual([{ repo: 'octo/mixed', health: 'broken' }]);
+  });
+
+  it('preserves the input order and keys by nameWithOwner', () => {
+    const map = new Map<string, RepoSignalData>([
+      ['octo/a', {}],
+      ['octo/b', { security: { status: 'ready', grade: 'F' } }],
+    ]);
+    const entries = perRepoHealth(map.entries());
+    expect(entries.map((entry) => entry.repo)).toEqual(['octo/a', 'octo/b']);
+    expect(entries[1]).toEqual({ repo: 'octo/b', health: 'broken' });
   });
 });
