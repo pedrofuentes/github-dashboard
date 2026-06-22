@@ -56,12 +56,13 @@ function urgencyTone(count: number): AccentTone {
 
 /**
  * Relative age of the *oldest* awaiting review request — the real urgency
- * driver — from the min `created_at` across `reviews.requests`. Unparseable
- * timestamps are skipped; returns `null` when no usable per-request data exists
- * (the meta is then omitted rather than rendered blank).
+ * driver — from the min `created_at` across `reviews.requests`. A non-array or
+ * empty `requests`, and unparseable timestamps, are skipped; returns `null`
+ * when no usable per-request data exists (the meta is then omitted rather than
+ * rendered blank).
  */
 function oldestRequestAge(requests: ReviewRequestedPullRequest[] | undefined): string | null {
-  if (!requests || requests.length === 0) {
+  if (!Array.isArray(requests) || requests.length === 0) {
     return null;
   }
   let oldestMs = Number.POSITIVE_INFINITY;
