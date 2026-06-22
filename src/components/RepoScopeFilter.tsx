@@ -77,7 +77,6 @@ export function RepoScopeFilter({
       <button
         type="button"
         aria-expanded={expanded}
-        aria-haspopup="listbox"
         aria-controls={listId}
         onClick={() => setExpanded((open) => !open)}
         className={DISCLOSURE_BUTTON}
