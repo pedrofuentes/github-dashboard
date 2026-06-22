@@ -7,9 +7,10 @@
  * {@link StatusGlyph}. The backlog reads neutral until it crosses the triage
  * threshold, at which point a triage {@link StatusGlyph} (warning triangle) plus
  * the words "over triage threshold" *and* the warning accent all flag it — never
- * colour alone. All colour comes from semantic tokens (no hard-coded hex, AA in
- * both themes), and any missing/garbage field degrades to a safe neutral state
- * rather than throwing or rendering blank.
+ * colour alone. At standard/expanded a cross-slice meta line tallies stale *open
+ * issues* (derived from `data.stale`, no extra fetch). All colour comes from
+ * semantic tokens (no hard-coded hex, AA in both themes), and any missing/garbage
+ * field degrades to a safe neutral state rather than throwing or rendering blank.
  */
 import type { ReactElement } from 'react';
 
@@ -73,8 +74,8 @@ export function IssuesTileBody({
   // Cross-slice meta: count stale *issues* from the stale slice (filtered to
   // `type === 'issue'`). The body already receives the full RepoSignalData, so
   // this needs no extra fetch. Undefined while stale is absent/loading/errored.
-  // GAP (no new request): a "▲N new" delta and a counts sparkline both need an
-  // issue counts time-series the signal hook does not retain — deferred.
+  // DEFERRED (no new request): a "▲N new" delta and a counts sparkline both need
+  // an issue-counts time-series the signal hook does not retain — out of scope.
   const staleIssueCount =
     data.stale?.status === 'ready'
       ? (data.stale.staleItems ?? []).filter((item) => item.type === 'issue').length
