@@ -1,9 +1,11 @@
 import type { ReactElement } from 'react';
 
+import { formatRelativeTime } from '../../../lib/format';
 import { safeGitHubHref } from '../../../lib/github-url';
 import type { CiSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
-import { AmbientGlow } from '../AmbientGlow';
 import { BigValue } from '../BigValue';
+import { RunStrip } from '../RunStrip';
+import type { RunConclusion } from '../RunStrip';
 import { StatusGlyph } from '../StatusGlyph';
 import type { AccentTone, SignalIconKind, TileTier } from '../types';
 import { iconKindTone } from '../types';
@@ -51,6 +53,10 @@ interface CiView {
   detail?: string;
   /** Failing workflow count (> 0 only) — the numeric redundant encoding. */
   failing: number;
+  /** Latest-run conclusion to feed the RunStrip (ready state only). */
+  runConclusion?: RunConclusion;
+  /** Latest-run recency (`formatRelativeTime(updatedAt)`); ready state only. */
+  recency?: string;
   /** Full sr-only sentence — the redundant text layer, never blank. */
   sr: string;
 }
@@ -106,25 +112,36 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
   const tone = iconKindTone(glyph);
   const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;
   const detail = failing > 0 ? `${failing} failing` : 'No failing workflows';
+  const recency = ci.updatedAt ? formatRelativeTime(ci.updatedAt) : undefined;
   const sr =
     failing > 0
       ? `CI ${word.toLowerCase()} — ${plural(failing, 'workflow')} failing`
       : `CI ${word.toLowerCase()}`;
 
-  return { glyph, tone, word, detail, failing, sr };
+  return { glyph, tone, word, detail, failing, runConclusion: conclusion, recency, sr };
 }
 
 /**
  * Bespoke CI / Actions tile body (DESIGN-TILES §4.1). Presentational only — the
- * shared `TileFrame` supplies the accent bar, header and activate/edit chrome;
- * this renders the inner CI visual: a hero `StatusGlyph` over a same-tone static
- * `AmbientGlow`, the run-state word as `BigValue`, the failing count, and — at
- * the expanded tier — a GitHub-origin-gated "View latest run" deep link.
+ * shared `TileFrame` supplies the accent bar, salience edge/tint/glow, header
+ * and activate/edit chrome; this renders the inner CI visual: a hero
+ * `StatusGlyph`, the run-state word as `BigValue`, the failing count, a single
+ * shape-coded latest-run cell (`RunStrip`) at standard/expanded, the latest-run
+ * recency, and — at the expanded tier — a GitHub-origin-gated "View latest run"
+ * deep link.
+ *
+ * The body does NOT paint the top edge or its own glow: per redesign R3 the
+ * `TileFrame` owns the PROBLEM glow, so the body (the only former `AmbientGlow`
+ * caller) no longer double-glows on failure.
+ *
+ * DEFERRED (no new fetch — see plan T7 Data availability): the CI hook retains
+ * only the latest run, so there is no win/loss history, no passing count and no
+ * "▲ since yesterday" delta. The 10-cell history strip is reduced to one
+ * `RunStrip` cell; a real history needs a windowed Actions fetch (out of scope).
  *
  * State is encoded redundantly (glyph + word + colour + sr-text) and the body is
  * never blank: loading, error, unknown and all-clear all render a positive,
- * labelled state. The `AmbientGlow` is intentionally static, so it honours
- * `prefers-reduced-motion` by construction.
+ * labelled state.
  */
 export function CiTileBody({ repo, data, size }: CiTileBodyProps): ReactElement {
   const ci = data.ci;
@@ -133,17 +150,26 @@ export function CiTileBody({ repo, data, size }: CiTileBodyProps): ReactElement 
   const href = size === 'expanded' ? safeGitHubHref(ci?.latestRunUrl) : undefined;
   const showWord = size !== 'compact';
   const showDetail = view.detail !== undefined && (size !== 'compact' || view.failing > 0);
+  const showStrip = size !== 'compact' && view.runConclusion !== undefined;
+  const showRecency = size !== 'compact' && view.recency !== undefined;
 
   return (
-    <div className="relative flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden text-center">
-      <AmbientGlow tone={view.tone} />
-
-      <div className="relative flex flex-col items-center gap-1">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-center">
+      <div className="flex flex-col items-center gap-1">
         <StatusGlyph status={view.glyph} size={GLYPH_SIZE[size]} title={view.word} />
 
         {showWord ? <BigValue value={view.word} tone={view.tone} size={size} /> : null}
 
         {showDetail ? <span className="text-sm text-text-muted">{view.detail}</span> : null}
+
+        {showStrip ? (
+          <RunStrip
+            conclusion={view.runConclusion as RunConclusion}
+            srLabel={`Latest run ${view.word.toLowerCase()}`}
+          />
+        ) : null}
+
+        {showRecency ? <span className="text-xs text-text-muted">{view.recency}</span> : null}
 
         {href ? (
           <a
