@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { IssuesSignalSlice, Repo } from '../../../types/fleet';
+import type { IssuesSignalSlice, Repo, StaleSignalSlice } from '../../../types/fleet';
 import { IssuesTileBody } from './IssuesTileBody';
 
 const repo: Repo = {
@@ -14,8 +14,9 @@ const repo: Repo = {
 function renderBody(
   issues: IssuesSignalSlice | undefined,
   size: 'compact' | 'standard' | 'expanded' = 'standard',
+  stale?: StaleSignalSlice,
 ) {
-  return render(<IssuesTileBody repo={repo} data={{ issues }} size={size} />);
+  return render(<IssuesTileBody repo={repo} data={{ issues, stale }} size={size} />);
 }
 
 describe('IssuesTileBody — states', () => {
@@ -96,6 +97,88 @@ describe('IssuesTileBody — size tiers', () => {
   it('expanded: adds the descriptive line', () => {
     const { container } = renderBody(slice, 'expanded');
     expect(container.querySelector('[data-part="detail"]')).not.toBeNull();
+  });
+});
+
+describe('IssuesTileBody — cross-slice stale-issue meta (T11)', () => {
+  const ready: IssuesSignalSlice = { status: 'ready', openCount: 7 };
+
+  it('standard: shows "N stale" counting only issue-type stale items', () => {
+    const stale: StaleSignalSlice = {
+      status: 'ready',
+      staleItems: [
+        { number: 1, title: 'a', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+        { number: 2, title: 'b', html_url: 'https://x', updated_at: '2026-01-01', type: 'pr' },
+      ],
+    };
+    const { getAllByText } = renderBody(ready, 'standard', stale);
+    expect(getAllByText(/\b1 stale\b/i).length).toBeGreaterThan(0);
+  });
+
+  it('expanded: counts every issue-type stale item', () => {
+    const stale: StaleSignalSlice = {
+      status: 'ready',
+      staleItems: [
+        { number: 1, title: 'a', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+        { number: 2, title: 'b', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+        { number: 3, title: 'c', html_url: 'https://x', updated_at: '2026-01-01', type: 'pr' },
+      ],
+    };
+    const { getAllByText } = renderBody(ready, 'expanded', stale);
+    expect(getAllByText(/\b2 stale\b/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders an accessible "N stale" sentence in the sr label', () => {
+    const stale: StaleSignalSlice = {
+      status: 'ready',
+      staleItems: [
+        { number: 1, title: 'a', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+      ],
+    };
+    const { getAllByText } = renderBody(ready, 'standard', stale);
+    expect(getAllByText(/1 stale/i).length).toBeGreaterThan(0);
+  });
+
+  it('compact: does not show the stale meta (hero only)', () => {
+    const stale: StaleSignalSlice = {
+      status: 'ready',
+      staleItems: [
+        { number: 1, title: 'a', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+      ],
+    };
+    const { queryByText } = renderBody(ready, 'compact', stale);
+    expect(queryByText(/stale/i)).toBeNull();
+  });
+
+  it('omits the stale meta when no stale items are issues', () => {
+    const stale: StaleSignalSlice = {
+      status: 'ready',
+      staleItems: [
+        { number: 2, title: 'b', html_url: 'https://x', updated_at: '2026-01-01', type: 'pr' },
+      ],
+    };
+    const { queryByText } = renderBody(ready, 'standard', stale);
+    expect(queryByText(/stale/i)).toBeNull();
+  });
+
+  it('omits the stale meta when the stale slice is absent (no crash)', () => {
+    expect(() => renderBody(ready, 'standard', undefined)).not.toThrow();
+    const { queryByText } = renderBody(ready, 'standard', undefined);
+    expect(queryByText(/stale/i)).toBeNull();
+  });
+
+  it('omits the stale meta while the stale slice is loading (no crash)', () => {
+    const stale: StaleSignalSlice = { status: 'loading' };
+    expect(() => renderBody(ready, 'standard', stale)).not.toThrow();
+    const { queryByText } = renderBody(ready, 'standard', stale);
+    expect(queryByText(/stale/i)).toBeNull();
+  });
+
+  it('does not crash when a ready stale slice carries no items', () => {
+    const stale: StaleSignalSlice = { status: 'ready' };
+    expect(() => renderBody(ready, 'standard', stale)).not.toThrow();
+    const { queryByText } = renderBody(ready, 'standard', stale);
+    expect(queryByText(/stale/i)).toBeNull();
   });
 });
 
