@@ -15,10 +15,10 @@ export interface FuzzyMatchResult {
  *
  * Scoring algorithm:
  * - Base score starts at 100 per matched character
- * - Bonus: +15 for match at start (index 0)
- * - Bonus: +10 for match at word/separator boundary (after space, -, _, ., /)
- * - Bonus: +8 for match at camelCase boundary (uppercase after lowercase)
- * - Bonus: up to +50 for contiguous character runs (scales with run length × 10)
+ * - Bonus: +30 for match at start (index 0)
+ * - Bonus: +20 for match at word/separator boundary (after space, -, _, ., /)
+ * - Bonus: +15 for match at camelCase boundary (uppercase after lowercase)
+ * - Bonus: up to +40 for contiguous character runs (scales with run length × 8)
  * - Penalty: -2 per character gap between matches
  * - Penalty: -0.1 per character of target length
  *
@@ -73,9 +73,9 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
   for (let i = 0; i < indices.length; i++) {
     const idx = indices[i];
 
-    // Start bonus
+    // Start bonus (strong preference for prefix matches)
     if (idx === 0) {
-      score += 15;
+      score += 30;
     }
 
     // Boundary bonuses (word boundary, separator, camelCase)
@@ -85,7 +85,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
 
       // After separator: space, -, _, ., /
       if (/[\s\-_.\/]/.test(prevChar)) {
-        score += 10;
+        score += 20;
       }
       // CamelCase boundary: lowercase followed by uppercase
       else if (
@@ -94,7 +94,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
         /[a-z]/.test(prevChar) &&
         /[A-Z]/.test(currChar)
       ) {
-        score += 8;
+        score += 15;
       }
     }
 
@@ -107,7 +107,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
         runLength++;
         j--;
       }
-      score += Math.min(50, runLength * 10);
+      score += Math.min(40, runLength * 8);
     }
   }
 
