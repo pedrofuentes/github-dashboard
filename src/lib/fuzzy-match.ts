@@ -15,7 +15,7 @@ export interface FuzzyMatchResult {
  *
  * Scoring algorithm:
  * - Base score starts at 100 per matched character
- * - Bonus: +30 for match at start (index 0)
+ * - Bonus: +50 for match at start (index 0)
  * - Bonus: +20 for match at word/separator boundary (after space, -, _, ., /)
  * - Bonus: +15 for match at camelCase boundary (uppercase after lowercase)
  * - Bonus: up to +40 for contiguous character runs (scales with run length × 8)
@@ -75,7 +75,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
 
     // Start bonus (strong preference for prefix matches)
     if (idx === 0) {
-      score += 30;
+      score += 50;
     }
 
     // Boundary bonuses (word boundary, separator, camelCase)
