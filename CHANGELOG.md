@@ -159,6 +159,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Dashboard 2.0 — "Signal Keys" tile redesign**: the dashboard tiles were
+  reworked around a **3-tier salience model** so a glance reads problems first.
+  Only tiles that need action carry colour — a PROBLEM tile (e.g. failing CI, a
+  D–F security grade) and the "needs-you" Reviews tile — while healthy tiles stay
+  **calm**, with their identity moved into the header icon rather than a coloured
+  fill. A **thicker top accent bar** (5px, growing to 6px on problems) reinforces
+  the hierarchy. Each signal now has a purpose-built body:
+  - **CI / Actions** — an honest failing hero with the most-recent run cell.
+  - **Security** — a severity-led hero over a **stacked severity bar** (replacing
+    the old arc gauge).
+  - **Pull requests** — the new-contributor highlight plus the oldest external
+    PR's age.
+  - **Reviews** — what's awaiting **you** plus the oldest waiting age.
+  - **Issues** — open count plus stale count.
+  - **Stale** — an age-led hero over an age-bucket bar.
+  - **Activity** — commits/week with a delta (in purple).
+  - **Fleet summary** — inflames on any failure, with a per-repo worst-state strip
+    and a ranked footer.
+  A new **density preference** lets you toggle the standard tiles between
+  **Balanced** (default) and **Glanceable**, reshaping how much each tile shows. A
+  unified **states matrix** makes loading, "All clear", and "Couldn't load"
+  visually distinct, the micro-visualisations stay legible in **grayscale**, and
+  every tile meets **WCAG 2.1 AA in both light and dark themes** via per-theme
+  tokens. Where the API doesn't yet carry the data the design imagines (CI
+  run-history, Activity's merged-PRs→commits, an Issues delta, PR drafts, and a
+  few states) the tiles fall back honestly rather than showing invented numbers —
+  those are deferred, not faked (#194).
 - **Dashboard tiles now render bespoke per-signal bodies** instead of reusing the
   compact `*Cell` table atoms. `SignalTile` stops embedding the table cells and
   instead composes `TileFrame` + a signal-specific body from the new `tiles/*`
