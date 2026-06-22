@@ -84,6 +84,17 @@ describe('createVersionedStore — migrate', () => {
     const store = createVersionedStore<Value>({ key: KEY, schema: Schema, fallback, migrate });
     expect(store.load()).toEqual({ version: 1, items: [] });
   });
+
+  it('falls back without throwing when migrate itself throws', () => {
+    localStorage.setItem(KEY, JSON.stringify(['x', 'y']));
+    const migrate = vi.fn((): unknown => {
+      throw new Error('migrate boom');
+    });
+    const store = createVersionedStore<Value>({ key: KEY, schema: Schema, fallback, migrate });
+    expect(() => store.load()).not.toThrow();
+    expect(store.load()).toEqual({ version: 1, items: [] });
+    expect(migrate).toHaveBeenCalledWith(['x', 'y']);
+  });
 });
 
 describe('createVersionedStore — save', () => {
@@ -100,11 +111,14 @@ describe('createVersionedStore — save', () => {
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it('swallows a throwing localStorage.setItem', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+  it('attempts the write but persists nothing when localStorage.setItem throws', () => {
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded');
     });
-    expect(() => makeStore().save({ version: 1, items: ['a'] })).not.toThrow();
+    const value: Value = { version: 1, items: ['a'] };
+    expect(() => makeStore().save(value)).not.toThrow();
+    expect(setItem).toHaveBeenCalledWith(KEY, JSON.stringify(value));
+    expect(localStorage.getItem(KEY)).toBeNull();
   });
 });
 
@@ -115,10 +129,13 @@ describe('createVersionedStore — clear', () => {
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it('swallows a throwing localStorage.removeItem', () => {
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+  it('attempts removal but leaves the item when localStorage.removeItem throws', () => {
+    localStorage.setItem(KEY, JSON.stringify({ version: 1, items: ['a'] }));
+    const removeItem = vi.spyOn(localStorage, 'removeItem').mockImplementation(() => {
       throw new Error('storage disabled');
     });
     expect(() => makeStore().clear()).not.toThrow();
+    expect(removeItem).toHaveBeenCalledWith(KEY);
+    expect(localStorage.getItem(KEY)).not.toBeNull();
   });
 });
