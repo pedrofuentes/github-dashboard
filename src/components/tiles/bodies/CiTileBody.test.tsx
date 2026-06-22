@@ -268,6 +268,22 @@ describe('CiTileBody', () => {
       expect(glyph(container, 'success')).not.toBeNull();
       expect(screen.getByText('Passing', { selector: 'span' })).toBeInTheDocument();
     });
+
+    it('exposes a data-state on the ready container ("ready" vs "unavailable")', () => {
+      const { container: ready } = render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="standard"
+        />,
+      );
+      expect(ready.querySelector('[data-state="ready"]')).not.toBeNull();
+      const { container: na } = render(
+        <CiTileBody repo={repo} data={data({ status: 'unknown' })} size="standard" />,
+      );
+      expect(na.querySelector('[data-state="unavailable"]')).not.toBeNull();
+      expect(na.querySelector('[data-state="ready"]')).toBeNull();
+    });
   });
 
   describe('latest-run cell (RunStrip) + recency', () => {
