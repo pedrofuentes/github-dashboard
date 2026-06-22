@@ -118,9 +118,12 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
   // GitHub exposes conclusions beyond our 5-member enum (cancelled, skipped,
   // timed_out, action_required, neutral, stale). Guard the lookup so an
   // unexpected value falls back to the neutral 'none' render instead of
-  // throwing a TypeError → blank tile (#185).
+  // throwing a TypeError → blank tile (#185). `Object.hasOwn` (not the `in`
+  // operator) keeps the guard to the enum's own keys, so an inherited
+  // Object.prototype member ("toString", "constructor", …) cannot resolve to a
+  // prototype method and destructure an undefined glyph/word (#204).
   const raw = ci.conclusion ?? 'none';
-  const conclusion: Conclusion = raw in CONCLUSION ? raw : 'none';
+  const conclusion: Conclusion = Object.hasOwn(CONCLUSION, raw) ? raw : 'none';
   const { glyph, word } = CONCLUSION[conclusion];
   const tone = iconKindTone(glyph);
   const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;
