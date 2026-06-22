@@ -14,6 +14,7 @@ import { ZodError } from 'zod';
 import { fetchCommitActivity } from './commit-activity';
 import { ETagCache } from './etag-cache';
 import { GitHubApiError, GitHubErrorCode } from './index';
+import { rateLimitStore } from './rate-limit-store';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
@@ -58,10 +59,12 @@ describe('fetchCommitActivity', () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn();
+    rateLimitStore.reset();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    rateLimitStore.reset();
   });
 
   it('parses and returns the full 52-week history on success', async () => {
@@ -80,6 +83,45 @@ describe('fetchCommitActivity', () => {
     expect(result.weeks[0].days).toHaveLength(7);
     expect(result.weeks[0].total).toBe(0);
     expect(result.etag).toBe('W/"v1"');
+  });
+
+  it('records the freshly observed rate-limit budget to the shared store on success', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(
+        200,
+        fiftyTwoWeeks(),
+        mockHeaders({ 'x-ratelimit-remaining': '4990', etag: 'W/"v1"' }),
+      ),
+    );
+
+    await fetchCommitActivity('owner', 'repo', 'ghp_test', { cache: new ETagCache() });
+
+    // The standalone fetcher runs outside the fleet poll, so it must still feed
+    // the central budget guard the budget it just observed (#155 🟢#5).
+    expect(rateLimitStore.getState().info?.remaining).toBe(4990);
+  });
+
+  it('does not re-record the budget on a free conditional 304', async () => {
+    const cache = new ETagCache();
+
+    // A 200 seeds the cache and records the live budget (remaining 4990).
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockFetchResponse(
+        200,
+        fiftyTwoWeeks(),
+        mockHeaders({ 'x-ratelimit-remaining': '4990', etag: 'W/"v1"' }),
+      ),
+    );
+    await fetchCommitActivity('owner', 'repo', 'ghp_test', { cache });
+
+    // A 304 is free (the primary budget is not decremented), so its headers must
+    // NOT overwrite the store even though they advertise a lower remaining.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockFetchResponse(304, '', mockHeaders({ 'x-ratelimit-remaining': '1', etag: 'W/"v1"' })),
+    );
+    await fetchCommitActivity('owner', 'repo', 'ghp_test', { cache });
+
+    expect(rateLimitStore.getState().info?.remaining).toBe(4990);
   });
 
   it('reports "computing" while GitHub builds the stats (202)', async () => {
