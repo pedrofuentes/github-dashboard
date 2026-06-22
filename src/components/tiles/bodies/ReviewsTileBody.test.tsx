@@ -207,3 +207,45 @@ describe('ReviewsTileBody — defensive & a11y', () => {
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 });
+
+describe('ReviewsTileBody — density-aware standard tier (T15)', () => {
+  const oldest = daysAgo(5);
+  const slice: ReviewsSignalSlice = {
+    status: 'ready',
+    requestedCount: 3,
+    requests: [request(daysAgo(2), 1), request(oldest, 2)],
+  };
+
+  it('glanceable standard: keeps the hero but drops the oldest-age meta', () => {
+    const { getByText, queryByText, container } = render(
+      <ReviewsTileBody
+        repo={repo}
+        data={{ reviews: slice }}
+        size="standard"
+        density="glanceable"
+      />,
+    );
+    expect(getByText('3 awaiting you')).toBeInTheDocument();
+    expect(queryByText(`oldest ${formatRelativeTime(new Date(oldest))}`)).toBeNull();
+    expect(container.querySelector('[data-part="oldest"]')).toBeNull();
+  });
+
+  it('balanced standard: keeps the oldest-age meta (unchanged)', () => {
+    const { container } = render(
+      <ReviewsTileBody repo={repo} data={{ reviews: slice }} size="standard" density="balanced" />,
+    );
+    expect(container.querySelector('[data-part="oldest"]')).not.toBeNull();
+  });
+
+  it('glanceable expanded: keeps the oldest-age meta (expanded unaffected)', () => {
+    const { container } = render(
+      <ReviewsTileBody
+        repo={repo}
+        data={{ reviews: slice }}
+        size="expanded"
+        density="glanceable"
+      />,
+    );
+    expect(container.querySelector('[data-part="oldest"]')).not.toBeNull();
+  });
+});

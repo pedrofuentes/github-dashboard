@@ -149,3 +149,32 @@ describe('ActivityTileBody — ok state (commits-this-week hero + delta)', () =>
     expect(mockUse).toHaveBeenCalledWith(repo);
   });
 });
+
+describe('ActivityTileBody — density-aware standard tier (T15)', () => {
+  const weeks: CommitActivityWeek[] = [
+    week(10, [2, 2, 2, 2, 2, 0, 0]),
+    week(13, [3, 2, 2, 2, 2, 1, 1]),
+  ];
+
+  it('glanceable standard: keeps the hero + delta but drops the sparkline', () => {
+    mockUse.mockReturnValue({ state: 'ok', weeks });
+    render(<ActivityTileBody repo={repo} size="standard" density="glanceable" />);
+    expect(screen.getByText('13')).toBeInTheDocument();
+    expect(screen.getByText('▲3')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  it('balanced standard: keeps the sparkline (unchanged)', () => {
+    mockUse.mockReturnValue({ state: 'ok', weeks });
+    render(<ActivityTileBody repo={repo} size="standard" density="balanced" />);
+    expect(screen.getByRole('img', { name: /commits over/i })).toBeInTheDocument();
+  });
+
+  it('glanceable expanded: keeps the sparkline (expanded unaffected)', () => {
+    mockUse.mockReturnValue({ state: 'ok', weeks });
+    render(<ActivityTileBody repo={repo} size="expanded" density="glanceable" />);
+    // The sparkline label leads with the count; the heatmap label leads with
+    // "Commit activity heatmap" — match only the sparkline.
+    expect(screen.getByRole('img', { name: /^\d+ commits over/i })).toBeInTheDocument();
+  });
+});

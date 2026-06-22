@@ -236,3 +236,49 @@ describe('SecurityTileBody — theming & a11y', () => {
     expect(getByText('Critical')).toBeInTheDocument();
   });
 });
+
+describe('SecurityTileBody — density-aware standard tier (T15)', () => {
+  const slice: SecuritySignalSlice = {
+    status: 'ready',
+    grade: 'F',
+    counts: { critical: 2, high: 1, medium: 0, low: 0 },
+  };
+
+  it('glanceable standard: keeps the hero but drops the severity bar + meta', () => {
+    const { getByText, container } = render(
+      <SecurityTileBody
+        repo={repo}
+        data={{ security: slice }}
+        size="standard"
+        density="glanceable"
+      />,
+    );
+    expect(getByText('Critical')).toBeInTheDocument();
+    expect(container.querySelector('[data-part="severity-bar"]')).toBeNull();
+    expect(container.querySelector('[data-part="meta"]')).toBeNull();
+  });
+
+  it('balanced standard: keeps the severity bar (unchanged)', () => {
+    const { container } = render(
+      <SecurityTileBody
+        repo={repo}
+        data={{ security: slice }}
+        size="standard"
+        density="balanced"
+      />,
+    );
+    expect(container.querySelector('[data-part="severity-bar"]')).not.toBeNull();
+  });
+
+  it('glanceable expanded: keeps the severity bar (expanded unaffected)', () => {
+    const { container } = render(
+      <SecurityTileBody
+        repo={repo}
+        data={{ security: slice }}
+        size="expanded"
+        density="glanceable"
+      />,
+    );
+    expect(container.querySelector('[data-part="severity-bar"]')).not.toBeNull();
+  });
+});

@@ -202,3 +202,51 @@ describe('StaleTileBody — defensive & a11y', () => {
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 });
+
+describe('StaleTileBody — density-aware standard tier (T15)', () => {
+  const slice: StaleSignalSlice = {
+    status: 'ready',
+    staleCount: 3,
+    staleItems: [item('pr', 20), item('issue', 40), item('issue', 70)],
+  };
+
+  it('glanceable standard: keeps the hero but drops the age-bucket bar', () => {
+    const { getByText, container } = render(
+      <StaleTileBody
+        repo={repo}
+        data={{ stale: slice }}
+        size="standard"
+        now={NOW}
+        density="glanceable"
+      />,
+    );
+    expect(getByText('70d')).toBeInTheDocument();
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).toBeNull();
+  });
+
+  it('balanced standard: keeps the age-bucket bar (unchanged)', () => {
+    const { container } = render(
+      <StaleTileBody
+        repo={repo}
+        data={{ stale: slice }}
+        size="standard"
+        now={NOW}
+        density="balanced"
+      />,
+    );
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
+  });
+
+  it('glanceable expanded: keeps the age-bucket bar (expanded unaffected)', () => {
+    const { container } = render(
+      <StaleTileBody
+        repo={repo}
+        data={{ stale: slice }}
+        size="expanded"
+        now={NOW}
+        density="glanceable"
+      />,
+    );
+    expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
+  });
+});
