@@ -19,7 +19,7 @@ export interface FuzzyMatchResult {
  * - Bonus: +20 for match at word/separator boundary (after space, -, _, ., /)
  * - Bonus: +15 for match at camelCase boundary (uppercase after lowercase)
  * - Bonus: up to +40 for contiguous character runs (scales with run length × 8)
- * - Penalty: -3 per character gap between matches
+ * - Penalty: -5 per character gap between matches
  * - Penalty: -0.1 per character of target length
  *
  * @param query - The search string (case-insensitive)
@@ -114,7 +114,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
   // Gap penalty: strongly penalize distance between matches
   for (let i = 1; i < indices.length; i++) {
     const gap = indices[i] - indices[i - 1] - 1;
-    score -= gap * 3;
+    score -= gap * 5;
   }
 
   // Target length penalty (lightly penalize longer strings)
