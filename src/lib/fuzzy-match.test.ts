@@ -221,7 +221,7 @@ describe('fuzzyRank', () => {
 
   describe('edge cases', () => {
     it('handles empty items array', () => {
-      const results = fuzzyRank('test', [], (item) => item.name);
+      const results = fuzzyRank('test', [] as TestItem[], (item) => item.name);
       expect(results).toEqual([]);
     });
 
