@@ -69,6 +69,11 @@ describe('ArcGauge', () => {
     );
     expect(getByRole('img')).toBeInTheDocument();
     expectAllFinite(container);
+    // fraction clamps to 0 → no fill arc is drawn; the track is the full 180°.
+    expect(container.querySelector('[data-part="fill"]')).toBeNull();
+    expect(container.querySelector('[data-part="track"]')?.getAttribute('d')).toBe(
+      'M6 60 A54 54 0 0 1 114 60',
+    );
   });
 
   it('clamps value > max to a full arc with finite geometry', () => {
@@ -76,6 +81,11 @@ describe('ArcGauge', () => {
       <ArcGauge value={250} max={100} tone="success" center="A" srLabel="grade A" />,
     );
     expectAllFinite(container);
+    // fraction clamps to 1 → the fill arc spans the whole track exactly.
+    const track = container.querySelector('[data-part="track"]')?.getAttribute('d');
+    const fill = container.querySelector('[data-part="fill"]')?.getAttribute('d');
+    expect(fill).toBe('M6 60 A54 54 0 0 1 114 60');
+    expect(fill).toBe(track);
   });
 
   it('clamps negative value to zero with finite geometry', () => {
@@ -83,6 +93,8 @@ describe('ArcGauge', () => {
       <ArcGauge value={-10} max={100} tone="failure" center="F" srLabel="grade F" />,
     );
     expectAllFinite(container);
+    // fraction clamps to 0 → no fill arc.
+    expect(container.querySelector('[data-part="fill"]')).toBeNull();
   });
 
   it('renders finitely for an empty/zero value', () => {
@@ -90,5 +102,16 @@ describe('ArcGauge', () => {
       <ArcGauge value={0} max={100} tone="failure" center="F" srLabel="grade F" />,
     );
     expectAllFinite(container);
+    expect(container.querySelector('[data-part="fill"]')).toBeNull();
+  });
+
+  it('draws the fill arc to the exact half-way point for value = max/2', () => {
+    const { container } = render(
+      <ArcGauge value={50} max={100} tone="success" center="B" srLabel="grade B" />,
+    );
+    // fraction 0.5 → arc ends at the top of the semicircle (CX, CY-RADIUS) = (60, 6).
+    expect(container.querySelector('[data-part="fill"]')?.getAttribute('d')).toBe(
+      'M6 60 A54 54 0 0 1 60 6',
+    );
   });
 });

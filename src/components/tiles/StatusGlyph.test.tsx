@@ -45,6 +45,31 @@ describe('StatusGlyph', () => {
     expect(spinner.getAttribute('class') ?? '').toContain('motion-reduce:animate-none');
   });
 
+  it('never spins a non-loading glyph (only loading animates)', () => {
+    // Negative companion to the loading-spinner test: every other kind —
+    // including the static three-quarter `running` arc — must carry no
+    // `animate-spin`, so a stray spinner on the wrong status fails here.
+    const nonLoading: SignalIconKind[] = [
+      'success',
+      'failure',
+      'running',
+      'queued',
+      'warning',
+      'stale',
+      'neutral',
+      'external',
+      'review',
+      'unknown',
+      'info',
+    ];
+    for (const status of nonLoading) {
+      const { container, unmount } = render(<StatusGlyph status={status} />);
+      const svg = container.querySelector(`[data-status="${status}"]`) as HTMLElement;
+      expect(svg.getAttribute('class') ?? '').not.toContain('animate-spin');
+      unmount();
+    }
+  });
+
   it('renders every documented status kind with a usable accessible name', () => {
     const kinds: SignalIconKind[] = [
       'success',

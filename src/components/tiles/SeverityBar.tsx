@@ -38,6 +38,19 @@ function steppedHeight(index: number): number {
 }
 
 /**
+ * Proportional width (%) for a segment, clamped to `[0, 100]`. A zero/negative
+ * denominator yields `0`; a value larger than `total` (only reachable when an
+ * upstream subset is mis-projected past its own total) clamps to `100` so the
+ * segment fills the track instead of overflowing it.
+ */
+function segmentWidth(value: number, total: number): number {
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, (value / total) * 100));
+}
+
+/**
  * Segmented horizontal bar (DESIGN-TILES §5) for security severities / fleet
  * health splits. Each non-zero segment is sized proportionally and carries a
  * `<title>`; the accessible breakdown is a screen-reader list (the coloured bar
@@ -61,7 +74,7 @@ export function SeverityBar({ segments, max, dividers, stepped }: SeverityBarPro
       >
         {visible.map((segment, index) => (
           <div
-            key={segment.label}
+            key={`${segment.tone}-${segment.label}-${index}`}
             data-tone={segment.tone}
             title={`${segment.label}: ${segment.value}`}
             className={`${toneBgClass(segment.tone)}${
@@ -72,15 +85,18 @@ export function SeverityBar({ segments, max, dividers, stepped }: SeverityBarPro
                 : ''
             }`}
             style={{
-              width: total > 0 ? `${(segment.value / total) * 100}%` : '0%',
+              width: `${segmentWidth(segment.value, total)}%`,
               ...(stepped ? { height: `${steppedHeight(index)}%` } : {}),
             }}
           />
         ))}
       </div>
+      {/* The bar is decorative; this sr-only list is the source of truth, so the
+          counts stay announced even when an explicit max={0} collapses every
+          segment to 0%-width (a blank bar) for assistive-tech users. */}
       <ul className="sr-only">
-        {visible.map((segment) => (
-          <li key={segment.label}>
+        {visible.map((segment, index) => (
+          <li key={`${segment.tone}-${segment.label}-${index}`}>
             {segment.label}: {segment.value}
           </li>
         ))}
