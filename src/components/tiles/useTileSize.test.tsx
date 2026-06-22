@@ -5,38 +5,58 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TileTier } from './types';
 import { DEFAULT_TILE_TIER, tierForSize, useTileSize } from './useTileSize';
 
-/** Captures the most recent ResizeObserver callback so tests can drive it. */
+/**
+ * Test double for `ResizeObserver`. The hook now shares ONE observer across all
+ * tiles (a module-level instance + an element→callback registry), so the double
+ * tracks how many instances are constructed (`constructCount`) plus which
+ * elements each observes, and `emitSize` targets a specific element so the
+ * shared dispatcher can route the entry to the right tile.
+ */
 let lastObserverCallback: ResizeObserverCallback | null = null;
+let constructCount = 0;
 let observeCount = 0;
+let unobserveCount = 0;
 let disconnectCount = 0;
+const observedElements = new Set<Element>();
 
 class MockResizeObserver {
   constructor(callback: ResizeObserverCallback) {
     lastObserverCallback = callback;
+    constructCount += 1;
   }
-  observe(): void {
+  observe(element: Element): void {
     observeCount += 1;
+    observedElements.add(element);
   }
-  unobserve(): void {}
+  unobserve(element: Element): void {
+    unobserveCount += 1;
+    observedElements.delete(element);
+  }
   disconnect(): void {
     disconnectCount += 1;
+    observedElements.clear();
   }
 }
 
-/** Drives the captured observer with a single fake entry of the given size. */
-function emitSize(width: number, height: number): void {
+/**
+ * Drives the shared observer with one fake entry for `target` (defaults to the
+ * sole observed element). The entry carries a `target` so the shared dispatcher
+ * can route the size to that element's registered callback.
+ */
+function emitSize(width: number, height: number, target?: Element): void {
+  const element = target ?? [...observedElements][0];
   act(() => {
     lastObserverCallback?.(
-      [{ contentRect: { width, height } } as ResizeObserverEntry],
+      [{ target: element, contentRect: { width, height } } as unknown as ResizeObserverEntry],
       {} as ResizeObserver,
     );
   });
 }
 
-function Probe(): ReactElement {
+function Probe({ testId = 'probe' }: { testId?: string }): ReactElement {
   const { ref, tier } = useTileSize<HTMLDivElement>();
   return (
-    <div ref={ref} data-testid="probe">
+    <div ref={ref} data-testid={testId}>
       {tier}
     </div>
   );
@@ -48,8 +68,11 @@ function Probe(): ReactElement {
 // relative to our own hooks.
 beforeEach(() => {
   lastObserverCallback = null;
+  constructCount = 0;
   observeCount = 0;
+  unobserveCount = 0;
   disconnectCount = 0;
+  observedElements.clear();
 });
 
 afterEach(() => {
@@ -80,6 +103,28 @@ describe('tierForSize', () => {
   it('prefers compact over expanded when one dimension is tiny', () => {
     expect(tierForSize(600, 60)).toBe<TileTier>('compact');
   });
+
+  // Exact-threshold cases lock the comparison operators (<= / >=) so an
+  // off-by-one boundary mutation (e.g. <= → <) cannot pass undetected (#175 🟡#3).
+  it('treats the exact compact width threshold (175) as compact, 176 as standard', () => {
+    expect(tierForSize(175, 300)).toBe<TileTier>('compact');
+    expect(tierForSize(176, 300)).toBe<TileTier>('standard');
+  });
+
+  it('treats the exact compact height threshold (96) as compact, 97 as standard', () => {
+    expect(tierForSize(300, 96)).toBe<TileTier>('compact');
+    expect(tierForSize(300, 97)).toBe<TileTier>('standard');
+  });
+
+  it('treats the exact expanded width threshold (420) as expanded, 419 as standard', () => {
+    expect(tierForSize(420, 200)).toBe<TileTier>('expanded');
+    expect(tierForSize(419, 200)).toBe<TileTier>('standard');
+  });
+
+  it('treats the exact expanded height threshold (384) as expanded, 383 as standard', () => {
+    expect(tierForSize(300, 384)).toBe<TileTier>('expanded');
+    expect(tierForSize(300, 383)).toBe<TileTier>('standard');
+  });
 });
 
 describe('useTileSize', () => {
@@ -105,11 +150,77 @@ describe('useTileSize', () => {
     expect(screen.getByTestId('probe')).toHaveTextContent('expanded');
   });
 
-  it('disconnects the observer on unmount', () => {
+  it('unobserves the element and disconnects the shared observer on unmount', () => {
     vi.stubGlobal('ResizeObserver', MockResizeObserver);
     const { unmount } = render(<Probe />);
     unmount();
+    expect(unobserveCount).toBe(1);
     expect(disconnectCount).toBe(1);
+  });
+
+  it('keeps the default tier when an unmeasured 0x0 box is reported on mount', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    render(<Probe />);
+
+    // A 0x0 mount / grid-init / tab-reshow measurement must NOT misclassify the
+    // tile as compact (#175 🟡#2): the tile keeps its current tier until a real
+    // non-zero size arrives.
+    emitSize(0, 0);
+    expect(screen.getByTestId('probe')).toHaveTextContent('standard');
+  });
+
+  it('ignores a transient 0x0 measurement after a real size and keeps the last tier', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    render(<Probe />);
+
+    emitSize(600, 500);
+    expect(screen.getByTestId('probe')).toHaveTextContent('expanded');
+
+    emitSize(0, 0);
+    expect(screen.getByTestId('probe')).toHaveTextContent('expanded');
+  });
+
+  it('shares a single ResizeObserver instance across multiple tiles', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    render(
+      <>
+        <Probe testId="tile-a" />
+        <Probe testId="tile-b" />
+      </>,
+    );
+
+    // One observer for the whole fleet, but every tile is still observed (#175 🟡#1).
+    expect(constructCount).toBe(1);
+    expect(observeCount).toBe(2);
+  });
+
+  it('routes each shared-observer entry to its own tile by target element', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    render(
+      <>
+        <Probe testId="tile-a" />
+        <Probe testId="tile-b" />
+      </>,
+    );
+
+    const tileA = screen.getByTestId('tile-a');
+    const tileB = screen.getByTestId('tile-b');
+    emitSize(150, 300, tileA);
+    emitSize(600, 500, tileB);
+
+    expect(tileA).toHaveTextContent('compact');
+    expect(tileB).toHaveTextContent('expanded');
+  });
+
+  it('ignores resize entries for elements that are not registered', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+    render(<Probe />);
+
+    const stranger = document.createElement('div');
+    emitSize(150, 300, stranger);
+
+    // The dispatcher skips unknown targets, so the registered probe is untouched.
+    expect(screen.getByTestId('probe')).toHaveTextContent('standard');
   });
 
   it('falls back to the default tier when ResizeObserver is unavailable', () => {
