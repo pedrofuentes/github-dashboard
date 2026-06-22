@@ -345,3 +345,62 @@ describe('DashboardView — empty-state discrimination (I1)', () => {
     expect(onClearFilter).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('DashboardView — hideRepoHeader derivation reaches the tiles (#335)', () => {
+  const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+
+  function renderFiltered(repoFilter: Set<string> | undefined): void {
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={repoFilter}
+      />,
+    );
+  }
+
+  it('drops the visible repo header on every tile when the filter narrows to exactly one repo', () => {
+    renderFiltered(new Set(['octo/a']));
+
+    // D1 integration: the projection leaves only octo/a's tiles, and the
+    // single-repo derivation (`repoFilter.size === 1`) must actually reach each
+    // tile as `hideRepoHeader` — so every visible repo header line is dropped to
+    // `sr-only`. The TileFrame leaf test (TileFrame.test) only proves the prop is
+    // honoured; this asserts DashboardView WIRES it from the filter (#335).
+    const headings = screen.getAllByRole('heading', { level: 3, name: 'octo/a' });
+    expect(headings.length).toBeGreaterThan(0);
+    headings.forEach((heading) => {
+      expect(heading).toHaveClass('sr-only');
+      // UX-only: repo identity never leaves the a11y tree (AC-10) — the real
+      // `nameWithOwner` still rides the heading `title`.
+      expect(heading).toHaveAttribute('title', 'octo/a');
+    });
+    // The excluded repo's tiles are projected out entirely (no stray headers).
+    expect(screen.queryByRole('heading', { level: 3, name: 'octo/b' })).toBeNull();
+  });
+
+  it('keeps the visible repo header when two or more repos are selected', () => {
+    renderFiltered(new Set(['octo/a', 'octo/b']));
+
+    // `size > 1` ⇒ `filteredToOneRepo` false ⇒ `hideRepoHeader` false: each tile
+    // keeps its visible repo line so the user can tell the repos apart.
+    for (const name of ['octo/a', 'octo/b']) {
+      const headings = screen.getAllByRole('heading', { level: 3, name });
+      expect(headings.length).toBeGreaterThan(0);
+      headings.forEach((heading) => expect(heading).not.toHaveClass('sr-only'));
+    }
+  });
+
+  it('keeps the visible repo header when no filter is active (empty selection ⇒ all shown)', () => {
+    renderFiltered(new Set());
+
+    for (const name of ['octo/a', 'octo/b']) {
+      const headings = screen.getAllByRole('heading', { level: 3, name });
+      expect(headings.length).toBeGreaterThan(0);
+      headings.forEach((heading) => expect(heading).not.toHaveClass('sr-only'));
+    }
+  });
+});
