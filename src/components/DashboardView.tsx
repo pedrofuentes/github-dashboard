@@ -403,9 +403,9 @@ export function DashboardView({
               key={`skeleton-${index}`}
               className="flex h-40 flex-col gap-4 rounded-md border border-border bg-surface p-4"
             >
-              <span className="block h-3 w-24 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
-              <span className="block h-8 w-16 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
-              <span className="block h-3 w-32 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
+              <span className="block h-3 w-24 animate-pulse rounded bg-border motion-reduce:animate-none" />
+              <span className="block h-8 w-16 animate-pulse rounded bg-border motion-reduce:animate-none" />
+              <span className="block h-3 w-32 animate-pulse rounded bg-border motion-reduce:animate-none" />
             </div>
           ))}
         </div>

@@ -9,7 +9,7 @@
  * a `tone`, a `status`, and a body: the `data-status` attribute, the WAI-ARIA
  * grid cell semantics (`aria-colindex`/`aria-rowindex`), the roving tab stop,
  * the whole-tile activate overlay button (button semantics, Enter/Space, the
- * sky-600 focus ring), and the edit-mode Move/Resize control rail.
+ * `focus`-token focus ring), and the edit-mode Move/Resize control rail.
  */
 import type { ReactElement, ReactNode, RefObject } from 'react';
 
@@ -228,7 +228,7 @@ export function TileFrame({
         onClick={onActivate}
         onFocus={() => onTileFocus?.(tileId)}
         aria-label={activateLabel}
-        className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+        className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       />
     </article>
   );
