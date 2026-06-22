@@ -22,19 +22,8 @@
  */
 import type { ReactElement } from 'react';
 
-/**
- * Accent tone names that resolve to a `--color-<tone>` theme variable. Defined
- * locally so this primitive stays self-contained (no shared-types import).
- */
-export type AccentTone =
-  | 'success'
-  | 'failure'
-  | 'warning'
-  | 'info'
-  | 'neutral'
-  | 'coral'
-  | 'purple'
-  | 'gold';
+import type { AccentTone } from './types';
+import { toneToVar } from './types';
 
 export interface SparklineProps {
   /** Per-week commit totals, most recent last. Values are expected to be ≥ 0. */
@@ -113,7 +102,7 @@ export function Sparkline({
   width = 96,
   height = 24,
 }: SparklineProps): ReactElement {
-  const color = `var(--color-${tone})`;
+  const color = toneToVar(tone);
   const points = computePoints(data, width, height);
   const last = points[points.length - 1];
 
