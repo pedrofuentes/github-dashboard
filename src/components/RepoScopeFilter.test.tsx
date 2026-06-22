@@ -7,6 +7,22 @@ import type { Repo } from '../types/fleet';
 const repo = (n: string): Repo => ({ nameWithOwner: n, isPrivate: false }) as Repo;
 const repos = [repo('octo/a'), repo('octo/b')];
 
+it('does not advertise a listbox popup (it is a checkbox-group disclosure)', () => {
+  render(
+    <RepoScopeFilter
+      repos={repos}
+      selected={new Set()}
+      onToggleRepo={() => {}}
+      onClear={() => {}}
+      isActive={false}
+    />,
+  );
+  const button = screen.getByRole('button', { name: /filter repositories/i });
+  expect(button).not.toHaveAttribute('aria-haspopup');
+  expect(button).toHaveAttribute('aria-expanded');
+  expect(button).toHaveAttribute('aria-controls');
+});
+
 it('toggles a repo selection', async () => {
   const onToggleRepo = vi.fn();
   render(
