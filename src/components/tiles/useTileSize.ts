@@ -92,9 +92,26 @@ export interface UseTileSizeResult<T extends HTMLElement> {
 }
 
 /**
+ * One-time guard so the degraded fallback below logs at most once across a fleet
+ * of tiles, rather than once per tile, when `ResizeObserver` is missing.
+ */
+let warnedResizeObserverUnavailable = false;
+
+function warnResizeObserverUnavailable(): void {
+  if (warnedResizeObserverUnavailable) {
+    return;
+  }
+  warnedResizeObserverUnavailable = true;
+  console.warn(
+    'useTileSize: ResizeObserver is unavailable; tiles render at the default density tier and will not respond to resizes.',
+  );
+}
+
+/**
  * Observe an element's size and report its {@link TileTier}. Attach the returned
  * `ref` to the element to measure. Falls back to {@link DEFAULT_TILE_TIER} when
- * `ResizeObserver` is unavailable (e.g. the jsdom test environment).
+ * `ResizeObserver` is unavailable (e.g. the jsdom test environment), warning once
+ * so the degraded, resize-blind mode is observable rather than silent (#176).
  */
 export function useTileSize<T extends HTMLElement = HTMLElement>(): UseTileSizeResult<T> {
   const ref = useRef<T>(null);
@@ -102,7 +119,11 @@ export function useTileSize<T extends HTMLElement = HTMLElement>(): UseTileSizeR
 
   useEffect(() => {
     const element = ref.current;
-    if (!element || typeof ResizeObserver === 'undefined') {
+    if (!element) {
+      return;
+    }
+    if (typeof ResizeObserver === 'undefined') {
+      warnResizeObserverUnavailable();
       return;
     }
 
