@@ -213,3 +213,31 @@ describe('Heatmap — max sanitization & intensity proportionality (#166)', () =
     expect(opacities[1]).toBeLessThan(opacities[2]);
   });
 });
+
+describe('Heatmap — count > max clamp & max=0 tone fill (#167)', () => {
+  it('clamps a cell whose count exceeds max to full intensity (ratio > 1)', () => {
+    // count/max = 10/2 = 5 → ratio clamps to 1 → intensity = MIN + (1-MIN)*1 = 1.
+    const { container } = render(<Heatmap weeks={[[10]]} srLabel="commits" max={2} />);
+    const cell = cells(container)[0];
+    expect(cell.getAttribute('data-count')).toBe('10');
+    expect(Number(cell.getAttribute('fill-opacity'))).toBe(1);
+  });
+
+  it('still paints non-zero cells in the tone fill (not the empty fill) when max === 0', () => {
+    // max=0 is non-positive, so the denominator falls back to the data max (5);
+    // empty cells keep the raised-surface fill, non-zero cells keep the tone.
+    const { container } = render(
+      <Heatmap weeks={[[0, 5]]} srLabel="commits" max={0} tone="info" />,
+    );
+    const [zeroCell, hotCell] = cells(container);
+    expect(zeroCell.getAttribute('data-count')).toBe('0');
+    expect(zeroCell.getAttribute('fill')).toBe('var(--color-surface-raised)');
+    expect(hotCell.getAttribute('data-count')).toBe('5');
+    expect(hotCell.getAttribute('fill')).toBe('var(--color-info)');
+    expect(hotCell.getAttribute('fill')).not.toBe(zeroCell.getAttribute('fill'));
+    // The data-max cell reaches full intensity; always finite, never NaN.
+    const opacity = Number(hotCell.getAttribute('fill-opacity'));
+    expect(opacity).toBe(1);
+    expect(opacity).toBeGreaterThan(0);
+  });
+});

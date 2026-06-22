@@ -228,4 +228,24 @@ describe('useTileSize', () => {
     render(<Probe />);
     expect(screen.getByTestId('probe')).toHaveTextContent('standard');
   });
+
+  it('reconstructs a fresh shared observer after the last tile unmounts (no singleton leak)', () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    const first = render(<Probe />);
+    expect(constructCount).toBe(1);
+
+    // Unmounting the only subscriber tears the shared observer down (last-out
+    // disconnect + null-out the module singleton)...
+    first.unmount();
+    expect(disconnectCount).toBe(1);
+
+    // ...so the next mount must lazily construct a BRAND-NEW observer rather than
+    // reuse a stale, disconnected singleton. Asserting the reconstruct makes test
+    // isolation explicit instead of depending solely on Testing-Library
+    // auto-cleanup ordering (#346 🟢#3).
+    render(<Probe />);
+    expect(constructCount).toBe(2);
+    expect(observeCount).toBe(2);
+  });
 });

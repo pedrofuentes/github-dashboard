@@ -495,22 +495,42 @@ follows §3.4. The underlying slice types are in `src/types/fleet.ts`.
 
 ### 4.3 Pull requests
 
-- **Data** (`PullRequestsSignalSlice`): `openCount`, `externalCount`. (Oldest /
-  blocked mini-list is a **future** enrichment — design the slot now; render it
-  only when the slice gains the fields, otherwise omit.)
-- **Primary visual:** `BigValue` open-PR count with the PR `StatusGlyph` (the
-  branch icon from `PullRequestsCell`). When `externalCount > 0`, a prominent
-  **new-contributor `Chip`** (`accent-coral`, ★ glyph, “N external”). Expanded
-  tier reserves a **mini-list** region for oldest/blocked PRs (title + age),
-  rendered when data is available.
-- **Tokens:** identity accent `accent-info`; external highlight `accent-coral`
-  (light: orange-800 ink on orange-100 tint — the existing badge; dark: coral
-  text/border on coral tint).
-- **Redundant encoding:** count text + PR glyph; external chip = ★ icon + word
-  “external” + sr “from new outside contributors” + hover title (carried from
-  `PullRequestsCell`).
-- **States:** `0/0` → — “No open pull requests”; loading skeleton; error → —
-  “Pull request data unavailable”.
+Implemented by `PrsTileBody` (`src/components/tiles/bodies/PrsTileBody.tsx`).
+
+- **Data** (`PullRequestsSignalSlice`): `openCount`, `externalCount`, and
+  `externalPullRequests` (each carrying `author_association` + `created_at`). The
+  body re-derives the **new-contributor** count from `author_association ∈
+  {NONE, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER}`, falling back to `externalCount`
+  when the identity array is absent.
+- **Primary visual:** a `BigValue` open-PR count hero — **no `StatusGlyph`/branch
+  icon**, because tile identity already lives in the `TileFrame` header icon (this
+  is a CALM tile that paints no edge/glow). The hero tone escalates to
+  `accent-coral` when new-contributor PRs exist, otherwise `accent-info`. New
+  contributors are called out by a redundant **`Chip`** (`accent-coral`, ★ star,
+  “N new contributors”; the compact tier shows just the number).
+- **Micro-viz:** a **2-segment `SeverityBar`** (`max = openCount`) — coral
+  “New-contributor” + info “Other open”, where
+  `otherOpen = max(0, openCount − newContributorCount)`. It is **not** a
+  3-segment review/new/draft bar: the slice carries no draft or review-state
+  counts (see Data gaps).
+- **Density** (§3.4): compact = hero + new-contributor flag; standard adds the
+  2-segment bar; expanded adds an “Oldest new-contributor PR {age}” line plus a
+  descriptive “{N} open · {M} new contributors” summary. In the `glanceable`
+  density the standard tier drops the bar (hero + flag only); `balanced` (default)
+  and expanded keep it.
+- **Tokens:** identity accent `accent-info`; new-contributor highlight
+  `accent-coral` (light: orange-800 ink on orange tint — the existing badge;
+  dark: coral text/border on coral tint).
+- **Redundant encoding:** count text + sr-only “{N} open pull requests in
+  {repo}”; the new-contributor chip = ★ icon + words + sr “… from new outside
+  contributors” + hover title — never colour alone.
+- **Data gaps (honest fallbacks, never fabricated):** no draft count → the
+  2-segment (not 3-segment) bar; no historical open-PR count → no `▲` delta on the
+  hero; no overall-oldest open-PR timestamp → the age shown is the oldest
+  _external_ (new-contributor) PR, explicitly labelled as such.
+- **States** (§3.6): `openCount` 0 → ✓ “All clear / No open pull requests”;
+  loading → spinner “Loading…”; error → — “Couldn’t load”; not-ready / no-access
+  → — “n/a / No pull request data”.
 
 ### 4.4 Reviews
 

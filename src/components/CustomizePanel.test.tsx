@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
 import { CustomizePanel } from './CustomizePanel';
+import { MAX_TILES } from '../lib/dashboard-layout';
 import type { DashboardTile } from '../types/dashboard';
 
 const tile = (repo: string, signal: DashboardTile['signal']): DashboardTile => ({
@@ -87,6 +88,15 @@ describe('CustomizePanel', () => {
     expect(next.filter((t) => t.repo === 'octo/a').every((t) => !t.visible)).toBe(true);
   });
 
+  it('group toggle leaves tiles of OTHER repos untouched (scoping)', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: /hide all octo\/a/i }));
+    const next = props.onLayoutChange.mock.calls[0][0] as DashboardTile[];
+    // octo/b's tile is outside the toggled group, so its visibility is preserved
+    // (the flip is repo-scoped, not global).
+    expect(next.filter((t) => t.repo === 'octo/b').every((t) => t.visible)).toBe(true);
+  });
+
   it('sets an alias through onSetAlias', async () => {
     const props = setup();
     const input = screen.getByRole('textbox', { name: /alias for octo\/a/i });
@@ -146,5 +156,33 @@ describe('CustomizePanel', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(trigger).toHaveFocus();
+  });
+
+  it('closes when the backdrop is clicked', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByTestId('customize-backdrop'));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('invokes onReset when the reset button is clicked', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: /reset to default layout/i }));
+    expect(props.onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the tile-limit status region when the layout is at capacity (MAX_TILES)', () => {
+    const atCapacity = Array.from({ length: MAX_TILES }, (_, index) => ({
+      ...tile('octo/big', 'ci'),
+      i: `octo/big:ci:${index}`,
+    }));
+    setup({ layout: atCapacity });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      new RegExp(`tile limit reached \\(${MAX_TILES}\\)`, 'i'),
+    );
+  });
+
+  it('leaves the tile-limit status region empty below capacity', () => {
+    setup(); // default 3-tile layout is far below MAX_TILES
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 });

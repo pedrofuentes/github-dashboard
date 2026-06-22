@@ -799,3 +799,57 @@ describe('alert feeds — per-alert identity rows + 304 replay (INBOX-2B #216)',
     expect(headers['If-None-Match']).toBeUndefined();
   });
 });
+
+describe('alert feeds — diagnostics (#234, #235)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('throws an explicit cold-cache diagnostic on a 304 with no cached feed (#234)', async () => {
+    // A 304 with a fresh cache is a protocol violation (no If-None-Match was
+    // sent), so it must surface a specific message — not the generic
+    // "GitHub API error (304)" the `!ok` fallthrough would otherwise throw.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v1"'));
+
+    await expect(
+      fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, new ETagCache()),
+    ).rejects.toThrow(/304 Not Modified but no cached/i);
+  });
+
+  it('debug-logs a Dependabot alert skipped from inbox rows for missing identity (#235)', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    // A counted alert lacking number/html_url/created_at yields no inbox row.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [advisoryAlert('critical')], undefined, 'W/"v1"'),
+    );
+
+    const feed = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, new ETagCache());
+
+    expect(feed.total).toBe(1); // still counted in the tally
+    expect(feed.rows).toEqual([]); // but produced no inbox row
+    expect(debug).toHaveBeenCalled(); // and the skip was announced
+    expect(debug.mock.calls[0]?.[0]).toMatch(/skipped dependabot alert/i);
+  });
+
+  it('debug-logs a code-scanning alert skipped from inbox rows for missing identity (#235)', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('high')], undefined, 'W/"v1"'),
+    );
+
+    const feed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, new ETagCache());
+
+    expect(feed.total).toBe(1);
+    expect(feed.rows).toEqual([]);
+    expect(debug).toHaveBeenCalled();
+    expect(debug.mock.calls[0]?.[0]).toMatch(/skipped code-scanning alert/i);
+  });
+});
