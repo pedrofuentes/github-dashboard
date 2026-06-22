@@ -16,12 +16,14 @@
 - **Product type:** static web SPA
 - **Hosting / distribution:** GitHub Pages (static, no server)
 - **Backend?** None — fully client-side / self-contained. The user's token and data never leave the browser except for calls to GitHub-owned origins. Adding any backend/proxy is a gated decision.
+- **Design direction:** clean, information-dense dashboard; calm neutral palette with clear status accents (green/amber/red health signals); reuse Tailwind design tokens; reference feel: Linear and GitHub's own UI.
 
 ## 3. Tech stack
 - **Language(s):** TypeScript
 - **Framework(s) / key libraries:** React, Vite, Tailwind, Zod
 - **Package manager:** npm
 - **Test runner / e2e:** Vitest + Playwright
+- **Visual verification:** Playwright (shared with e2e) — render + screenshot key views (overview grid, PR/alert panels, empty/error states) for the design loop.
 
 ## 4. MVP scope (v1)
 1. **Fleet overview grid** — all selected repos at a glance with health signals.
@@ -68,6 +70,7 @@ The agent sorts every gated action into `auto` · `auto-with-audit` · `time-box
 - **Default time-box (auto-proceed window):** 24h.
 - **Risk tolerance:** conservative — the app holds a user's GitHub token, so borderline actions sit at `human-required`.
 - **Production release gate:** human-required — *you* flip on GitHub Pages / activate the production deploy for each release; staging/preview is `auto`.
+- **`time-boxed` (auto-proceed after 24h):** the next milestone *within `ROADMAP.md`*; a **built-UI design review** — the agent posts screenshots to a `DECISION:` issue and proceeds if you don't object.
 - **`auto` (pre-authorized, no asking):** add the §3 stack deps (React, Vite, TypeScript, Tailwind, Vitest, Playwright, Zod, ESLint/Prettier, React Testing Library) + reasonable transitive tooling; **author** CI/CD workflow files (tests, lint/typecheck, Sentinel Method B, the Pages deploy pipeline) + the Vite base-path/SPA-fallback config; configure branch protection; routine **reversible** architecture consistent with this brief.
 - **`human-required` (sign-off first):** auth / token-storage / privacy design (no auth/token-persistence code before sign-off); adding any backend / server / proxy or non-GitHub runtime origin (incl. for device-flow); heavy/unusual deps beyond §3; any `.github/workflows/**` edit or a harness-integrity PR (Sentinel config/prompt, `AGENTS.md`, branch protection, scanner config); a first-time-contributor PR.
 - **`never`:** commit a PAT or any secret; send user code/data to a non-GitHub origin; weaken/bypass Sentinel, tests, branch protection, or the scanners (branch protection is tighten-only); force-push / rewrite `main`; delete branches/releases/tags/data.
