@@ -114,3 +114,62 @@ describe('TokenInput', () => {
     expect(screen.getByRole('button', { name: /connecting/i })).toBeDisabled();
   });
 });
+
+describe('TokenInput — dark-shell color tokens (#173)', () => {
+  // Symmetry with App.contrast.test.tsx: TokenInput got the same PR #169 recolor
+  // (hardcoded slate-*/sky-*/red-*/white → semantic CSS-variable-backed tokens)
+  // but shipped with zero color-class guards. Assert the migrated tokens are
+  // present AND the pre-migration palette is absent, so a revert/mis-apply that
+  // reintroduces sub-AA dark-mode colour can't slip through green.
+
+  it('uses semantic border + focus-ring tokens on the token field (not slate/sky)', () => {
+    renderWithAuth();
+    const className = tokenField().getAttribute('class') ?? '';
+
+    expect(className).toContain('border-border-strong');
+    expect(className).toContain('focus-visible:outline-focus');
+    expect(className).not.toMatch(/border-slate-\d/);
+    expect(className).not.toMatch(/outline-sky-\d/);
+  });
+
+  it('uses the inverted bg-text/text-surface fill + focus token on the Connect button', () => {
+    renderWithAuth();
+    const className = submitButton().getAttribute('class') ?? '';
+
+    // DESIGN-TILES §1.5: solid fills must not carry white text in dark mode — the
+    // button inks with `text-surface` (white in light, near-black in dark) over
+    // the inverted `bg-text` fill, clearing AA in both themes.
+    expect(className).toContain('bg-text');
+    expect(className).toContain('text-surface');
+    expect(className).toContain('focus-visible:outline-focus');
+    expect(className).not.toMatch(/bg-slate-\d/);
+    expect(className).not.toContain('text-white');
+    expect(className).not.toMatch(/outline-sky-\d/);
+  });
+
+  it('uses the semantic failure-ink token on the error alert (not hardcoded red-*)', () => {
+    renderWithAuth({ status: 'error', error: 'Invalid or expired token' });
+    const className = screen.getByRole('alert').getAttribute('class') ?? '';
+
+    expect(className).toContain('text-accent-failure');
+    expect(className).not.toMatch(/text-red-\d/);
+  });
+
+  it('uses semantic text + focus tokens on the PAT help link (not slate/sky)', () => {
+    renderWithAuth();
+    const className = screen.getByRole('link', { name: /token/i }).getAttribute('class') ?? '';
+
+    expect(className).toContain('text-text');
+    expect(className).toContain('focus-visible:outline-focus');
+    expect(className).not.toMatch(/text-slate-\d/);
+    expect(className).not.toMatch(/outline-sky-\d/);
+  });
+
+  it('uses the muted-text token on the persistence legend (not slate)', () => {
+    renderWithAuth();
+    const className = screen.getByText(/remember this token/i).getAttribute('class') ?? '';
+
+    expect(className).toContain('text-text-muted');
+    expect(className).not.toMatch(/text-slate-\d/);
+  });
+});
