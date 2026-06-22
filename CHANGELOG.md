@@ -64,8 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
     per-**severity** breakdown bar (the partial/`≥` indicator is preserved).
   - **Pull requests** — the open-PR count with a prominent **new-contributor
     highlight** chip when outside contributors have open PRs.
-  - **Reviews / Issues / Stale** — urgency-scaled counts (the accent escalates
-    with the backlog) with the triage / staleness wording spelled out.
+  - **Reviews / Issues** — urgency-scaled counts (the accent escalates with the
+    backlog) with the triage wording spelled out.
+  - **Stale** — **age-led**: the hero is the oldest item's age (e.g. "34d") over
+    an **age-bucket bar** (`>14d` / `>30d` / `>60d`), with the count and PR/issue
+    split demoted to a secondary line — so staleness reads by how old, not how
+    many.
   - **Fleet summary** — the pinned anchor is reworked into a **health-split bar**
     (need-attention / warning / healthy proportions) above the per-signal rollup
     chips, each segment keeping its icon + count + word. See ADR-015.
