@@ -108,9 +108,18 @@ describe('iconKindTone', () => {
 });
 
 describe('TileTier', () => {
-  it('accepts the three documented density tiers', () => {
-    const tiers: TileTier[] = ['compact', 'standard', 'expanded'];
-    expect(tiers).toHaveLength(3);
+  it('is exactly the three documented density tiers (drift breaks compilation)', () => {
+    const ALL_TIERS = ['compact', 'standard', 'expanded'] as const;
+    // Bidirectional assignability pins the union to this tuple: adding,
+    // removing, or renaming a TileTier member makes one of these `true`
+    // assignments stop compiling under `npm run typecheck:test`, instead of
+    // silently passing like a hard-coded `toHaveLength(3)` would.
+    type Covers = TileTier extends (typeof ALL_TIERS)[number] ? true : false;
+    type NoExtra = (typeof ALL_TIERS)[number] extends TileTier ? true : false;
+    const covers: Covers = true;
+    const noExtra: NoExtra = true;
+    expect(covers && noExtra).toBe(true);
+    expect(ALL_TIERS).toEqual(['compact', 'standard', 'expanded']);
   });
 });
 
