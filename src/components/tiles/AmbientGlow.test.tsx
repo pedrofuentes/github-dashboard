@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { AmbientGlow, clampOpacity } from './AmbientGlow';
+import { AmbientGlow } from './AmbientGlow';
 
 describe('AmbientGlow', () => {
   it('renders a decorative tint hidden from assistive tech', () => {
@@ -16,12 +16,15 @@ describe('AmbientGlow', () => {
     const glow = container.firstElementChild as HTMLElement;
     expect(glow.style.backgroundColor).toBe('var(--color-success)');
     expect(glow.style.opacity).toBe('0.06');
+    // The data-opacity seam mirrors the applied style exactly.
+    expect(glow).toHaveAttribute('data-opacity', '0.06');
   });
 
   it('accepts a custom opacity', () => {
     const { container } = render(<AmbientGlow tone="failure" opacity={0.12} />);
     const glow = container.firstElementChild as HTMLElement;
     expect(glow.style.opacity).toBe('0.12');
+    expect(glow).toHaveAttribute('data-opacity', '0.12');
   });
 
   it('falls back to the default opacity for a non-finite value (never silently opaque)', () => {
@@ -45,27 +48,35 @@ describe('AmbientGlow', () => {
   });
 });
 
-describe('clampOpacity', () => {
+describe('AmbientGlow — opacity clamp (data-opacity seam)', () => {
+  // JSDOM independently clamps `style.opacity`, so over-range/negative inputs
+  // can't be characterised through the style alone. The component therefore
+  // surfaces the clamp result on `data-opacity`, which is a plain attribute the
+  // CSSOM never touches — every assertion below fails without the clamp.
+  const opacityAttr = (opacity: number): string | null => {
+    const { container } = render(<AmbientGlow tone="info" opacity={opacity} />);
+    return (container.firstElementChild as HTMLElement).getAttribute('data-opacity');
+  };
+
   it('passes an in-range opacity through unchanged', () => {
-    expect(clampOpacity(0.06)).toBe(0.06);
-    expect(clampOpacity(0.5)).toBe(0.5);
-    expect(clampOpacity(0)).toBe(0);
-    expect(clampOpacity(1)).toBe(1);
+    expect(opacityAttr(0.5)).toBe('0.5');
+    expect(opacityAttr(0)).toBe('0');
+    expect(opacityAttr(1)).toBe('1');
   });
 
   it('clamps an over-range opacity down to 1', () => {
-    expect(clampOpacity(5)).toBe(1);
-    expect(clampOpacity(1.0001)).toBe(1);
+    expect(opacityAttr(5)).toBe('1');
+    expect(opacityAttr(1.0001)).toBe('1');
   });
 
   it('clamps a negative opacity up to 0', () => {
-    expect(clampOpacity(-0.5)).toBe(0);
-    expect(clampOpacity(-100)).toBe(0);
+    expect(opacityAttr(-0.5)).toBe('0');
+    expect(opacityAttr(-100)).toBe('0');
   });
 
-  it('falls back to the subtle default for a non-finite opacity (never opaque)', () => {
-    expect(clampOpacity(NaN)).toBe(0.06);
-    expect(clampOpacity(Infinity)).toBe(0.06);
-    expect(clampOpacity(-Infinity)).toBe(0.06);
+  it('falls back to the subtle default for any non-finite opacity (never opaque)', () => {
+    expect(opacityAttr(NaN)).toBe('0.06');
+    expect(opacityAttr(Infinity)).toBe('0.06');
+    expect(opacityAttr(-Infinity)).toBe('0.06');
   });
 });
