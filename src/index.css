@@ -8,8 +8,13 @@
  * theme.extend.colors) map to these via `var(--color-*)`. A single `.dark`
  * class on <html> swaps the values and flips the whole tree — no per-component
  * `dark:` color variants. With no `.dark` present, the light (`:root`) tokens
- * are active, so the live app renders unchanged until components consume them.
- * All pairings are WCAG 2.1 AA-verified in DESIGN-TILES §1.5.
+ * are active. Most consumers live in component files, but the edit-mode resize
+ * handle styled at the foot of THIS file is also a token consumer, so a token
+ * change here can affect rendering directly, not only via components.
+ * Core and status pairings are WCAG 2.1 AA-verified in DESIGN-TILES §1.5; the
+ * extended light accents (coral, purple, gold) predate explicit §1.5 rows but
+ * are independently AA-confirmed as normal text on white (coral 5.18:1, purple
+ * 6.98:1, gold 4.92:1).
  */
 :root {
   color-scheme: light;
