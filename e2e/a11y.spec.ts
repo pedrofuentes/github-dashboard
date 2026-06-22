@@ -219,6 +219,12 @@ test.describe('accessibility: non-text contrast (WCAG 1.4.11)', () => {
     // would otherwise ship undetected — the sign-in PAT field never exercises it.
     await mockAuthenticatedFleet(page, appOriginFrom(baseURL));
 
+    // Start from the table grid regardless of the factory default view, so the
+    // FleetGrid filter input this test asserts on renders on load.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('fleet:default-view', 'grid');
+    });
+
     await page.goto('/');
     await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
     await page.getByRole('button', { name: 'Connect to GitHub' }).click();
