@@ -411,4 +411,46 @@ describe('CiTileBody — density-aware standard tier (T15)', () => {
     const { container } = render(<CiTileBody repo={repo} data={data(fullSlice)} size="standard" />);
     expect(container.querySelector('[data-shape]')).not.toBeNull();
   });
+
+  it('glanceable standard: suppresses the latest-run recency meta (#294)', () => {
+    // The recency meta shares the showStandardExtras gate; glanceable+standard
+    // must hide the "Xm ago" timestamp (regression-coverage for the suppression
+    // branch, which was previously unasserted).
+    const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    render(
+      <CiTileBody
+        repo={repo}
+        data={data({ status: 'ready', conclusion: 'failure', failingCount: 1, updatedAt })}
+        size="standard"
+        density="glanceable"
+      />,
+    );
+    expect(screen.queryByText(/ago$/i)).toBeNull();
+  });
+
+  it('balanced standard: keeps the latest-run recency meta (contrast)', () => {
+    const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    render(
+      <CiTileBody
+        repo={repo}
+        data={data({ status: 'ready', conclusion: 'failure', failingCount: 1, updatedAt })}
+        size="standard"
+        density="balanced"
+      />,
+    );
+    expect(screen.getByText(/5 minutes ago/i)).toBeInTheDocument();
+  });
+
+  it('glanceable expanded: keeps the latest-run recency meta (expanded unaffected)', () => {
+    const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    render(
+      <CiTileBody
+        repo={repo}
+        data={data({ status: 'ready', conclusion: 'failure', failingCount: 1, updatedAt })}
+        size="expanded"
+        density="glanceable"
+      />,
+    );
+    expect(screen.getByText(/5 minutes ago/i)).toBeInTheDocument();
+  });
 });

@@ -103,6 +103,22 @@ describe('ActivityTileBody — ok state (commits-this-week hero + delta)', () =>
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
+  it('uses the zero-delta "no change" sr phrase when this week equals last week (#285)', () => {
+    // delta === 0 exercises the deltaPhrase no-change branch: the visible glyph
+    // collapses to an em-dash while the sr sentence states "no change from last
+    // week" (distinct from the single-week "no prior week to compare").
+    const flat: CommitActivityWeek[] = [
+      week(10, [2, 2, 2, 2, 2, 0, 0]),
+      week(10, [2, 2, 2, 2, 2, 0, 0]),
+    ];
+    renderBody({ state: 'ok', weeks: flat }, 'standard');
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(
+      screen.getByText(/10 commits this week in octo\/a.*no change from last week/i),
+    ).toBeInTheDocument();
+  });
+
   it('announces the hero count from a body-owned aria-live region (R1)', () => {
     const { container } = renderBody({ state: 'ok', weeks }, 'standard');
     const live = container.querySelector('[aria-live="polite"]');
@@ -135,8 +151,21 @@ describe('ActivityTileBody — ok state (commits-this-week hero + delta)', () =>
 
   it('at standard size adds the sparkline but not the heatmap', () => {
     const { container } = renderBody({ state: 'ok', weeks }, 'standard');
-    expect(screen.getByRole('img', { name: /commits over/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: '23 commits over 2 weeks in octo/a' }),
+    ).toBeInTheDocument();
     expect(container.querySelector('[data-heatmap-cell]')).toBeNull();
+  });
+
+  it('pins the EXACT Sparkline a11y numbers (totals × weeks), not a relaxed /commits over/ (#285)', () => {
+    // weeks = 10 + 13 → 23 commits across 2 weeks; both figures are exposed
+    // verbatim in the SVG accessible name AND the mirrored sr-only summary, so a
+    // regression in either number (or the pluralisation) fails the assertion.
+    renderBody({ state: 'ok', weeks }, 'standard');
+    expect(
+      screen.getByRole('img', { name: '23 commits over 2 weeks in octo/a' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('23 commits over 2 weeks in octo/a')).toBeInTheDocument();
   });
 
   it('at expanded size also renders the heatmap', () => {
@@ -182,14 +211,19 @@ describe('ActivityTileBody — density-aware standard tier (T15)', () => {
   it('balanced standard: keeps the sparkline (unchanged)', () => {
     mockUse.mockReturnValue({ state: 'ok', weeks });
     render(<ActivityTileBody repo={repo} size="standard" density="balanced" />);
-    expect(screen.getByRole('img', { name: /commits over/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: '23 commits over 2 weeks in octo/a' }),
+    ).toBeInTheDocument();
   });
 
   it('glanceable expanded: keeps the sparkline (expanded unaffected)', () => {
     mockUse.mockReturnValue({ state: 'ok', weeks });
     render(<ActivityTileBody repo={repo} size="expanded" density="glanceable" />);
-    // The sparkline label leads with the count; the heatmap label leads with
-    // "Commit activity heatmap" — match only the sparkline.
-    expect(screen.getByRole('img', { name: /^\d+ commits over/i })).toBeInTheDocument();
+    // Two role="img" elements exist at expanded (sparkline + heatmap); the exact
+    // sparkline name disambiguates from the heatmap's longer "Commit activity
+    // heatmap…" label and re-pins the numbers (#285).
+    expect(
+      screen.getByRole('img', { name: '23 commits over 2 weeks in octo/a' }),
+    ).toBeInTheDocument();
   });
 });
