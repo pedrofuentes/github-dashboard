@@ -1,29 +1,32 @@
 /**
  * SecurityTileBody — the body content for the Security signal tile
- * (DESIGN-TILES §4.2). The shared {@link TileFrame} owns the accent bar, header
- * and footer; this component renders only the body for `data.security`.
+ * (DESIGN-TILES §4.2; redesign T8). The shared {@link TileFrame} owns the
+ * salience edge/tint/glow; this component renders only the body for
+ * `data.security`.
  *
- * The letter grade carries the meaning (never colour alone): it is the hero in
- * the {@link ArcGauge} centre (or a {@link BigValue} at compact sizes), paired
- * with the labelled {@link SeverityBar} severity breakdown and numeric counts.
- * Grading is delegated to the shared `securityGrade` helper — this file never
- * re-implements the rubric. All colour comes from semantic tokens, so the tile
- * is theme-aware (no hard-coded hex) and AA.
+ * The body is **severity-led**: the hero is the worst present severity and its
+ * count (e.g. "2 Critical"), the total is demoted to a sub-line, and a stacked
+ * {@link SeverityBar} (segment length = count) shows the breakdown. The bar
+ * survives grayscale via 2px dividers + stepped heights + worst-first order —
+ * never colour alone — and carries no fake threshold tick. Severity TEXT uses
+ * the ink token (`text-accent-coral-ink` for High) to clear AA, while the bar
+ * fill keeps the saturated `coral` token (redesign R5). The frame paints the
+ * PROBLEM edge; the body never does.
+ *
+ * All colour comes from semantic tokens, so the tile is theme-aware (no
+ * hard-coded hex) and AA in both themes. Every missing/garbage field degrades
+ * to a safe, labelled state rather than throwing or rendering blank.
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 import type { SecurityCounts } from '../../../hooks/signals/securityGrade';
-import { computeGrade } from '../../../hooks/signals/securityGrade';
-import type { Repo, RepoSignalData, SecuritySignalSlice } from '../../../types/fleet';
-import { ArcGauge } from '../ArcGauge';
+import { formatRelativeTime } from '../../../lib/format';
+import type { Repo, RepoSignalData, SecurityAlertRow } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
 import type { SeveritySegment } from '../SeverityBar';
 import { SeverityBar } from '../SeverityBar';
 import { StatusGlyph } from '../StatusGlyph';
 import type { AccentTone, TileTier } from '../types';
-import { toneTextClass } from '../types';
-
-type SecurityGrade = NonNullable<SecuritySignalSlice['grade']>;
 
 export interface SecurityTileBodyProps {
   /** The repository this tile represents (reserved for deep links/labels). */
@@ -34,57 +37,80 @@ export interface SecurityTileBodyProps {
   size: TileTier;
 }
 
-/** Grade → accent tone (DESIGN-TILES §4.2): A–B success, C warning, D–F failure. */
-const GRADE_TONE: Record<SecurityGrade, AccentTone> = {
-  A: 'success',
-  B: 'success',
-  C: 'warning',
-  D: 'failure',
-  E: 'failure',
-  F: 'failure',
-};
+/** One severity row: counts key, bar-fill tone, AA text class, glyph + labels. */
+interface Severity {
+  key: keyof SecurityCounts;
+  /** Saturated fill token for the {@link SeverityBar} segment (R5). */
+  fill: AccentTone;
+  /** AA-clearing TEXT class for hero/breakdown labels (ink token; R5). */
+  text: string;
+  /** Capitalised display label, e.g. "Critical". */
+  label: string;
+  /** Lower-case label for the meta tally, e.g. "critical". */
+  word: string;
+}
 
 /**
- * Grade → arc fill (0–100). The gauge reads as a quality meter: a full arc at
- * grade A shrinks as the posture worsens. F keeps a small visible sliver so the
- * fill never vanishes entirely.
+ * Severity table, worst-first. The hero leads with the first non-zero row.
+ * Fill keeps the saturated token (`failure`/`coral`/`info`/`neutral`); the TEXT
+ * uses the ink token so "High" clears AA without a T19 contrast rework (R5):
+ * `coral` (#db6d28) fails as text, `coral-ink` (#e8804f) passes.
  */
-const GRADE_FILL: Record<SecurityGrade, number> = {
-  A: 100,
-  B: 80,
-  C: 60,
-  D: 40,
-  E: 24,
-  F: 8,
-};
-
-/** [counts key, severity tone, compact glyph, spoken label] worst-first (§4.2). */
-const SEVERITIES: ReadonlyArray<[keyof SecurityCounts, AccentTone, string, string]> = [
-  ['critical', 'failure', 'C', 'Critical'],
-  ['high', 'warning', 'H', 'High'],
-  ['medium', 'info', 'M', 'Medium'],
-  ['low', 'neutral', 'L', 'Low'],
+const SEVERITIES: readonly Severity[] = [
+  {
+    key: 'critical',
+    fill: 'failure',
+    text: 'text-accent-failure',
+    label: 'Critical',
+    word: 'critical',
+  },
+  { key: 'high', fill: 'coral', text: 'text-accent-coral-ink', label: 'High', word: 'high' },
+  { key: 'medium', fill: 'info', text: 'text-accent-info', label: 'Medium', word: 'medium' },
+  { key: 'low', fill: 'neutral', text: 'text-accent-neutral', label: 'Low', word: 'low' },
 ];
 
-function buildSegments(counts: SecurityCounts): SeveritySegment[] {
-  return SEVERITIES.map(([key, tone, , label]) => ({ tone, value: counts[key], label }));
-}
-
-function compactSummary(counts: SecurityCounts): { compact: string; spoken: string } {
-  const compact: string[] = [];
-  const spoken: string[] = [];
-  for (const [key, , glyph, label] of SEVERITIES) {
-    const n = counts[key];
-    if (n > 0) {
-      compact.push(`${glyph}${n}`);
-      spoken.push(`${n} ${label.toLowerCase()}`);
-    }
-  }
-  return { compact: compact.join(' '), spoken: spoken.join(', ') };
-}
+/**
+ * Severities that make the tile a PROBLEM (critical/high/medium) — they get the
+ * live hero announcement; a low-only tile is calm and stays silent (R6). Mirrors
+ * `resolveSalience`'s security branch (critical → failure, high/medium → warning).
+ */
+const PROBLEM_KEYS: ReadonlySet<keyof SecurityCounts> = new Set(['critical', 'high', 'medium']);
 
 function totalAlerts(counts: SecurityCounts): number {
   return counts.critical + counts.high + counts.medium + counts.low;
+}
+
+/** First non-zero severity, worst-first; `undefined` only when everything is 0. */
+function worstSeverity(counts: SecurityCounts): Severity | undefined {
+  return SEVERITIES.find((severity) => counts[severity.key] > 0);
+}
+
+/** Stacked-bar segments (worst-first), fill tone per severity. */
+function buildSegments(counts: SecurityCounts): SeveritySegment[] {
+  return SEVERITIES.map((severity) => ({
+    tone: severity.fill,
+    value: counts[severity.key],
+    label: severity.label,
+  }));
+}
+
+/** Most-recent alert recency, or `undefined` when there are no alert rows. */
+function newestAlertRecency(alerts: SecurityAlertRow[] | undefined): string | undefined {
+  if (!alerts || alerts.length === 0) {
+    return undefined;
+  }
+  const newest = alerts.reduce((latest, alert) => {
+    const t = new Date(alert.created_at).getTime();
+    return Number.isFinite(t) && t > latest ? t : latest;
+  }, Number.NEGATIVE_INFINITY);
+  return Number.isFinite(newest) ? formatRelativeTime(newest) : undefined;
+}
+
+/** Spoken "2 critical, 5 high" list of every non-zero severity (for sr text). */
+function spokenSummary(counts: SecurityCounts): string {
+  return SEVERITIES.filter((severity) => counts[severity.key] > 0)
+    .map((severity) => `${counts[severity.key]} ${severity.word}`)
+    .join(', ');
 }
 
 /** Neutral container for the "no data" / "no access" states (never blank). */
@@ -99,40 +125,6 @@ function NeutralState({ message, srText }: { message: string; srText: string }):
         {message}
       </span>
       <span className="sr-only">{srText}</span>
-    </div>
-  );
-}
-
-/** A compact severity tally line with an optional truncated ("≥ … partial") hint. */
-function SummaryLine({
-  counts,
-  truncated,
-}: {
-  counts: SecurityCounts;
-  truncated: boolean;
-}): ReactElement {
-  const { compact, spoken } = compactSummary(counts);
-  const total = totalAlerts(counts);
-  const partial = truncated && total > 0;
-  const label = partial
-    ? `At least ${spoken} (partial — more alerts not counted)`
-    : `${total} open ${total === 1 ? 'alert' : 'alerts'}: ${spoken}`;
-
-  return (
-    <div className="flex flex-col items-center gap-0.5 text-center">
-      <span aria-hidden="true" className="text-sm font-medium tabular-nums text-text">
-        {partial ? `≥ ${compact}` : compact}
-      </span>
-      {partial && (
-        <span
-          aria-hidden="true"
-          className="text-xs text-text-muted"
-          title="Alert count is partial — pagination cap reached; more alerts were not counted"
-        >
-          partial
-        </span>
-      )}
-      <span className="sr-only">{label}</span>
     </div>
   );
 }
@@ -177,73 +169,142 @@ export function SecurityTileBody({ data, size }: SecurityTileBodyProps): ReactEl
   }
 
   const counts = security.counts;
-  const grade: SecurityGrade = security.grade ?? computeGrade(counts);
-  const tone = GRADE_TONE[grade];
   const total = totalAlerts(counts);
-  const allClear = total === 0;
   const truncated = security.truncated === true;
-  const fill = GRADE_FILL[grade];
 
-  const { spoken } = compactSummary(counts);
-  const srLabel = allClear
-    ? `Security grade ${grade}: no open alerts`
-    : truncated
-      ? `Security grade ${grade}: at least ${spoken} (partial — more alerts not counted)`
-      : `Security grade ${grade}: ${spoken}`;
-
-  const gradeHero = (
-    <span className={`text-3xl font-bold leading-none ${toneTextClass(tone)}`}>{grade}</span>
-  );
-
-  const allClearNote = (
-    <span className="inline-flex items-center gap-1 text-sm text-accent-success">
-      <StatusGlyph status="success" size={14} title="No open alerts" />
-      <span aria-hidden="true">No open alerts</span>
-    </span>
-  );
-
-  // Compact: the grade as a BigValue only — no gauge, no breakdown (§3.4).
-  if (size === 'compact') {
+  // All-clear: a calm, positive success state — visually unmistakable from an
+  // alarm (no live region, success glyph). T16 will later route this through the
+  // shared TileMessage; until then the body owns the treatment.
+  if (total === 0) {
     return (
       <div
         data-state="ready"
-        data-grade={grade}
-        data-tone={tone}
-        className="flex h-full flex-col items-center justify-center gap-1 text-center"
+        data-tone="success"
+        data-tier={size}
+        className="flex h-full flex-col items-center justify-center gap-1 text-center text-accent-success"
       >
-        <BigValue value={grade} tone={tone} size="compact" />
-        {allClear ? (
-          allClearNote
-        ) : (
-          <span aria-hidden="true" className="text-xs text-text-muted tabular-nums">
-            {truncated ? `≥ ${total}` : total} {total === 1 ? 'alert' : 'alerts'}
-          </span>
-        )}
-        <span className="sr-only">{srLabel}</span>
+        <StatusGlyph status="success" size={size === 'compact' ? 18 : 22} title="No open alerts" />
+        <span aria-hidden="true" className="text-sm font-medium">
+          All clear
+        </span>
+        <span className="sr-only">Security: all clear, no open alerts</span>
       </div>
     );
   }
 
+  const worst = worstSeverity(counts) as Severity;
+  const worstCount = counts[worst.key];
+  const isProblem = PROBLEM_KEYS.has(worst.key);
+  const recency = newestAlertRecency(security.alerts);
+  const spoken = spokenSummary(counts);
+
+  const totalText = `${truncated ? '≥ ' : ''}${total} total`;
+  const srLabel = truncated
+    ? `Security: at least ${spoken} (partial — more alerts not counted), ${total} total`
+    : `Security: ${spoken}, ${total} total${recency ? `, newest ${recency}` : ''}`;
+
+  // Hero "<count> <Severity>" — number in primary text, label in the AA ink
+  // token. Announced live only on PROBLEM tiles (R6).
+  const hero = (
+    <BigValue
+      value={
+        <>
+          <span className="text-text">{worstCount}</span>{' '}
+          <span className={worst.text}>{worst.label}</span>
+        </>
+      }
+      size={size}
+      live={isProblem}
+    />
+  );
+
+  // Tally of every non-zero severity, e.g. "2 critical · 5 high · 3 medium".
+  const tally = SEVERITIES.filter((severity) => counts[severity.key] > 0)
+    .map((severity) => `${counts[severity.key]} ${severity.word}`)
+    .join(' · ');
+
+  const metaParts: ReactNode[] = [
+    <span key="tally">{tally}</span>,
+    <span key="total" className="tabular-nums">
+      {totalText}
+    </span>,
+  ];
+  if (truncated) {
+    metaParts.push(
+      <span
+        key="partial"
+        title="Alert count is partial — pagination cap reached; more alerts were not counted"
+      >
+        partial
+      </span>,
+    );
+  }
+  if (recency) {
+    metaParts.push(<span key="recency">{recency}</span>);
+  }
+
+  const meta = (
+    <div
+      data-part="meta"
+      aria-hidden="true"
+      className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-xs text-text-muted"
+    >
+      {metaParts.flatMap((part, index) =>
+        index === 0
+          ? [part]
+          : [
+              <span key={`sep-${String(index)}`} aria-hidden="true">
+                ·
+              </span>,
+              part,
+            ],
+      )}
+    </div>
+  );
+
+  const severityBar =
+    size === 'compact' ? null : (
+      <div data-part="severity-bar" className="w-full max-w-[16rem]">
+        <SeverityBar segments={buildSegments(counts)} stepped dividers />
+      </div>
+    );
+
+  const breakdown =
+    size === 'expanded' ? (
+      <ul
+        data-part="breakdown"
+        aria-hidden="true"
+        className="flex w-full max-w-[16rem] flex-col gap-0.5 text-xs"
+      >
+        {SEVERITIES.filter((severity) => counts[severity.key] > 0).map((severity) => (
+          <li key={severity.key} className="flex items-center justify-between">
+            <span className={`font-medium ${severity.text}`}>{severity.label}</span>
+            <span className="tabular-nums text-text-muted">{counts[severity.key]}</span>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
   return (
     <div
       data-state="ready"
-      data-grade={grade}
-      data-tone={tone}
-      className="flex h-full flex-col items-center justify-center gap-2 text-center"
+      data-tone={worst.fill}
+      data-tier={size}
+      className="flex h-full flex-col items-center justify-center gap-1.5 text-center"
     >
-      <ArcGauge value={fill} max={100} tone={tone} center={gradeHero} srLabel={srLabel} />
-      {allClear ? (
-        allClearNote
-      ) : size === 'expanded' ? (
-        <>
-          <SummaryLine counts={counts} truncated={truncated} />
-          <div data-part="severity-bar" className="w-full max-w-[16rem]">
-            <SeverityBar segments={buildSegments(counts)} />
-          </div>
-        </>
+      {hero}
+      {size === 'compact' ? (
+        <span aria-hidden="true" className="text-xs tabular-nums text-text-muted">
+          {totalText}
+        </span>
       ) : (
-        <SummaryLine counts={counts} truncated={truncated} />
+        <>
+          {severityBar}
+          {meta}
+          {breakdown}
+        </>
       )}
+      <span className="sr-only">{srLabel}</span>
     </div>
   );
 }

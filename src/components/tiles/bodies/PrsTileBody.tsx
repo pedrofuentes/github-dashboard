@@ -1,9 +1,16 @@
 import type { ReactElement } from 'react';
 
-import type { PullRequestsSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
-import type { TileTier } from '../types';
+import { formatRelativeTime } from '../../../lib/format';
+import type {
+  ExternalPullRequest,
+  PullRequestsSignalSlice,
+  Repo,
+  RepoSignalData,
+} from '../../../types/fleet';
+import type { AccentTone, TileTier } from '../types';
 import { BigValue } from '../BigValue';
 import { Chip } from '../Chip';
+import { SeverityBar } from '../SeverityBar';
 
 export interface PrsTileBodyProps {
   /** The repo this tile represents — used for accessible context. */
@@ -13,6 +20,14 @@ export interface PrsTileBodyProps {
   /** Density tier the surrounding TileFrame measured (DESIGN-TILES §3.4). */
   size: TileTier;
 }
+
+/**
+ * GitHub `author_association` values that mark a PR author as a new outside
+ * contributor (DESIGN-TILES §4.3). `externalPullRequests` is already filtered to
+ * new outside contributors upstream, but we re-derive the count from the
+ * association so the body's signal is honest about exactly what it counts.
+ */
+const NEW_CONTRIBUTOR_ASSOCIATIONS = new Set(['NONE', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER']);
 
 /** Decorative star (the ★ new-contributor mark from DESIGN-TILES §4.3). */
 function StarIcon(): ReactElement {
@@ -24,13 +39,50 @@ function StarIcon(): ReactElement {
 }
 
 /**
- * Body for the Pull-requests tile (DESIGN-TILES §4.3). Renders the
- * `data.pullRequests` slice only — TileFrame owns the accent bar, header, and
- * footer. The open-PR count is the hero `BigValue`; when external
- * (new-contributor) PRs exist the hero escalates to `accent-coral` and a
- * redundant `Chip` (icon + text + sr-only sentence + hover title) calls them
- * out. Density follows the three §3.4 tiers, and every §3.6 state renders a
- * meaning-bearing fallback instead of a blank card.
+ * Count new outside contributors among the external PRs by `author_association`.
+ * When the identity array is absent (only `externalCount` is known) we fall back
+ * to `externalCount` — the slice's external PRs are, by construction, new
+ * outside contributors.
+ */
+function countNewContributors(prs: ExternalPullRequest[], externalCount: number): number {
+  if (prs.length === 0) {
+    return externalCount;
+  }
+  return prs.filter((pr) => NEW_CONTRIBUTOR_ASSOCIATIONS.has(pr.author_association)).length;
+}
+
+/** ISO `created_at` of the oldest external PR, or `undefined` when none exist. */
+function oldestCreatedAt(prs: ExternalPullRequest[]): string | undefined {
+  if (prs.length === 0) {
+    return undefined;
+  }
+  return prs.reduce(
+    (oldest, pr) =>
+      new Date(pr.created_at).getTime() < new Date(oldest).getTime() ? pr.created_at : oldest,
+    prs[0].created_at,
+  );
+}
+
+/**
+ * Body for the Pull-requests tile (DESIGN-TILES §4.3) — a CALM tile: identity
+ * lives in the TileFrame header icon, so this body paints no edge/glow and only
+ * renders the `data.pullRequests` slice. The open-PR count is the hero
+ * `BigValue`; when new-contributor PRs exist it escalates to `accent-coral` and a
+ * redundant `Chip` (icon + text + sr-only sentence + hover title) calls them out.
+ *
+ * DATA GAPS (honest fallbacks — none of these are in the slice, so we do NOT
+ * fabricate them):
+ *  - no draft count → the micro-viz is a 2-segment new-contributor/other-open
+ *    bar (not a 3-segment review/new/draft bar);
+ *  - no historical open-PR count → no `▲` delta on the hero;
+ *  - no overall-oldest open-PR timestamp → the age shown is the oldest
+ *    *external* (new-contributor) PR, explicitly labelled as such.
+ *
+ * Density follows the three §3.4 tiers around a fixed hero anchor: compact =
+ * hero + new-contributor flag; standard adds the 2-segment bar; expanded adds
+ * the oldest-external age + a descriptive breakdown. Every §3.6 state renders a
+ * meaning-bearing fallback instead of a blank card, and all colour comes from
+ * tokens (no inline status hex).
  */
 export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElement {
   const slice: PullRequestsSignalSlice | undefined = data.pullRequests;
@@ -38,7 +90,7 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
 
   if (status === 'loading') {
     return (
-      <div className="flex flex-col gap-2" aria-busy="true">
+      <div data-state="loading" className="flex flex-col gap-2" aria-busy="true">
         <span
           aria-hidden="true"
           className="h-8 w-16 animate-pulse rounded bg-surface-raised motion-reduce:animate-none"
@@ -50,7 +102,7 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
 
   if (status === 'error') {
     return (
-      <div className="flex items-center gap-2 text-accent-failure">
+      <div data-state="error" className="flex items-center gap-2 text-accent-failure">
         <span aria-hidden="true" className="text-lg font-semibold leading-none">
           ✗
         </span>
@@ -62,7 +114,7 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
 
   if (status !== 'ready') {
     return (
-      <div className="flex items-center gap-2 text-text-muted">
+      <div data-state="unavailable" className="flex items-center gap-2 text-text-muted">
         <span aria-hidden="true" className="text-lg leading-none">
           —
         </span>
@@ -77,7 +129,7 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
 
   if (openCount === 0) {
     return (
-      <div className="flex items-center gap-2 text-accent-success">
+      <div data-state="empty" className="flex items-center gap-2 text-accent-success">
         <span aria-hidden="true" className="text-lg font-semibold leading-none">
           ✓
         </span>
@@ -87,19 +139,34 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
     );
   }
 
-  const hasExternal = externalCount > 0;
-  const heroTone = hasExternal ? 'coral' : 'info';
+  const externalPrs = slice?.externalPullRequests ?? [];
+  const newContributorCount = countNewContributors(externalPrs, externalCount);
+  const hasNewContributors = newContributorCount > 0;
+  const heroTone: AccentTone = hasNewContributors ? 'coral' : 'info';
+
   const openNoun = openCount === 1 ? 'open pull request' : 'open pull requests';
-  const externalNoun = externalCount === 1 ? 'pull request' : 'pull requests';
-  const externalAbbrev = externalCount === 1 ? 'PR' : 'PRs';
-  const externalSrLabel = `${externalCount} external-contributor ${externalNoun} in ${repo.nameWithOwner}`;
-  const externalTitle = `${externalCount} ${externalAbbrev} from new outside contributors`;
-  const descriptive = hasExternal
-    ? `${openCount} open · ${externalCount} from external contributors`
+  const contributorNoun = newContributorCount === 1 ? 'contributor' : 'contributors';
+  const contributorLabel = `${newContributorCount} new ${contributorNoun}`;
+  const contributorAbbrev = newContributorCount === 1 ? 'PR' : 'PRs';
+  const contributorSrLabel = `${newContributorCount} new-contributor ${
+    newContributorCount === 1 ? 'pull request' : 'pull requests'
+  } in ${repo.nameWithOwner}`;
+  const contributorTitle = `${newContributorCount} ${contributorAbbrev} from new outside contributors`;
+
+  const otherOpen = Math.max(0, openCount - newContributorCount);
+  const oldestExternal = oldestCreatedAt(externalPrs);
+  const descriptive = hasNewContributors
+    ? `${openCount} open · ${contributorLabel}`
     : `${openCount} open`;
 
+  const contributorChip = (
+    <Chip tone="coral" icon={<StarIcon />} title={contributorTitle} srLabel={contributorSrLabel}>
+      {contributorLabel}
+    </Chip>
+  );
+
   return (
-    <div className="flex flex-col gap-1.5">
+    <div data-state="ready" data-tone={heroTone} data-tier={size} className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
         <span className="inline-flex items-end gap-1.5">
           <BigValue value={openCount} tone={heroTone} size={size} />
@@ -112,17 +179,34 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
         <span className="sr-only">
           {openCount} {openNoun} in {repo.nameWithOwner}
         </span>
-        {hasExternal && size !== 'compact' ? (
-          <Chip tone="coral" icon={<StarIcon />} title={externalTitle} srLabel={externalSrLabel}>
-            {externalCount} external
-          </Chip>
-        ) : null}
+        {hasNewContributors && size !== 'compact' ? contributorChip : null}
       </div>
 
-      {hasExternal && size === 'compact' ? (
-        <Chip tone="coral" icon={<StarIcon />} title={externalTitle} srLabel={externalSrLabel}>
-          {externalCount}
+      {hasNewContributors && size === 'compact' ? (
+        <Chip
+          tone="coral"
+          icon={<StarIcon />}
+          title={contributorTitle}
+          srLabel={contributorSrLabel}
+        >
+          {newContributorCount}
         </Chip>
+      ) : null}
+
+      {hasNewContributors && size !== 'compact' ? (
+        <SeverityBar
+          max={openCount}
+          segments={[
+            { tone: 'coral', value: newContributorCount, label: 'New-contributor' },
+            { tone: 'info', value: otherOpen, label: 'Other open' },
+          ]}
+        />
+      ) : null}
+
+      {size === 'expanded' && oldestExternal ? (
+        <p aria-hidden="true" className="text-sm text-text-muted">
+          Oldest new-contributor PR {formatRelativeTime(oldestExternal)}
+        </p>
       ) : null}
 
       {size === 'expanded' ? (
