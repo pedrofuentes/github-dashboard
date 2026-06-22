@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CommitActivityWeek } from '../../../api/github/commit-activity';
@@ -52,38 +52,96 @@ describe('ActivityTileBody — non-ok states (§4.7)', () => {
   });
 });
 
-describe('ActivityTileBody — ok state', () => {
+describe('ActivityTileBody — ok state (commits-this-week hero + delta)', () => {
+  // Sum (23) differs from this-week (13) so the hero can never be the all-weeks
+  // total by accident; last=13, prev=10 → ▲3.
   const weeks: CommitActivityWeek[] = [
-    week(3, [0, 1, 0, 2, 0, 0, 0]),
-    week(5, [1, 1, 1, 1, 1, 0, 0]),
-    week(0, [0, 0, 0, 0, 0, 0, 0]),
+    week(10, [2, 2, 2, 2, 2, 0, 0]),
+    week(13, [3, 2, 2, 2, 2, 1, 1]),
   ];
 
-  it('renders a sparkline with an accessible summary of total commits over weeks', () => {
+  it('uses commits THIS week (last week total) as the hero, not the all-weeks sum', () => {
     renderBody({ state: 'ok', weeks }, 'standard');
-    const sparkline = screen.getByRole('img', { name: /8 commits over 3 weeks/i });
-    expect(sparkline).toBeInTheDocument();
+    expect(screen.getByText('13')).toBeInTheDocument();
+    // 23 is the all-weeks sum — it must NOT be the hero.
+    expect(screen.queryByText('23')).toBeNull();
   });
 
-  it('shows the total commit count as text', () => {
+  it('renders a ▲/▼ delta vs last week from formatDelta', () => {
     renderBody({ state: 'ok', weeks }, 'standard');
-    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByText('▲3')).toBeInTheDocument();
   });
 
-  it('at compact size shows the sparkline + total but NOT the heatmap', () => {
-    renderBody({ state: 'ok', weeks }, 'compact');
+  it('renders a ▼ delta when this week is below last week', () => {
+    const falling: CommitActivityWeek[] = [
+      week(13, [3, 2, 2, 2, 2, 1, 1]),
+      week(8, [2, 2, 2, 2, 0, 0, 0]),
+    ];
+    renderBody({ state: 'ok', weeks: falling }, 'standard');
     expect(screen.getByText('8')).toBeInTheDocument();
-    // sparkline present, heatmap (with weekly-total table) absent
-    expect(screen.getByRole('img', { name: /commits over/i })).toBeInTheDocument();
+    expect(screen.getByText('▼5')).toBeInTheDocument();
+  });
+
+  it('shows an em-dash delta when only a single week of data exists', () => {
+    renderBody({ state: 'ok', weeks: [week(7, [1, 1, 1, 1, 1, 1, 1])] }, 'standard');
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('announces the hero count from a body-owned aria-live region (R1)', () => {
+    const { container } = renderBody({ state: 'ok', weeks }, 'standard');
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).toBeTruthy();
+    expect(within(live as HTMLElement).getByText('13')).toBeInTheDocument();
+  });
+
+  it('carries a redundant sr-only sentence with commits-this-week + delta', () => {
+    renderBody({ state: 'ok', weeks }, 'standard');
+    expect(
+      screen.getByText(/13 commits this week in octo\/a.*more than last week/i),
+    ).toBeInTheDocument();
+  });
+
+  it('exposes data-state, data-tone (purple identity) and data-tier attributes', () => {
+    const { container } = renderBody({ state: 'ok', weeks }, 'standard');
+    const root = container.querySelector('[data-state="ready"]');
+    expect(root).toBeTruthy();
+    expect(root?.getAttribute('data-tone')).toBe('purple');
+    expect(root?.getAttribute('data-tier')).toBe('standard');
+  });
+
+  it('at compact size shows the hero + delta but NEITHER sparkline NOR heatmap', () => {
     const { container } = renderBody({ state: 'ok', weeks }, 'compact');
+    expect(screen.getByText('13')).toBeInTheDocument();
+    expect(screen.getByText('▲3')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(container.querySelector('[data-heatmap-cell]')).toBeNull();
+  });
+
+  it('at standard size adds the sparkline but not the heatmap', () => {
+    const { container } = renderBody({ state: 'ok', weeks }, 'standard');
+    expect(screen.getByRole('img', { name: /commits over/i })).toBeInTheDocument();
     expect(container.querySelector('[data-heatmap-cell]')).toBeNull();
   });
 
   it('at expanded size also renders the heatmap', () => {
     const { container } = renderBody({ state: 'ok', weeks }, 'expanded');
     expect(container.querySelector('[data-heatmap-cell]')).toBeTruthy();
-    // both visuals present: sparkline + heatmap each expose role="img"
     expect(screen.getAllByRole('img').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('paints the sparkline ink with the purple identity token (R2)', () => {
+    const { container } = renderBody({ state: 'ok', weeks }, 'standard');
+    const line = container.querySelector('[data-part="line"]');
+    expect(line?.getAttribute('stroke')).toBe('var(--color-purple)');
+  });
+
+  it('paints non-empty heatmap cells with the purple identity token (R2)', () => {
+    const { container } = renderBody({ state: 'ok', weeks }, 'expanded');
+    const activeCell = Array.from(
+      container.querySelectorAll<SVGRectElement>('[data-heatmap-cell]'),
+    ).find((cell) => Number(cell.getAttribute('data-count')) > 0);
+    expect(activeCell?.getAttribute('fill')).toBe('var(--color-purple)');
   });
 
   it('passes the repo through to the data hook', () => {

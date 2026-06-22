@@ -1,7 +1,8 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { Repo, ReviewsSignalSlice } from '../../../types/fleet';
+import { formatRelativeTime } from '../../../lib/format';
+import type { Repo, ReviewRequestedPullRequest, ReviewsSignalSlice } from '../../../types/fleet';
 import { ReviewsTileBody } from './ReviewsTileBody';
 
 const repo: Repo = {
@@ -10,6 +11,24 @@ const repo: Repo = {
   name: 'hello-world',
   isPrivate: false,
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Build a review-requested PR `created_at` the given number of days in the past. */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * DAY_MS).toISOString();
+}
+
+/** Minimal review-requested PR fixture with a controllable `created_at`. */
+function request(createdAt: string, number = 1): ReviewRequestedPullRequest {
+  return {
+    number,
+    title: `PR #${String(number)}`,
+    html_url: `https://github.com/octocat/hello-world/pull/${String(number)}`,
+    created_at: createdAt,
+    user_login: 'octocat',
+  };
+}
 
 function renderBody(
   reviews: ReviewsSignalSlice | undefined,
@@ -94,6 +113,69 @@ describe('ReviewsTileBody — size tiers', () => {
     const { getAllByText, container } = renderBody(slice, 'expanded');
     expect(getAllByText(/pull requests awaiting your review/i).length).toBeGreaterThan(0);
     expect(container.querySelector('[data-part="detail"]')).not.toBeNull();
+  });
+});
+
+describe('ReviewsTileBody — oldest-waiting age (urgency driver, T10)', () => {
+  it('standard: shows the oldest waiting age from the min request created_at', () => {
+    const oldest = daysAgo(5);
+    const slice: ReviewsSignalSlice = {
+      status: 'ready',
+      requestedCount: 2,
+      requests: [request(daysAgo(2), 1), request(oldest, 2)],
+    };
+    const { getByText } = renderBody(slice, 'standard');
+    expect(getByText(`oldest ${formatRelativeTime(new Date(oldest))}`)).toBeInTheDocument();
+  });
+
+  it('expanded: also shows the oldest waiting age', () => {
+    const oldest = daysAgo(9);
+    const slice: ReviewsSignalSlice = {
+      status: 'ready',
+      requestedCount: 3,
+      requests: [request(oldest, 1), request(daysAgo(1), 2)],
+    };
+    const { getByText, container } = renderBody(slice, 'expanded');
+    expect(getByText(`oldest ${formatRelativeTime(new Date(oldest))}`)).toBeInTheDocument();
+    expect(container.querySelector('[data-part="oldest"]')).not.toBeNull();
+  });
+
+  it('compact: omits the oldest waiting age (fixed hero anchor)', () => {
+    const slice: ReviewsSignalSlice = {
+      status: 'ready',
+      requestedCount: 2,
+      requests: [request(daysAgo(5), 1)],
+    };
+    const { container } = renderBody(slice, 'compact');
+    expect(container.querySelector('[data-part="oldest"]')).toBeNull();
+  });
+
+  it('omits the oldest age when no per-request data is present', () => {
+    const { container } = renderBody({ status: 'ready', requestedCount: 4 }, 'standard');
+    expect(container.querySelector('[data-part="oldest"]')).toBeNull();
+  });
+
+  it('ignores unparseable created_at values when computing the oldest age', () => {
+    const good = daysAgo(4);
+    const slice: ReviewsSignalSlice = {
+      status: 'ready',
+      requestedCount: 2,
+      requests: [request('not-a-date', 1), request(good, 2)],
+    };
+    const { getByText } = renderBody(slice, 'standard');
+    expect(getByText(`oldest ${formatRelativeTime(new Date(good))}`)).toBeInTheDocument();
+  });
+});
+
+describe('ReviewsTileBody — actionable hero a11y (R6)', () => {
+  it('wraps the hero count in an aria-live region when work awaits the viewer', () => {
+    const { container } = renderBody({ status: 'ready', requestedCount: 3 });
+    expect(container.querySelector('[aria-live="polite"]')).not.toBeNull();
+  });
+
+  it('omits the aria-live hero in the calm zero state', () => {
+    const { container } = renderBody({ status: 'ready', requestedCount: 0 });
+    expect(container.querySelector('[aria-live="polite"]')).toBeNull();
   });
 });
 
