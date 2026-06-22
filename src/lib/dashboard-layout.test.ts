@@ -177,6 +177,9 @@ describe('loadDashboardLayout', () => {
     const saved = DEFAULT_LAYOUT(repos);
     expect(saved).toHaveLength(repos.length * SIGNALS.length);
     expect(saved.length).toBeGreaterThan(600);
+    // ...and still inside the headroom cap, so the schema persists rather than
+    // rejecting the whole fleet (#200/#204): 90 × 7 = 630 ≤ MAX_TILES (700).
+    expect(saved.length).toBeLessThanOrEqual(MAX_TILES);
 
     saveDashboardLayout(saved);
 
@@ -341,6 +344,48 @@ describe('loadDashboardLayout', () => {
     // Exactly one activity tile per repo — the merge adds only what is missing.
     expect(loaded.filter((t) => t.signal === 'activity')).toHaveLength(repos.length);
     expect(loaded).toHaveLength(legacy.length + repos.length);
+  });
+
+  it('does not reintroduce a fleet repo that is absent from the stored layout (#201)', () => {
+    // Backfill is per-repo: it only completes the signal set for repos ALREADY in
+    // the stored layout. A fleet repo with no stored tiles (e.g. one the user
+    // removed every tile for) must stay out — repo membership is authoritative and
+    // a removed repo only returns on an explicit reset, never via the activity
+    // back-compat merge.
+    const repoA = makeRepo('octo/a');
+    const repoB = makeRepo('octo/b');
+    saveDashboardLayout(DEFAULT_LAYOUT([repoA])); // only repo A persisted
+
+    const loaded = loadDashboardLayout([repoA, repoB]); // B is in the fleet, not the layout
+
+    expect(loaded.some((t) => t.repo === 'octo/b')).toBe(false);
+    expect(loaded.every((t) => t.repo === 'octo/a')).toBe(true);
+    expect(loaded).toEqual(DEFAULT_LAYOUT([repoA]));
+  });
+
+  it('partial migration: backfills activity only for the repos missing it (mixed 7+6) (#201)', () => {
+    // A layout persisted across the activity rollout can be mixed: some repos
+    // already carry all 7 signals while others still hold the legacy 6. The merge
+    // must add the activity tile ONLY to the repos that lack it, never duplicating
+    // it for repos that already migrated.
+    const repoA = makeRepo('octo/a');
+    const repoB = makeRepo('octo/b');
+    const stored = [...DEFAULT_LAYOUT([repoA]), ...legacyLayout([repoB])]; // A: 7, B: 6
+    saveDashboardLayout(stored);
+
+    const loaded = loadDashboardLayout([repoA, repoB]);
+
+    // Every stored tile survives; no repo loses a tile.
+    for (const tile of stored) {
+      expect(loaded.some((t) => t.i === tile.i)).toBe(true);
+    }
+    // Exactly one activity tile per repo — A's pre-existing one is untouched and
+    // B gains the single missing one.
+    expect(loaded.filter((t) => t.signal === 'activity')).toHaveLength(2);
+    expect(loaded.filter((t) => t.repo === 'octo/a')).toHaveLength(SIGNALS.length);
+    expect(loaded.filter((t) => t.repo === 'octo/b')).toHaveLength(SIGNALS.length);
+    // Only B's activity tile is appended (A was already complete).
+    expect(loaded).toHaveLength(stored.length + 1);
   });
 
   it('preserves a stored tile with a non-default custom position through reconciliation', () => {
