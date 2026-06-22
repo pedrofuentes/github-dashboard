@@ -20,6 +20,7 @@
  */
 import type { ReactElement } from 'react';
 
+import type { Density } from '../../../lib/density-preference';
 import { formatRelativeTime } from '../../../lib/format';
 import type { Repo, RepoSignalData, ReviewRequestedPullRequest } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
@@ -34,6 +35,12 @@ export interface ReviewsTileBodyProps {
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier drops
+   * the oldest-age meta so only the hero remains; `balanced` (the default) keeps
+   * it, and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 /** Coerce an optional count to a safe, non-negative integer (never NaN). */
@@ -99,7 +106,11 @@ function CenteredState({
   );
 }
 
-export function ReviewsTileBody({ data, size }: ReviewsTileBodyProps): ReactElement {
+export function ReviewsTileBody({
+  data,
+  size,
+  density = 'balanced',
+}: ReviewsTileBodyProps): ReactElement {
   const reviews = data.reviews;
 
   if (reviews?.status === 'loading') {
@@ -166,6 +177,8 @@ export function ReviewsTileBody({ data, size }: ReviewsTileBodyProps): ReactElem
   }
 
   const eye = <StatusGlyph status="review" size={14} title="Awaiting your review" />;
+  // Glanceable standard drops the oldest-age meta; balanced and expanded keep it.
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
 
   return (
     <div
@@ -184,7 +197,7 @@ export function ReviewsTileBody({ data, size }: ReviewsTileBodyProps): ReactElem
           {count} awaiting you
         </Chip>
       )}
-      {size !== 'compact' && oldestAge ? (
+      {size !== 'compact' && showStandardExtras && oldestAge ? (
         <span data-part="oldest" aria-hidden="true" className="text-xs text-text-muted">
           oldest {oldestAge}
         </span>

@@ -218,3 +218,40 @@ describe('SignalTile', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('SignalTile — density threading (T15)', () => {
+  const failingCi = { ci: { status: 'ready', conclusion: 'failure' } } as const;
+
+  it('threads glanceable density to the body, dropping the standard-tier micro-viz', () => {
+    const { container } = render(
+      <SignalTile
+        tile={makeTile('ci')}
+        repo={makeRepo()}
+        data={failingCi}
+        onActivate={vi.fn()}
+        density="glanceable"
+      />,
+    );
+    expect(container.querySelector('[data-shape]')).toBeNull();
+  });
+
+  it('threads balanced density to the body, keeping the standard-tier micro-viz', () => {
+    const { container } = render(
+      <SignalTile
+        tile={makeTile('ci')}
+        repo={makeRepo()}
+        data={failingCi}
+        onActivate={vi.fn()}
+        density="balanced"
+      />,
+    );
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+
+  it('defaults to balanced when density is omitted', () => {
+    const { container } = render(
+      <SignalTile tile={makeTile('ci')} repo={makeRepo()} data={failingCi} onActivate={vi.fn()} />,
+    );
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+});

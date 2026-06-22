@@ -317,3 +317,33 @@ describe('PrsTileBody — size tiers (§3.4)', () => {
     expect(screen.getByText('7 open · 3 new contributors')).toBeInTheDocument();
   });
 });
+
+describe('PrsTileBody — density-aware standard tier (T15)', () => {
+  const slice: PullRequestsSignalSlice = {
+    status: 'ready',
+    openCount: 7,
+    externalCount: 3,
+    externalPullRequests: [
+      externalPr({ number: 1 }),
+      externalPr({ number: 2 }),
+      externalPr({ number: 3 }),
+    ],
+  };
+
+  it('glanceable standard: keeps the hero + flag but drops the 2-segment bar', () => {
+    render(<PrsTileBody repo={repo} data={data(slice)} size="standard" density="glanceable" />);
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('3 new contributors')).toBeInTheDocument();
+    expect(screen.queryByText('New-contributor: 3')).toBeNull();
+  });
+
+  it('balanced standard: keeps the 2-segment bar (unchanged)', () => {
+    render(<PrsTileBody repo={repo} data={data(slice)} size="standard" density="balanced" />);
+    expect(screen.getByText('New-contributor: 3')).toBeInTheDocument();
+  });
+
+  it('glanceable expanded: keeps the 2-segment bar (expanded unaffected)', () => {
+    render(<PrsTileBody repo={repo} data={data(slice)} size="expanded" density="glanceable" />);
+    expect(screen.getByText('New-contributor: 3')).toBeInTheDocument();
+  });
+});

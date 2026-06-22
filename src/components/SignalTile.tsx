@@ -18,6 +18,7 @@ import type { ReactElement } from 'react';
 
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
+import type { Density } from '../lib/density-preference';
 import { resolveSalience } from '../lib/tile-salience';
 import type { TileSalience } from '../lib/tile-salience';
 import { signalHeroSummary } from '../lib/tile-summary';
@@ -67,6 +68,13 @@ export interface SignalTileProps {
   colIndex?: number;
   /** 1-based grid row this tile occupies, surfaced as `aria-rowindex`. */
   rowIndex?: number;
+  /**
+   * Tile density (DESIGN-TILES §6; T15), threaded to the body. In `glanceable`
+   * the standard tier sheds its micro-viz/meta so only the hero + delta remain;
+   * `balanced` (the default) keeps the full standard layout, and compact/
+   * expanded tiers are unaffected.
+   */
+  density?: Density;
 }
 
 /**
@@ -96,33 +104,35 @@ function SignalBody({
   repo,
   data,
   size,
+  density,
 }: {
   signal: TileSignalType;
   repo: Repo;
   data: RepoSignalData;
   size: TileTier;
+  density: Density;
 }): ReactElement {
   switch (signal) {
     case 'ci':
-      return <CiTileBody repo={repo} data={data} size={size} />;
+      return <CiTileBody repo={repo} data={data} size={size} density={density} />;
     case 'security':
-      return <SecurityTileBody repo={repo} data={data} size={size} />;
+      return <SecurityTileBody repo={repo} data={data} size={size} density={density} />;
     case 'pullRequests':
-      return <PrsTileBody repo={repo} data={data} size={size} />;
+      return <PrsTileBody repo={repo} data={data} size={size} density={density} />;
     case 'reviews':
-      return <ReviewsTileBody repo={repo} data={data} size={size} />;
+      return <ReviewsTileBody repo={repo} data={data} size={size} density={density} />;
     case 'issues':
-      return <IssuesTileBody repo={repo} data={data} size={size} />;
+      return <IssuesTileBody repo={repo} data={data} size={size} density={density} />;
     case 'stale':
-      return <StaleTileBody repo={repo} data={data} size={size} />;
+      return <StaleTileBody repo={repo} data={data} size={size} density={density} />;
     case 'activity':
       // Activity self-fetches its own commit history via `useCommitActivity`
-      // (no `RepoSignalData` slice), so it takes only `{ repo, size }`. The fetch
-      // is lazy on-mount and one-shot — consistent with the per-repo signal
-      // fetching and deliberately un-polled. Successor note: for very large
-      // fleets a future on-view IntersectionObserver could defer the fetch until
-      // the tile scrolls into view (out of scope here).
-      return <ActivityTileBody repo={repo} size={size} />;
+      // (no `RepoSignalData` slice), so it takes only `{ repo, size, density }`.
+      // The fetch is lazy on-mount and one-shot — consistent with the per-repo
+      // signal fetching and deliberately un-polled. Successor note: for very
+      // large fleets a future on-view IntersectionObserver could defer the fetch
+      // until the tile scrolls into view (out of scope here).
+      return <ActivityTileBody repo={repo} size={size} density={density} />;
     default:
       // The switch is exhaustive over `TileSignalType`; this guards a malformed
       // runtime signal so the tile degrades to a neutral, labelled state rather
@@ -143,6 +153,7 @@ export function SignalTile({
   onResize,
   colIndex,
   rowIndex,
+  density = 'balanced',
 }: SignalTileProps): ReactElement {
   const isActivity = tile.signal === 'activity';
   // Narrow inline (not via `isActivity`) so `data[...]` is keyed by a non-activity
@@ -186,7 +197,7 @@ export function SignalTile({
       identityTone={identityTone}
       accessibleSummary={accessibleSummary}
     >
-      <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} />
+      <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
     </TileFrame>
   );
 }

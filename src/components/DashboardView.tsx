@@ -22,6 +22,7 @@ import type { Layout, ResponsiveLayouts } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 
 import { useDashboardLayout } from '../hooks/useDashboardLayout';
+import { useDensity } from '../hooks/useDensity';
 import { cn } from '../lib/cn';
 import { toRglLayout } from '../lib/dashboard-layout';
 import { mergeLayoutGeometry } from '../lib/dashboard-layout-merge';
@@ -96,6 +97,10 @@ export function DashboardView({
   onRetry,
 }: DashboardViewProps): ReactElement {
   const { layout, setLayout } = useDashboardLayout(repos);
+
+  // The active tile density (DESIGN-TILES §6; T15). Threaded to every SignalTile
+  // so `glanceable` sheds the standard-tier micro-viz while `balanced` keeps it.
+  const { density } = useDensity();
 
   // Honour reduced-motion by skipping react-grid-layout's CSS transform
   // animation. Read once on mount — the preference rarely changes mid-session.
@@ -391,6 +396,7 @@ export function DashboardView({
                 onResize={handleResize}
                 rowIndex={tile.y + 1}
                 colIndex={tile.x + 1}
+                density={density}
               />
             </div>
           ))}

@@ -359,3 +359,41 @@ describe('CiTileBody', () => {
     }
   });
 });
+
+describe('CiTileBody — density-aware standard tier (T15)', () => {
+  const fullSlice: CiSignalSlice = {
+    status: 'ready',
+    conclusion: 'failure',
+    failingCount: 1,
+    updatedAt: '2024-01-01T00:00:00Z',
+    latestRunUrl: 'https://github.com/octocat/hello-world/actions/runs/1',
+  };
+
+  it('glanceable standard: keeps the hero but drops the RunStrip micro-viz', () => {
+    const { container } = render(
+      <CiTileBody repo={repo} data={data(fullSlice)} size="standard" density="glanceable" />,
+    );
+    expect(glyph(container, 'failure')).not.toBeNull();
+    expect(screen.getByText('Failing', { selector: 'span' })).toBeInTheDocument();
+    expect(container.querySelector('[data-shape]')).toBeNull();
+  });
+
+  it('balanced standard: keeps the RunStrip micro-viz (unchanged)', () => {
+    const { container } = render(
+      <CiTileBody repo={repo} data={data(fullSlice)} size="standard" density="balanced" />,
+    );
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+
+  it('glanceable expanded: keeps the RunStrip micro-viz (expanded unaffected)', () => {
+    const { container } = render(
+      <CiTileBody repo={repo} data={data(fullSlice)} size="expanded" density="glanceable" />,
+    );
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+
+  it('defaults to balanced when density is omitted (keeps the micro-viz)', () => {
+    const { container } = render(<CiTileBody repo={repo} data={data(fullSlice)} size="standard" />);
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+});

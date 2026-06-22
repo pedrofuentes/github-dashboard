@@ -210,3 +210,50 @@ describe('IssuesTileBody — defensive & a11y', () => {
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 });
+
+describe('IssuesTileBody — density-aware standard tier (T15)', () => {
+  const ready: IssuesSignalSlice = { status: 'ready', openCount: 7 };
+  const stale: StaleSignalSlice = {
+    status: 'ready',
+    staleItems: [
+      { number: 1, title: 'a', html_url: 'https://x', updated_at: '2026-01-01', type: 'issue' },
+    ],
+  };
+
+  it('glanceable standard: keeps the hero but drops the stale meta', () => {
+    const { getAllByText, container } = render(
+      <IssuesTileBody
+        repo={repo}
+        data={{ issues: ready, stale }}
+        size="standard"
+        density="glanceable"
+      />,
+    );
+    expect(getAllByText('7').length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-part="stale-meta"]')).toBeNull();
+  });
+
+  it('balanced standard: keeps the stale meta (unchanged)', () => {
+    const { container } = render(
+      <IssuesTileBody
+        repo={repo}
+        data={{ issues: ready, stale }}
+        size="standard"
+        density="balanced"
+      />,
+    );
+    expect(container.querySelector('[data-part="stale-meta"]')).not.toBeNull();
+  });
+
+  it('glanceable expanded: keeps the stale meta (expanded unaffected)', () => {
+    const { container } = render(
+      <IssuesTileBody
+        repo={repo}
+        data={{ issues: ready, stale }}
+        size="expanded"
+        density="glanceable"
+      />,
+    );
+    expect(container.querySelector('[data-part="stale-meta"]')).not.toBeNull();
+  });
+});

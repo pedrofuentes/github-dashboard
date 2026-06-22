@@ -17,6 +17,7 @@
  */
 import type { ReactElement } from 'react';
 
+import type { Density } from '../../../lib/density-preference';
 import type { Repo, RepoSignalData, StaleItem } from '../../../types/fleet';
 import { AgeBucketBar } from '../AgeBucketBar';
 import type { AgeBucket } from '../AgeBucketBar';
@@ -31,6 +32,12 @@ export interface StaleTileBodyProps {
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier drops
+   * the age-bucket bar so only the hero remains; `balanced` (the default) keeps
+   * it, and compact/expanded are unaffected.
+   */
+  density?: Density;
   /** Injectable "current time" for deterministic age maths; defaults to now. */
   now?: Date;
 }
@@ -104,7 +111,12 @@ function CenteredState({
   );
 }
 
-export function StaleTileBody({ data, size, now = new Date() }: StaleTileBodyProps): ReactElement {
+export function StaleTileBody({
+  data,
+  size,
+  now = new Date(),
+  density = 'balanced',
+}: StaleTileBodyProps): ReactElement {
   const stale = data.stale;
 
   if (stale?.status === 'loading') {
@@ -183,6 +195,8 @@ export function StaleTileBody({ data, size, now = new Date() }: StaleTileBodyPro
     ? `${String(count)} stale ${noun}, oldest ${String(oldest)} days — ${String(prCount)} pull requests, ${String(issueCount)} issues`
     : `${String(count)} stale ${noun}`;
   const bucketSrLabel = `Stale items by age: ${String(count)} total`;
+  // Glanceable standard drops the age-bucket bar; balanced and expanded keep it.
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
 
   return (
     <div
@@ -198,7 +212,7 @@ export function StaleTileBody({ data, size, now = new Date() }: StaleTileBodyPro
       <span data-part="meta" aria-hidden="true" className="text-xs text-text-muted">
         {metaText}
       </span>
-      {size !== 'compact' && hasItems ? (
+      {size !== 'compact' && hasItems && showStandardExtras ? (
         <div data-part="age-bucket-bar" className="w-full max-w-[16rem]">
           <AgeBucketBar buckets={buckets} srLabel={bucketSrLabel} />
         </div>

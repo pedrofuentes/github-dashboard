@@ -13,6 +13,7 @@
  */
 import type { ReactElement } from 'react';
 
+import type { Density } from '../../../lib/density-preference';
 import type { Repo, RepoSignalData } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
 import { StatusGlyph } from '../StatusGlyph';
@@ -25,6 +26,12 @@ export interface IssuesTileBodyProps {
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier drops
+   * the stale meta so only the hero remains; `balanced` (the default) keeps it,
+   * and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 /** Coerce an optional count to a safe, non-negative integer (never NaN). */
@@ -62,7 +69,11 @@ function CenteredState({
   );
 }
 
-export function IssuesTileBody({ data, size }: IssuesTileBodyProps): ReactElement {
+export function IssuesTileBody({
+  data,
+  size,
+  density = 'balanced',
+}: IssuesTileBodyProps): ReactElement {
   const issues = data.issues;
 
   if (issues?.status === 'loading') {
@@ -116,7 +127,13 @@ export function IssuesTileBody({ data, size }: IssuesTileBodyProps): ReactElemen
     data.stale?.status === 'ready'
       ? (data.stale.staleItems ?? []).filter((item) => item.type === 'issue').length
       : undefined;
-  const showStaleMeta = size !== 'compact' && staleIssueCount !== undefined && staleIssueCount > 0;
+  // Glanceable standard drops the stale meta; balanced and expanded keep it.
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
+  const showStaleMeta =
+    size !== 'compact' &&
+    showStandardExtras &&
+    staleIssueCount !== undefined &&
+    staleIssueCount > 0;
 
   const srLabel =
     openCount === 0

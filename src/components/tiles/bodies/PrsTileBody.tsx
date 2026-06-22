@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 
+import type { Density } from '../../../lib/density-preference';
 import { formatRelativeTime } from '../../../lib/format';
 import type {
   ExternalPullRequest,
@@ -19,6 +20,12 @@ export interface PrsTileBodyProps {
   data: RepoSignalData;
   /** Density tier the surrounding TileFrame measured (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier drops
+   * the 2-segment bar so only the hero + new-contributor flag remain; `balanced`
+   * (the default) keeps it, and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 /**
@@ -84,7 +91,12 @@ function oldestCreatedAt(prs: ExternalPullRequest[]): string | undefined {
  * meaning-bearing fallback instead of a blank card, and all colour comes from
  * tokens (no inline status hex).
  */
-export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElement {
+export function PrsTileBody({
+  repo,
+  data,
+  size,
+  density = 'balanced',
+}: PrsTileBodyProps): ReactElement {
   const slice: PullRequestsSignalSlice | undefined = data.pullRequests;
   const status = slice?.status ?? 'unknown';
 
@@ -155,6 +167,8 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
 
   const otherOpen = Math.max(0, openCount - newContributorCount);
   const oldestExternal = oldestCreatedAt(externalPrs);
+  // Glanceable standard drops the 2-segment bar; balanced and expanded keep it.
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
   const descriptive = hasNewContributors
     ? `${openCount} open · ${contributorLabel}`
     : `${openCount} open`;
@@ -193,7 +207,7 @@ export function PrsTileBody({ repo, data, size }: PrsTileBodyProps): ReactElemen
         </Chip>
       ) : null}
 
-      {hasNewContributors && size !== 'compact' ? (
+      {hasNewContributors && size !== 'compact' && showStandardExtras ? (
         <SeverityBar
           max={openCount}
           segments={[

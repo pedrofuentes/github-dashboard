@@ -316,3 +316,31 @@ describe('DashboardView', () => {
     expect(getRowData).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('DashboardView — density wiring (T15)', () => {
+  const failingCi: GetRowData = (repo) =>
+    repo.nameWithOwner === 'octo/a' ? { ci: { status: 'ready', conclusion: 'failure' } } : {};
+
+  it('renders standard-tier micro-viz under the default (balanced) density', () => {
+    const { container } = render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={failingCi}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+
+  it('drops standard-tier micro-viz when the persisted density is glanceable', () => {
+    localStorage.setItem('fleet:density', 'glanceable');
+    const { container } = render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={failingCi}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-shape]')).toBeNull();
+  });
+});

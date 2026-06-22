@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 
+import type { Density } from '../../../lib/density-preference';
 import { formatRelativeTime } from '../../../lib/format';
 import { safeGitHubHref } from '../../../lib/github-url';
 import type { CiSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
@@ -17,6 +18,12 @@ export interface CiTileBodyProps {
   data: RepoSignalData;
   /** Density tier the surrounding tile renders at (DESIGN-TILES §3.4). */
   size: TileTier;
+  /**
+   * Tile density (DESIGN-TILES §6; T15). In `glanceable` the standard tier
+   * sheds its micro-viz/meta so only the hero + delta remain; `balanced` (the
+   * default) keeps them, and compact/expanded are unaffected.
+   */
+  density?: Density;
 }
 
 type Conclusion = NonNullable<CiSignalSlice['conclusion']>;
@@ -143,15 +150,23 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
  * never blank: loading, error, unknown and all-clear all render a positive,
  * labelled state.
  */
-export function CiTileBody({ repo, data, size }: CiTileBodyProps): ReactElement {
+export function CiTileBody({
+  repo,
+  data,
+  size,
+  density = 'balanced',
+}: CiTileBodyProps): ReactElement {
   const ci = data.ci;
   const view = resolveView(ci, repo.nameWithOwner);
 
+  // Glanceable standard sheds the standard-tier extras (the latest-run cell and
+  // recency) so only the hero + count remain; balanced and expanded keep them.
+  const showStandardExtras = density === 'balanced' || size === 'expanded';
   const href = size === 'expanded' ? safeGitHubHref(ci?.latestRunUrl) : undefined;
   const showWord = size !== 'compact';
   const showDetail = view.detail !== undefined && (size !== 'compact' || view.failing > 0);
-  const showStrip = size !== 'compact' && view.runConclusion !== undefined;
-  const showRecency = size !== 'compact' && view.recency !== undefined;
+  const showStrip = size !== 'compact' && view.runConclusion !== undefined && showStandardExtras;
+  const showRecency = size !== 'compact' && view.recency !== undefined && showStandardExtras;
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-center">
