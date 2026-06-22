@@ -405,7 +405,7 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
 
   // Start from the table grid regardless of any persisted preference.
   await page.addInitScript(() => {
-    window.localStorage.setItem('fleet:view', 'grid');
+    window.localStorage.setItem('fleet:default-view', 'grid');
   });
 
   await page.goto('/');
