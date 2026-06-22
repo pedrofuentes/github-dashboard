@@ -28,10 +28,12 @@ import { Chip } from '../Chip';
 import { StatusGlyph } from '../StatusGlyph';
 import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
+import { CenteredState } from './CenteredState';
+import { safeCount } from './safeCount';
 
 export interface ReviewsTileBodyProps {
-  /** The repository this tile represents (reserved for deep links/labels). */
-  repo: Repo;
+  /** The repository this tile represents (optional; reserved for deep links/labels). */
+  repo?: Repo;
   /** The repo's resolved signal payload. */
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
@@ -44,11 +46,6 @@ export interface ReviewsTileBodyProps {
   density?: Density;
 }
 
-/** Coerce an optional count to a safe, non-negative integer (never NaN). */
-function safeCount(value: number | undefined): number {
-  return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
-}
-
 /** Review-queue urgency → accent (DESIGN-TILES §4.4). */
 function urgencyTone(count: number): AccentTone {
   if (count <= 0) return 'neutral';
@@ -59,12 +56,13 @@ function urgencyTone(count: number): AccentTone {
 
 /**
  * Relative age of the *oldest* awaiting review request — the real urgency
- * driver — from the min `created_at` across `reviews.requests`. Unparseable
- * timestamps are skipped; returns `null` when no usable per-request data exists
- * (the meta is then omitted rather than rendered blank).
+ * driver — from the min `created_at` across `reviews.requests`. A non-array or
+ * empty `requests`, and unparseable timestamps, are skipped; returns `null`
+ * when no usable per-request data exists (the meta is then omitted rather than
+ * rendered blank).
  */
 function oldestRequestAge(requests: ReviewRequestedPullRequest[] | undefined): string | null {
-  if (!requests || requests.length === 0) {
+  if (!Array.isArray(requests) || requests.length === 0) {
     return null;
   }
   let oldestMs = Number.POSITIVE_INFINITY;
@@ -75,36 +73,6 @@ function oldestRequestAge(requests: ReviewRequestedPullRequest[] | undefined): s
     }
   }
   return Number.isFinite(oldestMs) ? formatRelativeTime(new Date(oldestMs)) : null;
-}
-
-/** Neutral container for the loading / error / unavailable states (never blank). */
-function CenteredState({
-  state,
-  tone,
-  glyph,
-  message,
-  srText,
-}: {
-  state: string;
-  tone: 'muted' | 'error';
-  glyph: ReactElement;
-  message: string;
-  srText: string;
-}): ReactElement {
-  return (
-    <div
-      data-state={state}
-      className={`flex h-full flex-col items-center justify-center ${
-        tone === 'error' ? 'text-accent-failure' : 'text-text-muted'
-      }`}
-    >
-      {glyph}
-      <span aria-hidden="true" className="mt-1 text-sm">
-        {message}
-      </span>
-      <span className="sr-only">{srText}</span>
-    </div>
-  );
 }
 
 export function ReviewsTileBody({

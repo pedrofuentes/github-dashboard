@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CiSignalSlice, Repo, RepoSignalData } from '../../../types/fleet';
 import type { TileTier } from '../types';
@@ -21,6 +21,17 @@ function data(ci?: CiSignalSlice): RepoSignalData {
 function glyph(container: HTMLElement, status: string): Element | null {
   return container.querySelector(`svg[data-status="${status}"]`);
 }
+
+/**
+ * A fixed reference instant for relative-time assertions. `formatRelativeTime`
+ * reads the real clock (`new Date()`), so the recency tests freeze `Date` here
+ * to remove the ~5-min-boundary flake (#273).
+ */
+const FIXED_NOW = new Date('2024-01-15T12:00:00Z');
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('CiTileBody', () => {
   it('exports a named CiTileBody component', () => {
@@ -125,6 +136,19 @@ describe('CiTileBody', () => {
       expect(container.querySelector('[data-shape]')).toBeNull();
     });
 
+    it('compact all-clear suppresses the "No failing workflows" detail line', () => {
+      // showDetail is gated to `size !== 'compact' || failing > 0`; an all-clear
+      // (success, 0 failing) compact tile must therefore drop the detail line.
+      render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="compact"
+        />,
+      );
+      expect(screen.queryByText(/no failing workflows/i)).toBeNull();
+    });
+
     it('standard: glyph + status word + failing count + run-strip, but no run link', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data(fullSlice)} size="standard" />,
@@ -197,6 +221,8 @@ describe('CiTileBody', () => {
       expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
       expect(glyph(container, 'loading')).not.toBeNull();
       expect(screen.getByText(/loading ci/i)).toBeInTheDocument();
+      // The visible status word itself (distinct from the sr-only "Loading CI…").
+      expect(screen.getByText('Loading…', { selector: 'span' })).toBeInTheDocument();
     });
 
     it('error: routes through TileMessage (data-state="failed-to-load") + warning ⚠ glyph', () => {
@@ -268,6 +294,22 @@ describe('CiTileBody', () => {
       expect(glyph(container, 'success')).not.toBeNull();
       expect(screen.getByText('Passing', { selector: 'span' })).toBeInTheDocument();
     });
+
+    it('exposes a data-state on the ready container ("ready" vs "unavailable")', () => {
+      const { container: ready } = render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'success' })}
+          size="standard"
+        />,
+      );
+      expect(ready.querySelector('[data-state="ready"]')).not.toBeNull();
+      const { container: na } = render(
+        <CiTileBody repo={repo} data={data({ status: 'unknown' })} size="standard" />,
+      );
+      expect(na.querySelector('[data-state="unavailable"]')).not.toBeNull();
+      expect(na.querySelector('[data-state="ready"]')).toBeNull();
+    });
   });
 
   describe('latest-run cell (RunStrip) + recency', () => {
@@ -294,6 +336,8 @@ describe('CiTileBody', () => {
     });
 
     it('shows the latest-run recency (formatRelativeTime(updatedAt)) at standard tier', () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(FIXED_NOW);
       const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       render(
         <CiTileBody
@@ -429,6 +473,8 @@ describe('CiTileBody — density-aware standard tier (T15)', () => {
   });
 
   it('balanced standard: keeps the latest-run recency meta (contrast)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_NOW);
     const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     render(
       <CiTileBody
@@ -442,6 +488,8 @@ describe('CiTileBody — density-aware standard tier (T15)', () => {
   });
 
   it('glanceable expanded: keeps the latest-run recency meta (expanded unaffected)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_NOW);
     const updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     render(
       <CiTileBody

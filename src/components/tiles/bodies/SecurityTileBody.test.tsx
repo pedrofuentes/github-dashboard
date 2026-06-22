@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Repo, SecuritySignalSlice } from '../../../types/fleet';
 import { SecurityTileBody } from './SecurityTileBody';
@@ -10,6 +10,17 @@ const repo: Repo = {
   name: 'hello-world',
   isPrivate: false,
 };
+
+/**
+ * Fixed reference instant for relative-time assertions. `formatRelativeTime`
+ * reads the real clock, so the recency test freezes `Date` here to avoid a
+ * wall-clock boundary flake (#277).
+ */
+const FIXED_NOW = new Date('2024-01-15T12:00:00Z');
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function renderBody(
   security: SecuritySignalSlice | undefined,
@@ -22,13 +33,14 @@ describe('SecurityTileBody — states', () => {
   it('shows a loading state via TileMessage (data-state="loading") with sr text', () => {
     const { getAllByText, container } = renderBody({ status: 'loading' });
     expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
-    expect(getAllByText(/loading security/i).length).toBeGreaterThan(0);
+    // The sr-only sentence is the single match for the status phrase.
+    expect(getAllByText(/loading security/i)).toHaveLength(1);
   });
 
   it('shows a failed-to-load state via TileMessage (data-state="failed-to-load")', () => {
     const { getAllByText, container } = renderBody({ status: 'error' });
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
-    expect(getAllByText(/couldn.t load security/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/couldn.t load security/i)).toHaveLength(1);
   });
 
   it('shows n/a for an unknown slice', () => {
@@ -185,10 +197,19 @@ describe('SecurityTileBody — stacked severity bar (no arc gauge)', () => {
 describe('SecurityTileBody — severity breakdown & truncation', () => {
   const counts = { critical: 2, high: 1, medium: 3, low: 4 };
 
-  it('renders each non-zero severity in the breakdown', () => {
-    const { getAllByText } = renderBody({ status: 'ready', grade: 'F', counts }, 'expanded');
-    expect(getAllByText(/critical/i).length).toBeGreaterThan(0);
-    expect(getAllByText(/high/i).length).toBeGreaterThan(0);
+  it('renders each non-zero severity with its exact count in the breakdown', () => {
+    const { container } = renderBody({ status: 'ready', grade: 'F', counts }, 'expanded');
+    const breakdown = container.querySelector('[data-part="breakdown"]');
+    expect(breakdown).not.toBeNull();
+    const rows = Array.from(breakdown?.querySelectorAll('li') ?? []);
+    // Worst-first, every non-zero severity present with its fixture count (2/1/3/4).
+    // Label and count spans are adjacent (no separating whitespace).
+    expect(rows.map((row) => row.textContent?.replace(/\s+/g, ''))).toEqual([
+      'Critical2',
+      'High1',
+      'Medium3',
+      'Low4',
+    ]);
   });
 
   it('marks a truncated tally as a lower bound (partial)', () => {
@@ -210,6 +231,8 @@ describe('SecurityTileBody — severity breakdown & truncation', () => {
 
 describe('SecurityTileBody — recency meta', () => {
   it('shows the most-recent-alert recency when alerts are present', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FIXED_NOW);
     const newest = new Date().toISOString();
     const older = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
     const { container } = renderBody({

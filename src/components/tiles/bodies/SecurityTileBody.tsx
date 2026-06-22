@@ -18,6 +18,7 @@
  * to a safe, labelled state rather than throwing or rendering blank.
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMemo } from 'react';
 
 import type { SecurityCounts } from '../../../hooks/signals/securityGrade';
 import type { Density } from '../../../lib/density-preference';
@@ -31,8 +32,8 @@ import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
 
 export interface SecurityTileBodyProps {
-  /** The repository this tile represents (reserved for deep links/labels). */
-  repo: Repo;
+  /** The repository this tile represents (optional; reserved for deep links/labels). */
+  repo?: Repo;
   /** The repo's resolved signal payload. */
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
@@ -102,8 +103,13 @@ function buildSegments(counts: SecurityCounts): SeveritySegment[] {
   }));
 }
 
-/** Most-recent alert recency, or `undefined` when there are no alert rows. */
-function newestAlertRecency(alerts: SecurityAlertRow[] | undefined): string | undefined {
+/**
+ * Newest alert timestamp (epoch ms), or `undefined` when there are no datable
+ * alert rows. Pure and clock-free, so it can be memoized on the alert array
+ * (the formatting against the *current* clock stays at the call site, keeping
+ * the rendered recency fresh per render) (#277).
+ */
+function newestAlertTimestamp(alerts: SecurityAlertRow[] | undefined): number | undefined {
   if (!alerts || alerts.length === 0) {
     return undefined;
   }
@@ -111,7 +117,7 @@ function newestAlertRecency(alerts: SecurityAlertRow[] | undefined): string | un
     const t = new Date(alert.created_at).getTime();
     return Number.isFinite(t) && t > latest ? t : latest;
   }, Number.NEGATIVE_INFINITY);
-  return Number.isFinite(newest) ? formatRelativeTime(newest) : undefined;
+  return Number.isFinite(newest) ? newest : undefined;
 }
 
 /** Spoken "2 critical, 5 high" list of every non-zero severity (for sr text). */
@@ -143,6 +149,11 @@ export function SecurityTileBody({
   density = 'balanced',
 }: SecurityTileBodyProps): ReactElement {
   const security = data.security;
+
+  // Hooks must precede the early returns: memoize the (pagination-bounded) newest
+  // alert scan on the alert array so it is not recomputed on unrelated re-renders
+  // (#277). Formatting against the live clock stays at the call site below.
+  const newestAlertMs = useMemo(() => newestAlertTimestamp(security?.alerts), [security?.alerts]);
 
   if (!security || security.status === 'unknown') {
     return <NeutralState message="n/a" srText="Security status unavailable" />;
@@ -186,7 +197,7 @@ export function SecurityTileBody({
   const worst = worstSeverity(counts) as Severity;
   const worstCount = counts[worst.key];
   const isProblem = PROBLEM_KEYS.has(worst.key);
-  const recency = newestAlertRecency(security.alerts);
+  const recency = newestAlertMs !== undefined ? formatRelativeTime(newestAlertMs) : undefined;
   const spoken = spokenSummary(counts);
 
   // Glanceable standard drops the severity bar + meta so only the hero remains;

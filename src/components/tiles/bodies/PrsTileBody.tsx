@@ -13,6 +13,7 @@ import { BigValue } from '../BigValue';
 import { Chip } from '../Chip';
 import { SeverityBar } from '../SeverityBar';
 import { TileMessage } from '../TileMessage';
+import { safeCount } from './safeCount';
 
 export interface PrsTileBodyProps {
   /** The repo this tile represents — used for accessible context. */
@@ -127,8 +128,8 @@ export function PrsTileBody({
     );
   }
 
-  const openCount = slice?.openCount ?? 0;
-  const externalCount = slice?.externalCount ?? 0;
+  const openCount = safeCount(slice?.openCount);
+  const externalCount = safeCount(slice?.externalCount);
 
   if (openCount === 0) {
     return (
@@ -206,6 +207,12 @@ export function PrsTileBody({
         />
       ) : null}
 
+      {/*
+        Expanded-tier meta lines are aria-hidden: they visually restate detail
+        already announced once via the hero's `.sr-only` sentence (and the chip
+        sr-labels), so exposing them again would double-announce to assistive
+        tech. They are purely a sighted-reader augmentation.
+      */}
       {size === 'expanded' && oldestExternal ? (
         <p aria-hidden="true" className="text-sm text-text-muted">
           Oldest new-contributor PR {formatRelativeTime(oldestExternal)}

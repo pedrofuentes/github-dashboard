@@ -10,6 +10,7 @@
  * alone), keeping the card WCAG 2.1 AA / colour-blind safe in both themes.
  */
 import type { ReactElement } from 'react';
+import { useMemo } from 'react';
 
 import { cn } from '../lib/cn';
 import type { FleetHealthSummary, RepoHealth, RepoHealthEntry } from '../lib/fleet-summary';
@@ -160,7 +161,12 @@ export function FleetSummaryTile({
   const partialNoun = partialRepos === 1 ? 'repo' : 'repos';
 
   // Worst-first ordering for the per-repo strip; the worst child is its head.
-  const sortedEntries = [...entries].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health]);
+  // Memoized so the fresh sorted array is reused across renders when the
+  // entries list is unchanged (stable at user-bounded fleet sizes).
+  const sortedEntries = useMemo(
+    () => [...entries].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health]),
+    [entries],
+  );
   const worstChild = sortedEntries.find((entry) => entry.health !== 'healthy');
 
   return (

@@ -57,6 +57,8 @@ describe('PrsTileBody — states (§3.6)', () => {
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(screen.getAllByText(/couldn't load/i).length).toBeGreaterThan(0);
     expect(srText(container)).toContain('octocat/hello-world');
+    // Failure must read in the failure accent token — never the muted/info tone.
+    expect(container.querySelector('.text-accent-failure')).not.toBeNull();
   });
 
   it('shows a neutral n/a when the slice is missing entirely', () => {
@@ -82,6 +84,15 @@ describe('PrsTileBody — states (§3.6)', () => {
     expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });
 
+  it('clamps an out-of-contract negative open-count to the all-clear state', () => {
+    // A negative count is never valid; it must degrade to all-clear rather than
+    // render a misleading "-3" hero (DESIGN-TILES §3.6).
+    const { container } = renderBody({ status: 'ready', openCount: -3, externalCount: 0 });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(container.querySelector('[data-state="ready"]')).toBeNull();
+    expect(screen.queryByText('-3')).not.toBeInTheDocument();
+  });
+
   it('HARD RULE: all-clear (empty) is unmistakable from failed-to-load', () => {
     const { container: clear } = renderBody({ status: 'ready', openCount: 0, externalCount: 0 });
     const { container: failed } = renderBody({ status: 'error' });
@@ -96,13 +107,13 @@ describe('PrsTileBody — hero + state attributes', () => {
   it('renders the open count as the hero with info tone when no new contributors', () => {
     const { container } = renderBody({ status: 'ready', openCount: 12, externalCount: 0 });
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(container.querySelector('.text-accent-info')).toBeTruthy();
+    expect(container.querySelector('.text-accent-info')).not.toBeNull();
     expect(container.querySelector('.text-accent-coral')).toBeNull();
   });
 
   it('escalates the hero tone to coral when new-contributor PRs exist', () => {
     const { container } = renderBody({ status: 'ready', openCount: 7, externalCount: 3 });
-    expect(container.querySelector('.text-accent-coral')).toBeTruthy();
+    expect(container.querySelector('.text-accent-coral')).not.toBeNull();
   });
 
   it('exposes ready state + tone + tier as data attributes for testing/snapshots', () => {
@@ -111,7 +122,7 @@ describe('PrsTileBody — hero + state attributes', () => {
       'standard',
     );
     const root = container.querySelector('[data-state="ready"]');
-    expect(root).toBeTruthy();
+    expect(root).not.toBeNull();
     expect(root?.getAttribute('data-tone')).toBe('coral');
     expect(root?.getAttribute('data-tier')).toBe('standard');
   });
@@ -188,7 +199,7 @@ describe('PrsTileBody — new-contributor signal', () => {
       ],
     });
     expect(screen.getByText('3 new contributors')).toBeInTheDocument();
-    expect(container.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+    expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(srText(container)).toContain('new-contributor');
     expect(screen.getByTitle('3 PRs from new outside contributors')).toBeInTheDocument();
   });
@@ -216,8 +227,8 @@ describe('PrsTileBody — 2-segment external/other bar (micro-viz)', () => {
     );
     expect(screen.getByText('New-contributor: 3')).toBeInTheDocument();
     expect(screen.getByText('Other open: 4')).toBeInTheDocument();
-    expect(container.querySelector('[data-tone="coral"]')).toBeTruthy();
-    expect(container.querySelector('[data-tone="info"]')).toBeTruthy();
+    expect(container.querySelector('[data-tone="coral"]')).not.toBeNull();
+    expect(container.querySelector('[data-tone="info"]')).not.toBeNull();
   });
 
   it('compact does not render the bar (hero + flag only)', () => {

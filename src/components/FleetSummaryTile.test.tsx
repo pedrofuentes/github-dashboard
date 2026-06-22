@@ -86,6 +86,16 @@ describe('FleetSummaryTile', () => {
     expect(container.querySelector('[data-tone="success"]')).not.toBeInTheDocument();
   });
 
+  it('keeps the full three-bucket legend even when a bucket is zero (§4.8)', () => {
+    render(<FleetSummaryTile summary={makeSummary({ total: 4, broken: 4 })} entries={[]} />);
+    const region = screen.getByRole('region', { name: /fleet summary/i });
+    // The bar drops zero segments, but the legend is a fixed scale: a zero
+    // warning/healthy count still reads out so the three buckets never shift.
+    expect(within(region).getByText(/4\s+need attention/i)).toBeInTheDocument();
+    expect(within(region).getByText(/0\s+warning/i)).toBeInTheDocument();
+    expect(within(region).getByText(/0\s+healthy/i)).toBeInTheDocument();
+  });
+
   it('surfaces each non-zero per-signal rollup as a tinted chip', () => {
     render(
       <FleetSummaryTile

@@ -23,13 +23,13 @@ describe('IssuesTileBody — states', () => {
   it('routes loading through TileMessage (data-state="loading") with sr text', () => {
     const { getAllByText, container } = renderBody({ status: 'loading' });
     expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
-    expect(getAllByText(/loading issues/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/loading issues/i)).toHaveLength(1);
   });
 
   it('routes errors through TileMessage (data-state="failed-to-load")', () => {
     const { getAllByText, container } = renderBody({ status: 'error' });
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
-    expect(getAllByText(/issue count unavailable/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/issue count unavailable/i)).toHaveLength(1);
   });
 
   it('shows n/a for an unknown slice', () => {
@@ -78,11 +78,15 @@ describe('IssuesTileBody — triage escalation (DESIGN-TILES §4.5)', () => {
   });
 
   it('reports the over-threshold sr label from the cell vocabulary', () => {
-    const { getAllByText } = renderBody(
+    const { container } = renderBody(
       { status: 'ready', openCount: 9, overThreshold: true },
       'expanded',
     );
-    expect(getAllByText(/9 open issues, over the triage threshold/i).length).toBeGreaterThan(0);
+    // Scope to the sr-only span: the full sentence is the screen-reader channel,
+    // not visible text scattered across the hero/chip.
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /9 open issues, over the triage threshold/i,
+    );
   });
 
   it('uses singular "issue" phrasing for a single open issue', () => {
@@ -174,21 +178,18 @@ describe('IssuesTileBody — cross-slice stale-issue meta (T11)', () => {
   });
 
   it('omits the stale meta when the stale slice is absent (no crash)', () => {
-    expect(() => renderBody(ready, 'standard', undefined)).not.toThrow();
     const { queryByText } = renderBody(ready, 'standard', undefined);
     expect(queryByText(/stale/i)).toBeNull();
   });
 
   it('omits the stale meta while the stale slice is loading (no crash)', () => {
     const stale: StaleSignalSlice = { status: 'loading' };
-    expect(() => renderBody(ready, 'standard', stale)).not.toThrow();
     const { queryByText } = renderBody(ready, 'standard', stale);
     expect(queryByText(/stale/i)).toBeNull();
   });
 
   it('does not crash when a ready stale slice carries no items', () => {
     const stale: StaleSignalSlice = { status: 'ready' };
-    expect(() => renderBody(ready, 'standard', stale)).not.toThrow();
     const { queryByText } = renderBody(ready, 'standard', stale);
     expect(queryByText(/stale/i)).toBeNull();
   });
@@ -196,9 +197,8 @@ describe('IssuesTileBody — cross-slice stale-issue meta (T11)', () => {
 
 describe('IssuesTileBody — defensive & a11y', () => {
   it('degrades a ready slice with a missing count to the clear state (no throw)', () => {
-    expect(() => renderBody({ status: 'ready' })).not.toThrow();
     const { getAllByText } = renderBody({ status: 'ready' });
-    expect(getAllByText(/no open issues/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/no open issues/i)).toHaveLength(1);
   });
 
   it('degrades an unexpected status to a safe neutral state (no throw)', () => {
@@ -212,7 +212,6 @@ describe('IssuesTileBody — defensive & a11y', () => {
 
   it('clamps a negative/garbage count to a safe value (no throw)', () => {
     const bogus = { status: 'ready', openCount: -8 } as IssuesSignalSlice;
-    expect(() => renderBody(bogus)).not.toThrow();
     const { container } = renderBody(bogus);
     expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
   });

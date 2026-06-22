@@ -7,9 +7,10 @@
  * {@link StatusGlyph}. The backlog reads neutral until it crosses the triage
  * threshold, at which point a triage {@link StatusGlyph} (warning triangle) plus
  * the words "over triage threshold" *and* the warning accent all flag it — never
- * colour alone. All colour comes from semantic tokens (no hard-coded hex, AA in
- * both themes), and any missing/garbage field degrades to a safe neutral state
- * rather than throwing or rendering blank.
+ * colour alone. At standard/expanded a cross-slice meta line tallies stale *open
+ * issues* (derived from `data.stale`, no extra fetch). All colour comes from
+ * semantic tokens (no hard-coded hex, AA in both themes), and any missing/garbage
+ * field degrades to a safe neutral state rather than throwing or rendering blank.
  */
 import type { ReactElement } from 'react';
 
@@ -19,10 +20,12 @@ import { BigValue } from '../BigValue';
 import { StatusGlyph } from '../StatusGlyph';
 import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
+import { CenteredState } from './CenteredState';
+import { safeCount } from './safeCount';
 
 export interface IssuesTileBodyProps {
-  /** The repository this tile represents (reserved for deep links/labels). */
-  repo: Repo;
+  /** The repository this tile represents (optional; reserved for deep links/labels). */
+  repo?: Repo;
   /** The repo's resolved signal payload. */
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
@@ -33,41 +36,6 @@ export interface IssuesTileBodyProps {
    * and compact/expanded are unaffected.
    */
   density?: Density;
-}
-
-/** Coerce an optional count to a safe, non-negative integer (never NaN). */
-function safeCount(value: number | undefined): number {
-  return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
-}
-
-/** Neutral container for the loading / error / unavailable states (never blank). */
-function CenteredState({
-  state,
-  tone,
-  glyph,
-  message,
-  srText,
-}: {
-  state: string;
-  tone: 'muted' | 'error';
-  glyph: ReactElement;
-  message: string;
-  srText: string;
-}): ReactElement {
-  return (
-    <div
-      data-state={state}
-      className={`flex h-full flex-col items-center justify-center ${
-        tone === 'error' ? 'text-accent-failure' : 'text-text-muted'
-      }`}
-    >
-      {glyph}
-      <span aria-hidden="true" className="mt-1 text-sm">
-        {message}
-      </span>
-      <span className="sr-only">{srText}</span>
-    </div>
-  );
 }
 
 export function IssuesTileBody({
@@ -106,8 +74,8 @@ export function IssuesTileBody({
   // Cross-slice meta: count stale *issues* from the stale slice (filtered to
   // `type === 'issue'`). The body already receives the full RepoSignalData, so
   // this needs no extra fetch. Undefined while stale is absent/loading/errored.
-  // GAP (no new request): a "▲N new" delta and a counts sparkline both need an
-  // issue counts time-series the signal hook does not retain — deferred.
+  // DEFERRED (no new request): a "▲N new" delta and a counts sparkline both need
+  // an issue-counts time-series the signal hook does not retain — out of scope.
   const staleIssueCount =
     data.stale?.status === 'ready'
       ? (data.stale.staleItems ?? []).filter((item) => item.type === 'issue').length
