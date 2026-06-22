@@ -23,6 +23,7 @@ import { AgeBucketBar } from '../AgeBucketBar';
 import type { AgeBucket } from '../AgeBucketBar';
 import { BigValue } from '../BigValue';
 import { StatusGlyph } from '../StatusGlyph';
+import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
 
 export interface StaleTileBodyProps {
@@ -120,26 +121,12 @@ export function StaleTileBody({
   const stale = data.stale;
 
   if (stale?.status === 'loading') {
-    return (
-      <CenteredState
-        state="loading"
-        tone="muted"
-        glyph={<StatusGlyph status="loading" size={20} title="Loading stale items…" />}
-        message="Loading…"
-        srText="Loading stale items…"
-      />
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading stale items…" />;
   }
 
   if (stale?.status === 'error') {
     return (
-      <CenteredState
-        state="error"
-        tone="error"
-        glyph={<StatusGlyph status="failure" size={20} title="Stale activity unavailable" />}
-        message="Stale activity unavailable"
-        srText="Stale activity unavailable"
-      />
+      <TileMessage kind="failed" message="Couldn't load" srText="Stale activity unavailable" />
     );
   }
 
@@ -162,18 +149,11 @@ export function StaleTileBody({
 
   if (count === 0) {
     return (
-      <div
-        data-state="ready"
-        data-tone={tone}
-        data-tier={size}
-        className="flex h-full flex-col items-center justify-center gap-1 text-center text-text-muted"
-      >
-        <StatusGlyph status="neutral" size={size === 'compact' ? 18 : 22} title="Nothing stale" />
-        <span aria-hidden="true" className="text-sm">
-          Nothing stale
-        </span>
-        <span className="sr-only">No stale open pull requests or issues</span>
-      </div>
+      <TileMessage
+        kind="all-clear"
+        message="All clear"
+        srText="No stale open pull requests or issues"
+      />
     );
   }
 

@@ -8,6 +8,7 @@ import { BigValue } from '../BigValue';
 import { RunStrip } from '../RunStrip';
 import type { RunConclusion } from '../RunStrip';
 import { StatusGlyph } from '../StatusGlyph';
+import { TileMessage } from '../TileMessage';
 import type { AccentTone, SignalIconKind, TileTier } from '../types';
 import { iconKindTone } from '../types';
 
@@ -157,6 +158,26 @@ export function CiTileBody({
   density = 'balanced',
 }: CiTileBodyProps): ReactElement {
   const ci = data.ci;
+
+  // T16 missing-states matrix: route loading + failed-to-load through the shared
+  // TileMessage so every body shows the same calm, redundant state row. CI has
+  // no zero-`0` "all-clear" takeover — its calm ready state is the passing hero
+  // (success glyph), already visually distinct from this ⚠ failed row. The
+  // `unknown`/no-slice "n/a" neutral state is NOT part of the matrix (it maps to
+  // the deferred `not-configured`) and keeps its existing treatment below.
+  if (ci?.status === 'loading') {
+    return <TileMessage kind="loading" message="Loading…" srText="Loading CI…" />;
+  }
+  if (ci?.status === 'error') {
+    return (
+      <TileMessage
+        kind="failed"
+        message="Couldn't load CI"
+        srText="CI status could not be loaded"
+      />
+    );
+  }
+
   const view = resolveView(ci, repo.nameWithOwner);
 
   // Glanceable standard sheds the standard-tier extras (the latest-run cell and

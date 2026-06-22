@@ -53,6 +53,7 @@ import type { Repo } from '../../../types/fleet';
 import { BigValue } from '../BigValue';
 import { Heatmap } from '../Heatmap';
 import { Sparkline } from '../Sparkline';
+import { TileMessage } from '../TileMessage';
 import type { TileTier } from '../types';
 
 export interface ActivityTileBodyProps {
@@ -109,15 +110,7 @@ export function ActivityTileBody({
   const activity = useCommitActivity(repo);
 
   if (activity.state === 'loading') {
-    return (
-      <div data-state="loading" className="flex flex-col gap-2" aria-busy="true">
-        <span
-          aria-hidden="true"
-          className="h-6 w-24 animate-pulse rounded bg-surface-raised motion-reduce:animate-none"
-        />
-        <span className="sr-only">Loading commit activity…</span>
-      </div>
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading commit activity…" />;
   }
 
   if (activity.state === 'computing') {
@@ -135,26 +128,25 @@ export function ActivityTileBody({
   }
 
   if (activity.state === 'empty') {
+    // Empty-`0` activity is calm, not an alarm — route it through the shared
+    // all-clear row (success glyph, data-state "empty"); the Activity-specific
+    // wording is preserved as the visible message + sr sentence.
     return (
-      <div data-state="empty" className="flex items-center gap-2 text-text-muted">
-        <span aria-hidden="true" className="text-lg leading-none">
-          ○
-        </span>
-        <span className="text-sm">No recent commit activity</span>
-        <span className="sr-only">No commits in the recent window for {repo.nameWithOwner}</span>
-      </div>
+      <TileMessage
+        kind="all-clear"
+        message="No recent commit activity"
+        srText={`No commits in the recent window for ${repo.nameWithOwner}`}
+      />
     );
   }
 
   if (activity.state === 'error') {
     return (
-      <div data-state="error" className="flex items-center gap-2 text-accent-failure">
-        <span aria-hidden="true" className="text-lg font-semibold leading-none">
-          ✗
-        </span>
-        <span className="text-sm">Activity unavailable</span>
-        <span className="sr-only">Couldn’t load commit activity for {repo.nameWithOwner}</span>
-      </div>
+      <TileMessage
+        kind="failed"
+        message="Couldn't load"
+        srText={`Couldn't load commit activity for ${repo.nameWithOwner}`}
+      />
     );
   }
 

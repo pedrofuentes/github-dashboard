@@ -28,12 +28,12 @@ afterEach(() => {
 });
 
 describe('ActivityTileBody — non-ok states (§4.7)', () => {
-  it('renders a reduced-motion-safe skeleton while loading', () => {
+  it('routes loading through TileMessage (data-state="loading", reduced-motion-safe glyph)', () => {
     const { container } = renderBody({ state: 'loading' });
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
-    const pulse = container.querySelector('.animate-pulse');
-    expect(pulse).toBeTruthy();
-    expect(pulse?.className).toContain('motion-reduce:animate-none');
+    expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
+    expect(screen.getAllByText(/loading/i).length).toBeGreaterThan(0);
+    const spinner = container.querySelector('svg[data-status="loading"]');
+    expect(spinner?.getAttribute('class')).toContain('motion-reduce:animate-none');
   });
 
   it('renders a computing message', () => {
@@ -41,14 +41,29 @@ describe('ActivityTileBody — non-ok states (§4.7)', () => {
     expect(screen.getByText(/computing/i)).toBeInTheDocument();
   });
 
-  it('renders an empty message for no recent activity', () => {
-    renderBody({ state: 'empty' });
-    expect(screen.getByText(/no recent commit activity/i)).toBeInTheDocument();
+  it('routes empty through TileMessage all-clear (data-state="empty")', () => {
+    const { container } = renderBody({ state: 'empty' });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(screen.getAllByText(/no recent commit activity/i).length).toBeGreaterThan(0);
+    expect(container.querySelector('svg[data-status="success"]')).not.toBeNull();
   });
 
-  it('renders an error message and never throws', () => {
-    renderBody({ state: 'error', error: new Error('x') });
-    expect(screen.getByText(/activity unavailable/i)).toBeInTheDocument();
+  it('routes error through TileMessage (data-state="failed-to-load") and never throws', () => {
+    const { container } = renderBody({ state: 'error', error: new Error('x') });
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(container.querySelector('svg[data-status="warning"]')).not.toBeNull();
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /couldn.t load commit activity/i,
+    );
+  });
+
+  it('HARD RULE: empty all-clear is unmistakable from failed-to-load', () => {
+    const { container: empty } = renderBody({ state: 'empty' });
+    const { container: failed } = renderBody({ state: 'error', error: new Error('x') });
+    expect(empty.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(empty.querySelector('svg[data-status="success"]')).not.toBeNull();
+    expect(failed.querySelector('svg[data-status="warning"]')).not.toBeNull();
   });
 });
 

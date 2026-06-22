@@ -354,3 +354,35 @@ describe('FleetSummaryTile', () => {
     });
   });
 });
+
+describe('FleetSummaryTile — partial-fleet hint (T16, deferred)', () => {
+  it('renders no partial hint by default (no partial count exists today)', () => {
+    const { container } = render(
+      <FleetSummaryTile summary={makeSummary({ total: 5, healthy: 5 })} entries={[]} />,
+    );
+    expect(container.querySelector('[data-state="partial"]')).toBeNull();
+  });
+
+  it('surfaces a TileMessage partial hint when a partial count is provided', () => {
+    const { container, getAllByText } = render(
+      <FleetSummaryTile
+        summary={makeSummary({ total: 5, healthy: 5 })}
+        entries={[]}
+        partialCount={2}
+      />,
+    );
+    expect(container.querySelector('[data-state="partial"]')).not.toBeNull();
+    expect(getAllByText(/partial/i).length).toBeGreaterThan(0);
+  });
+
+  it('ignores a zero partial count (gated — no hint)', () => {
+    const { container } = render(
+      <FleetSummaryTile
+        summary={makeSummary({ total: 5, healthy: 5 })}
+        entries={[]}
+        partialCount={0}
+      />,
+    );
+    expect(container.querySelector('[data-state="partial"]')).toBeNull();
+  });
+});

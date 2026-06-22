@@ -190,20 +190,35 @@ describe('CiTileBody', () => {
   });
 
   describe('states', () => {
-    it('loading: spinner glyph + sr-only "Loading CI…"', () => {
+    it('loading: routes through TileMessage (data-state="loading") + sr-only "Loading CI…"', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data({ status: 'loading' })} size="standard" />,
       );
+      expect(container.querySelector('[data-state="loading"]')).not.toBeNull();
       expect(glyph(container, 'loading')).not.toBeNull();
       expect(screen.getByText(/loading ci/i)).toBeInTheDocument();
     });
 
-    it('error: failure glyph + "Couldn\'t load CI"', () => {
+    it('error: routes through TileMessage (data-state="failed-to-load") + warning ⚠ glyph', () => {
       const { container } = render(
         <CiTileBody repo={repo} data={data({ status: 'error' })} size="standard" />,
       );
-      expect(glyph(container, 'failure')).not.toBeNull();
+      expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+      expect(glyph(container, 'warning')).not.toBeNull();
       expect(screen.getByText(/couldn't load ci/i, { selector: 'span' })).toBeInTheDocument();
+    });
+
+    it('loading and failed-to-load are distinguishable (different glyph AND data-state)', () => {
+      const { container: loading } = render(
+        <CiTileBody repo={repo} data={data({ status: 'loading' })} size="standard" />,
+      );
+      const { container: failed } = render(
+        <CiTileBody repo={repo} data={data({ status: 'error' })} size="standard" />,
+      );
+      expect(loading.querySelector('[data-state="loading"]')).not.toBeNull();
+      expect(failed.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+      expect(glyph(loading, 'loading')).not.toBeNull();
+      expect(glyph(failed, 'warning')).not.toBeNull();
     });
 
     it('unknown status: neutral glyph + "n/a"', () => {

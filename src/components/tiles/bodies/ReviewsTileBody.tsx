@@ -26,6 +26,7 @@ import type { Repo, RepoSignalData, ReviewRequestedPullRequest } from '../../../
 import { BigValue } from '../BigValue';
 import { Chip } from '../Chip';
 import { StatusGlyph } from '../StatusGlyph';
+import { TileMessage } from '../TileMessage';
 import type { AccentTone, TileTier } from '../types';
 
 export interface ReviewsTileBodyProps {
@@ -114,27 +115,11 @@ export function ReviewsTileBody({
   const reviews = data.reviews;
 
   if (reviews?.status === 'loading') {
-    return (
-      <CenteredState
-        state="loading"
-        tone="muted"
-        glyph={<StatusGlyph status="loading" size={20} title="Loading reviews…" />}
-        message="Loading…"
-        srText="Loading reviews…"
-      />
-    );
+    return <TileMessage kind="loading" message="Loading…" srText="Loading reviews…" />;
   }
 
   if (reviews?.status === 'error') {
-    return (
-      <CenteredState
-        state="error"
-        tone="error"
-        glyph={<StatusGlyph status="failure" size={20} title="Review queue unavailable" />}
-        message="Review queue unavailable"
-        srText="Review queue unavailable"
-      />
-    );
+    return <TileMessage kind="failed" message="Couldn't load" srText="Review queue unavailable" />;
   }
 
   // `unknown`, an absent slice, or any unexpected status → safe neutral.
@@ -160,20 +145,7 @@ export function ReviewsTileBody({
       : `${count} ${plural} awaiting your review${oldestAge ? `; oldest ${oldestAge}` : ''}`;
 
   if (count === 0) {
-    return (
-      <div
-        data-state="ready"
-        data-tone={tone}
-        data-tier={size}
-        className="flex h-full flex-col items-center justify-center gap-1 text-center text-text-muted"
-      >
-        <StatusGlyph status="neutral" size={size === 'compact' ? 18 : 22} title="None awaiting" />
-        <span aria-hidden="true" className="text-sm">
-          None awaiting your review
-        </span>
-        <span className="sr-only">{srLabel}</span>
-      </div>
-    );
+    return <TileMessage kind="all-clear" message="All clear" srText={srLabel} />;
   }
 
   const eye = <StatusGlyph status="review" size={14} title="Awaiting your review" />;

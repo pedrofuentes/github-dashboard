@@ -17,6 +17,7 @@ import { AccentBar } from './tiles/AccentBar';
 import { Chip } from './tiles/Chip';
 import { SeverityBar } from './tiles/SeverityBar';
 import { StatusGlyph } from './tiles/StatusGlyph';
+import { TileMessage } from './tiles/TileMessage';
 import { toneBgClass, toneTextClass } from './tiles/types';
 import type { AccentTone, SignalIconKind } from './tiles/types';
 
@@ -29,6 +30,15 @@ export interface FleetSummaryTileProps {
    * keeps rendering when a caller has no per-repo entries to hand.
    */
   entries?: RepoHealthEntry[];
+  /**
+   * T16 missing-states matrix — Fleet's `partial` member. Number of repos whose
+   * signals are only partially loaded. A gated, documented placeholder: today
+   * `SignalStatus` carries no partial metadata, so `summarizeFleetHealth` never
+   * produces a count and `DashboardView` never passes this prop — the hint is a
+   * no-op until a partial source exists (see DECISIONS). When a positive count
+   * IS supplied, it surfaces as a shared {@link TileMessage} `partial` row.
+   */
+  partialCount?: number;
 }
 
 interface HealthStat {
@@ -124,7 +134,11 @@ const HEALTH_NOUN: Record<RepoHealth, string> = {
   healthy: 'healthy',
 };
 
-export function FleetSummaryTile({ summary, entries = [] }: FleetSummaryTileProps): ReactElement {
+export function FleetSummaryTile({
+  summary,
+  entries = [],
+  partialCount,
+}: FleetSummaryTileProps): ReactElement {
   const repoNoun = summary.total === 1 ? 'repo' : 'repos';
   const hasFleet = summary.total > 0;
   const segments = HEALTH_STATS.map((stat) => ({
@@ -139,6 +153,11 @@ export function FleetSummaryTile({ summary, entries = [] }: FleetSummaryTileProp
   // DECISIONS ADR-021 (deliberate deviation from spec §4.2 Fleet 6px-always).
   const inflamed = summary.broken > 0;
   const edgeTone: AccentTone = inflamed ? 'failure' : 'neutral';
+
+  // T16 partial hint — gated on a positive partial count. No-op today (no source
+  // populates it); surfaces the shared TileMessage `partial` row when supplied.
+  const partialRepos = typeof partialCount === 'number' && partialCount > 0 ? partialCount : 0;
+  const partialNoun = partialRepos === 1 ? 'repo' : 'repos';
 
   // Worst-first ordering for the per-repo strip; the worst child is its head.
   const sortedEntries = [...entries].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health]);
@@ -176,6 +195,16 @@ export function FleetSummaryTile({ summary, entries = [] }: FleetSummaryTileProp
             </span>
           ) : null}
         </div>
+
+        {partialRepos > 0 ? (
+          <div className="mt-3">
+            <TileMessage
+              kind="partial"
+              message={`Partial — ${String(partialRepos)} ${partialNoun} still loading`}
+              srText={`Fleet health is partial: ${String(partialRepos)} ${partialNoun} still loading`}
+            />
+          </div>
+        ) : null}
 
         {hasFleet ? (
           <>
