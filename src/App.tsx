@@ -12,6 +12,7 @@ import { RepoScopeFilter } from './components/RepoScopeFilter';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
+import { FleetUiStateProvider } from './hooks/FleetUiStateProvider';
 import { useAliases } from './hooks/useAliases';
 import { useAuth } from './hooks/useAuth';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
@@ -165,77 +166,79 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const handleCloseCustomize = useCallback(() => setEditing(false), []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
-        <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
+    <FleetUiStateProvider>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
+          <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
+          {view === 'dashboard' ? (
+            <>
+              <RepoScopeFilter
+                repos={repos}
+                selected={filter.selected}
+                onToggleRepo={filter.toggleRepo}
+                onClear={filter.clear}
+                isActive={filter.isActive}
+              />
+              <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+            </>
+          ) : null}
+        </div>
         {view === 'dashboard' ? (
           <>
-            <RepoScopeFilter
+            <DashboardView
               repos={repos}
-              selected={filter.selected}
-              onToggleRepo={filter.toggleRepo}
-              onClear={filter.clear}
-              isActive={filter.isActive}
+              getRowData={getRowData}
+              onRepoActivate={handleRepoActivate}
+              editing={editing}
+              layout={layout}
+              onLayoutChange={setLayout}
+              repoFilter={filter.selected}
+              onClearFilter={filter.clear}
+              aliases={aliases.aliases}
+              loading={status === 'loading'}
+              error={status === 'error' ? error : null}
+              onRetry={reload}
             />
-            <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+            {editing ? (
+              <CustomizePanel
+                layout={layout}
+                onLayoutChange={setLayout}
+                onReset={reset}
+                aliases={aliases.aliases}
+                onSetAlias={aliases.setAlias}
+                onClearAlias={aliases.clearAlias}
+                onClose={handleCloseCustomize}
+              />
+            ) : null}
           </>
-        ) : null}
-      </div>
-      {view === 'dashboard' ? (
-        <>
-          <DashboardView
+        ) : view === 'inbox' ? (
+          <InboxView
+            inbox={inbox}
             repos={repos}
-            getRowData={getRowData}
-            onRepoActivate={handleRepoActivate}
-            editing={editing}
-            layout={layout}
-            onLayoutChange={setLayout}
-            repoFilter={filter.selected}
-            onClearFilter={filter.clear}
-            aliases={aliases.aliases}
             loading={status === 'loading'}
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
-          {editing ? (
-            <CustomizePanel
-              layout={layout}
-              onLayoutChange={setLayout}
-              onReset={reset}
-              aliases={aliases.aliases}
-              onSetAlias={aliases.setAlias}
-              onClearAlias={aliases.clearAlias}
-              onClose={handleCloseCustomize}
-            />
-          ) : null}
-        </>
-      ) : view === 'inbox' ? (
-        <InboxView
-          inbox={inbox}
-          repos={repos}
-          loading={status === 'loading'}
-          error={status === 'error' ? error : null}
-          onRetry={reload}
-        />
-      ) : (
-        <FleetGrid
-          repos={repos}
-          getRowData={getRowData}
-          loading={status === 'loading'}
-          error={status === 'error' ? error : null}
-          onRetry={reload}
-          onRepoActivate={handleRepoActivate}
-        />
-      )}
-      {selectedRepo !== null ? (
-        <DrillDownDrawer
-          repo={selectedRepo}
-          data={getRowData(selectedRepo)}
-          onClose={handleCloseDrawer}
-        />
-      ) : null}
-    </div>
+        ) : (
+          <FleetGrid
+            repos={repos}
+            getRowData={getRowData}
+            loading={status === 'loading'}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+            onRepoActivate={handleRepoActivate}
+          />
+        )}
+        {selectedRepo !== null ? (
+          <DrillDownDrawer
+            repo={selectedRepo}
+            data={getRowData(selectedRepo)}
+            onClose={handleCloseDrawer}
+          />
+        ) : null}
+      </div>
+    </FleetUiStateProvider>
   );
 }
 
