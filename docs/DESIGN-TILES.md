@@ -421,7 +421,7 @@ Rules:
 ### 3.5 Edit-mode controls
 
 Unchanged behavior from today: in edit mode the active tile exposes the activate
-overlay + 8 Move/Resize buttons (`TileControls` in `SignalTile.tsx`). Restyle
+overlay + 8 Move/Resize buttons (`TileControls` in `TileFrame.tsx`). Restyle
 only: control buttons use `surface` bg, `text` ink, **`border-strong`** outline
 (replacing today’s failing `slate-300`), and the `focus` ring token. Persistently
 visible resize handles (the `.dashboard-editing` rule in `index.css`) move from

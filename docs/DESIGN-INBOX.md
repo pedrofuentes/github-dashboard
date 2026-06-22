@@ -463,9 +463,10 @@ its kind/severity (§6), exactly as the cells do.
   (carries the §2 "never color alone" invariant).
 - **Full keyboard operability.** The list uses an appropriate semantic pattern
   (a `list`/`feed` of rows or a single-column grid): every row is reachable and
-  operable by keyboard; `Enter`/`Space` opens the item's GitHub link (and marks
-  it read); the dismiss/restore control is a real, labelled `button` reachable
-  in tab order; focus is visible via the `focus` token ring.
+  operable by keyboard; `Enter` opens the item's GitHub link and marks it read,
+  while `Space` marks it read without navigating (an anchor does not natively
+  activate on `Space`); the dismiss/restore control is a real, labelled `button`
+  reachable in tab order; focus is visible via the `focus` token ring.
 - **Links are origin-gated.** Every `url` passes through `safeGitHubHref` before
   it is rendered as an `href`; a value that fails degrades to plain text (no
   off-origin navigation — the privacy invariant, `MISSION.md` §5).
