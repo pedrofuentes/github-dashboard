@@ -46,8 +46,9 @@ describe('DefaultViewToggle', () => {
   ])('calls onChange with $expected when that radio is clicked', async ({ name, expected }) => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    // Render with a value that differs from each clicked option so the click is a
-    // real change, not a re-select of the already-active radio.
+    // `value="grid"` so the grid click re-selects the already-active radio while
+    // dashboard/inbox are genuine changes; the toggle calls `onChange`
+    // unconditionally, so every option — re-select included — reports its value.
     render(<DefaultViewToggle value="grid" onChange={onChange} />);
     await user.click(screen.getByRole('radio', { name }));
     expect(onChange).toHaveBeenCalledWith(expected);

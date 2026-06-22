@@ -8,7 +8,7 @@ import type { DashboardTile } from '../types/dashboard';
  * Returns a new layout with one tile's `visible` flag set to `visible`, matched
  * by its unique `i`. Pure: the input array is never mutated and tiles whose flag
  * already equals `visible` keep their identity (referentially stable). Never
- * appends, so {@link MAX_TILES} is structurally respected.
+ * appends, so `MAX_TILES` (dashboard-layout.ts) is structurally respected.
  *
  * @param layout - The current dashboard layout (hidden tiles included).
  * @param tileId - The `i` of the tile to flip.
