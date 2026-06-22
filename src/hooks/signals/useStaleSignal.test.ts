@@ -234,6 +234,19 @@ describe('useStaleSignal', () => {
         type: 'issue',
       },
     ]);
+    // INBOX-2A (#229): the POPULATED stale path is a request-free retain. The
+    // per-item identity is parsed from the SAME bounded `search/issues` page
+    // that yields `total_count` — never a second request nor a per-item fetch.
+    // The AC-5 (empty-items) test asserts the single call only when the page is
+    // empty; without this a regression issuing a follow-up request on the
+    // populated path would slip through.
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    const staleUrl = mockFetchWithETag.mock.calls[0][0] as string;
+    expect(staleUrl).toMatch(/^https:\/\/api\.github\.com\/search\/issues\?q=/);
+    const staleParams = new URL(staleUrl).searchParams;
+    expect(Number(staleParams.get('per_page'))).toBeLessThanOrEqual(30);
+    expect(staleParams.get('sort')).toBe('updated');
+    expect(staleParams.get('order')).toBe('desc');
   });
 
   it('keeps the stale search to a single call per repo on the same endpoint (AC-5)', async () => {
