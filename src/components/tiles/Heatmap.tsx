@@ -60,10 +60,13 @@ const GAP = 3;
 /** Corner radius for each cell. */
 const RADIUS = 2;
 /**
- * Lowest fill-opacity for a non-zero cell, so a single commit is still visible
- * and clearly distinct from an empty cell (which uses a different fill).
+ * Lowest fill-opacity for a non-zero cell. Floored high enough that a single
+ * commit stays visibly opaque — clearly distinct from an empty cell — so the
+ * zero/low pair survives grayscale and colour-blind viewing (WCAG 1.4.1) rather
+ * than washing out to a near-invisible tint. Trades a little dynamic range for
+ * guaranteed visibility of the faintest activity.
  */
-const MIN_INTENSITY = 0.18;
+const MIN_INTENSITY = 0.35;
 
 /** Coerce any value (including `undefined` from ragged rows) to a finite count. */
 function toCount(value: number | undefined): number {

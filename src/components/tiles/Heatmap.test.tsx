@@ -139,3 +139,26 @@ describe('Heatmap', () => {
     expect(cells(container)[0].getAttribute('fill')).toContain('var(--color-info)');
   });
 });
+
+describe('Heatmap — grayscale-safe low-cell floor', () => {
+  it('floors the faintest non-zero cell to a visibly opaque minimum so zero ≠ low without colour', () => {
+    // A single commit against a tall max would otherwise wash the cell out to a
+    // near-invisible tint, ambiguous with an empty cell once hue is removed.
+    const { container } = render(<Heatmap weeks={[[1]]} srLabel="commits" max={100} />);
+    const cell = cells(container)[0];
+    expect(cell.getAttribute('data-count')).toBe('1');
+    const opacity = Number(cell.getAttribute('fill-opacity'));
+    expect(opacity).toBeGreaterThanOrEqual(0.3);
+  });
+
+  it('keeps an empty cell distinguishable from the floored low cell (different fill, floored opacity)', () => {
+    const { container } = render(<Heatmap weeks={[[0, 1]]} srLabel="commits" max={100} />);
+    const [zeroCell, lowCell] = cells(container);
+    expect(zeroCell.getAttribute('data-count')).toBe('0');
+    expect(lowCell.getAttribute('data-count')).toBe('1');
+    // Hue channel (distinct fill) PLUS the low cell clears the visible floor so
+    // the zero/low pair stays separable in grayscale.
+    expect(zeroCell.getAttribute('fill')).not.toBe(lowCell.getAttribute('fill'));
+    expect(Number(lowCell.getAttribute('fill-opacity'))).toBeGreaterThanOrEqual(0.3);
+  });
+});
