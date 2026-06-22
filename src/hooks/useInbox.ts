@@ -81,7 +81,11 @@ export interface UseInboxResult {
   markAllSeen: () => void;
 }
 
-/** The default, unfiltered view-state — every item visible. */
+/**
+ * The default, unfiltered view-state. Every category is open (no repo/kind
+ * narrowing, read items shown), so every **non-dismissed** item is visible —
+ * `showDismissed: false` hides dismissed items until the filter is toggled on.
+ */
 const DEFAULT_FILTERS: InboxFilters = {
   repos: [],
   kinds: [],
