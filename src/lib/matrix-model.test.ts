@@ -6,9 +6,7 @@ import {
   buildMatrixModel,
   compareRepoHealth,
   groupRowsByHealth,
-  type MatrixModel,
   type MatrixRow,
-  type MatrixGroup,
 } from './matrix-model';
 
 const mockRepo = (name: string): Repo => ({
@@ -125,11 +123,7 @@ describe('matrix-model', () => {
       const groups = groupRowsByHealth(rows);
 
       expect(groups).toHaveLength(1);
-      expect(groups[0].rows.map((r) => r.repo.nameWithOwner)).toEqual([
-        'a/r1',
-        'a/r2',
-        'a/r3',
-      ]);
+      expect(groups[0].rows.map((r) => r.repo.nameWithOwner)).toEqual(['a/r1', 'a/r2', 'a/r3']);
     });
 
     it('handles empty input', () => {
@@ -154,7 +148,11 @@ describe('matrix-model', () => {
         ['d/healthy2', healthyData],
       ]);
 
-      const getRowData = (repo: Repo) => dataMap.get(repo.nameWithOwner)!;
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
       const model = buildMatrixModel(repos, getRowData);
 
       expect(model.rows).toHaveLength(4);
@@ -169,12 +167,7 @@ describe('matrix-model', () => {
     });
 
     it('preserves input order within the same health band (stable sort)', () => {
-      const repos = [
-        mockRepo('a/h1'),
-        mockRepo('b/h2'),
-        mockRepo('c/h3'),
-        mockRepo('d/h4'),
-      ];
+      const repos = [mockRepo('a/h1'), mockRepo('b/h2'), mockRepo('c/h3'), mockRepo('d/h4')];
 
       const dataMap = new Map<string, RepoSignalData>([
         ['a/h1', healthyData],
@@ -183,15 +176,14 @@ describe('matrix-model', () => {
         ['d/h4', healthyData],
       ]);
 
-      const getRowData = (repo: Repo) => dataMap.get(repo.nameWithOwner)!;
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
       const model = buildMatrixModel(repos, getRowData);
 
-      expect(model.rows.map((r) => r.repo.nameWithOwner)).toEqual([
-        'a/h1',
-        'b/h2',
-        'c/h3',
-        'd/h4',
-      ]);
+      expect(model.rows.map((r) => r.repo.nameWithOwner)).toEqual(['a/h1', 'b/h2', 'c/h3', 'd/h4']);
     });
 
     it('groups rows by health and omits empty groups', () => {
@@ -202,7 +194,11 @@ describe('matrix-model', () => {
         ['b/healthy', healthyData],
       ]);
 
-      const getRowData = (repo: Repo) => dataMap.get(repo.nameWithOwner)!;
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
       const model = buildMatrixModel(repos, getRowData);
 
       expect(model.groups).toHaveLength(2);
@@ -240,7 +236,11 @@ describe('matrix-model', () => {
         ['f/healthy3', healthyData],
       ]);
 
-      const getRowData = (repo: Repo) => dataMap.get(repo.nameWithOwner)!;
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
       const model = buildMatrixModel(repos, getRowData);
 
       expect(model.counts).toEqual({
@@ -268,11 +268,7 @@ describe('matrix-model', () => {
     });
 
     it('handles a mixed fleet', () => {
-      const repos = [
-        mockRepo('a/broken'),
-        mockRepo('b/warning'),
-        mockRepo('c/healthy'),
-      ];
+      const repos = [mockRepo('a/broken'), mockRepo('b/warning'), mockRepo('c/healthy')];
 
       const dataMap = new Map<string, RepoSignalData>([
         ['a/broken', brokenData],
@@ -280,7 +276,11 @@ describe('matrix-model', () => {
         ['c/healthy', healthyData],
       ]);
 
-      const getRowData = (repo: Repo) => dataMap.get(repo.nameWithOwner)!;
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
       const model = buildMatrixModel(repos, getRowData);
 
       expect(model.groups).toHaveLength(3);
