@@ -273,10 +273,7 @@ describe('fuzzyRankBy', () => {
     });
 
     it('matches when only one key matches', () => {
-      const results = fuzzyRankBy('github', repos, (item) => [
-        item.nameWithOwner,
-        item.owner,
-      ]);
+      const results = fuzzyRankBy('github', repos, (item) => [item.nameWithOwner, item.owner]);
 
       // Should find 'github' in both owner and nameWithOwner
       expect(results.some((r) => r.id === 3)).toBe(true);
