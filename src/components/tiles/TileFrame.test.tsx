@@ -200,6 +200,46 @@ describe('TileFrame — salience treatment', () => {
     expect(glow).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('paints the PROBLEM-tier color-mix tint surface from the edge tone (beyond bar + glow)', () => {
+    // The PROBLEM salience tints the tile SURFACE itself — not just the 6px bar +
+    // glow — via an inline color-mix background that blends 10% of the edge-tone
+    // token into the surface token, so the tint flips with the theme and never
+    // carries raw hex (DESIGN-TILES §3).
+    renderFrame({
+      salience: salience({ tier: 'problem', edgeTone: 'failure', tint: true, glow: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe(
+      'color-mix(in srgb, var(--color-failure) 10%, var(--color-surface))',
+    );
+  });
+
+  it('derives the PROBLEM tint surface from the salience edge tone, not the lifecycle tone', () => {
+    renderFrame({
+      tone: 'success',
+      salience: salience({ tier: 'problem', edgeTone: 'warning', tint: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe(
+      'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))',
+    );
+  });
+
+  it('omits the tint surface on calm, actionable, and tint-opted-out problem tiles', () => {
+    const calm = renderFrame({ salience: salience({ tier: 'calm' }) });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+    calm.unmount();
+
+    const actionable = renderFrame({
+      salience: salience({ tier: 'actionable', edgeTone: 'info', actionableTab: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+    actionable.unmount();
+
+    renderFrame({
+      salience: salience({ tier: 'problem', edgeTone: 'failure', tint: false, glow: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+  });
+
   it('renders the ACTIONABLE tier with a persistent info tab and a calm neutral bar', () => {
     const { container } = renderFrame({
       salience: salience({ tier: 'actionable', edgeTone: 'info', actionableTab: true }),
