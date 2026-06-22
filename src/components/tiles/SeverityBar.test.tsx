@@ -80,6 +80,17 @@ describe('SeverityBar', () => {
     expect(container.querySelectorAll('[data-tone]')).toHaveLength(0);
   });
 
+  it('pins a visible segment to 0% width when an explicit max of 0 zeroes the total', () => {
+    // A positive segment combined with `max={0}` drives the denominator to 0; the
+    // width guard must yield '0%' rather than an Infinity%/NaN% string.
+    const { container } = render(
+      <SeverityBar segments={[{ tone: 'failure', value: 2, label: 'Critical' }]} max={0} />,
+    );
+    const seg = container.querySelector<HTMLElement>('[data-tone]');
+    expect(seg).not.toBeNull();
+    expect(seg?.style.width).toBe('0%');
+  });
+
   it('marks the coloured bar decorative (aria-hidden) so meaning rests on the sr-only list', () => {
     const { container } = render(
       <SeverityBar segments={[{ tone: 'failure', value: 1, label: 'Critical' }]} />,

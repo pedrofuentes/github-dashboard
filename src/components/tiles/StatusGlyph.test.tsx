@@ -68,6 +68,28 @@ describe('StatusGlyph', () => {
     }
   });
 
+  const STATUS_LABELS: ReadonlyArray<[SignalIconKind, string]> = [
+    ['success', 'Passing'],
+    ['failure', 'Failing'],
+    ['running', 'Running'],
+    ['queued', 'Queued'],
+    ['warning', 'Warning'],
+    ['stale', 'Stale'],
+    ['neutral', 'None'],
+    ['external', 'External'],
+    ['review', 'Awaiting you'],
+    ['loading', 'Loading…'],
+    ['unknown', 'Unavailable'],
+    ['info', 'Info'],
+  ];
+
+  it.each(STATUS_LABELS)('gives the %s glyph its default accessible name "%s"', (status, label) => {
+    // Per-status characterization: a wrong/dropped label for ANY status (not
+    // just `success`) must fail here — colour-blind users rely on this text.
+    render(<StatusGlyph status={status} />);
+    expect(screen.getByRole('img')).toHaveAccessibleName(label);
+  });
+
   it('exposes the status via a data attribute', () => {
     const { container } = render(<StatusGlyph status="external" />);
     expect(container.querySelector('[data-status="external"]')).toBeTruthy();
