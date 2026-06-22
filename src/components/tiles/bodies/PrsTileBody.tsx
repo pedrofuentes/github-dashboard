@@ -207,6 +207,12 @@ export function PrsTileBody({
         />
       ) : null}
 
+      {/*
+        Expanded-tier meta lines are aria-hidden: they visually restate detail
+        already announced once via the hero's `.sr-only` sentence (and the chip
+        sr-labels), so exposing them again would double-announce to assistive
+        tech. They are purely a sighted-reader augmentation.
+      */}
       {size === 'expanded' && oldestExternal ? (
         <p aria-hidden="true" className="text-sm text-text-muted">
           Oldest new-contributor PR {formatRelativeTime(oldestExternal)}
