@@ -1,5 +1,7 @@
 # DESIGN-TILES — Tile & Theme Design Spec
 
+> **Superseded for the tile redesign by [`docs/superpowers/specs/2026-06-21-dashboard-tile-redesign-design.md`](./superpowers/specs/2026-06-21-dashboard-tile-redesign-design.md)** ("Signal Keys" / Dashboard 2.0). This document remains the source of truth for the design tokens and theme system; the per-signal tile visuals and salience model are now specified there.
+
 > **Status:** Contract / source of truth. Every downstream redesign PR (dark
 > theme, tile redesign, the new Activity tile) builds from this document.
 > **Scope:** design tokens (light + dark), the status/icon system, the shared

@@ -22,6 +22,34 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-023: Missing-states matrix — deferred SignalStatus metadata & per-tile retry
+**Date**: 2026-06-21
+**Status**: Accepted — Wave 2 / T16 of the dashboard tile redesign (`docs/superpowers/plans/2026-06-21-dashboard-tile-redesign.md`).
+**Context**: T16 introduces the shared `src/components/tiles/TileMessage.tsx` state row (kinds `loading` | `all-clear` | `failed` | `partial`) and routes every tile body's loading / zero-`0` / error branch through it, so the empty-`0` "All clear" (calm success check, `data-state="empty"`) is visually UNMISTAKABLE from failed-to-load (⚠ warning, `data-state="failed-to-load"`) per spec §7. The current `SignalStatus` union is `'unknown' | 'loading' | 'ready' | 'error'` (`src/types/fleet.ts`), which cannot express three further real-world states surfaced by the redesign brief: **not-configured** (no scope / feature off), **stale-cache** (showing last-known data while a conditional refetch is in flight), and **rate-limited** (GitHub 5,000 req/hr budget exhausted).
+**Decision**: DEFER `not-configured` / `stale-cache` / `rate-limited` to a future task that extends `SignalStatus` with the required metadata (and the matching coordinator/Zod plumbing). T16 ships only the four states expressible today. The Security `truncated` flag maps to TileMessage `partial` as an inline hint on the ready view; the Fleet `partial` hint is wired as an additive, gated `partialCount?` prop on `FleetSummaryTile` — a documented no-op until a partial-fleet count exists. Per-tile `Retry` renders ONLY where an `onRetry` handler is plumbed into a body; bodies without it rely on the existing view-level retry affordance.
+**Alternatives considered**: Faking the deferred states with ad-hoc booleans threaded through each body — rejected: it would fragment status handling and duplicate the very matrix T16 unifies, and couldn't be validated by the Zod-checked `SignalStatus` contract. Wiring `onRetry` into every body now — rejected: the data hooks don't yet expose a per-signal refetch, so it would be dead UI.
+**Consequences**: The four-state matrix is consistent and tested across all 8 bodies today. The deferred trio is tracked here and by an in-code comment on `TileMessage`; adding them later is an additive `SignalStatus` change plus per-kind `KIND_SPEC` entries, with no churn to the body call sites already routing through `TileMessage`.
+
+### ADR-022: Tile-redesign AA contrast ratios (new/changed tokens)
+**Date**: 2026-06-21
+**Status**: Accepted — Wave 3 / T19 of the dashboard tile redesign (`docs/superpowers/plans/2026-06-21-dashboard-tile-redesign.md`).
+**Context**: The tile redesign adds the age-led Stale ink token `--color-ochre` (T1) and routes high-severity ("High") status **text** through the existing `--color-coral-ink` token rather than the `--color-coral` fill (red-team R5), to clear WCAG 2.1 SC 1.4.3 (4.5:1 for normal text) in BOTH themes. Per the Global Constraints, every new/changed text pairing must document its computed ratio in light (`:root`) and dark (`.dark`). Tokens are defined once per theme in `src/index.css`; a single-theme token would break rendering in the other theme.
+**Decision**: Record the computed ratios below and enforce them mechanically. `src/lib/css-tokens.test.ts` parses `src/index.css`, asserts per-theme token **parity** (every `--color-*` defined in both `:root` and `.dark`, so a single-theme token fails CI), and asserts each new pairing clears 4.5:1 in both themes. Ratios are WCAG 2.1 relative-luminance contrast; the 10% tint is `color-mix(in srgb, <accent> 10%, <surface>)` (the tinted-badge background).
+
+Computed AA ratios (token × theme × surface; floor 4.5:1 for normal text):
+
+| Pairing (ink → surface) | Light hex | Light ratio | Dark hex | Dark ratio | Floor | Pass |
+|---|---|---|---|---|---|---|
+| `--color-ochre` → `--color-surface` (#fff / #161b22) | #7c5e10 → #ffffff | 6.06:1 | #bfa05a → #161b22 | 6.91:1 | 4.5 | ✅ |
+| `--color-ochre` → `--color-surface-raised` (#f8fafc / #21262d) | #7c5e10 → #f8fafc | 5.79:1 | #bfa05a → #21262d | 6.08:1 | 4.5 | ✅ |
+| `--color-ochre` → 10% ochre tint | #7c5e10 → tint | 5.27:1 | #bfa05a → tint | 5.91:1 | 4.5 | ✅ |
+| `--color-coral-ink` → `--color-surface` (#fff / #161b22) | #9a3412 → #ffffff | 7.31:1 | #f78166 → #161b22 | 6.83:1 | 4.5 | ✅ |
+| `--color-coral-ink` → 10% coral tint | #9a3412 → tint | 6.33:1 | #f78166 → tint | 5.88:1 | 4.5 | ✅ |
+| `--color-warning-ink` → 10% warning tint (existing, regression guard) | #92400e → tint | 6.20:1 | #d29922 → tint | 5.86:1 | 4.5 | ✅ |
+
+**Alternatives considered**: Using the `--color-coral` *fill* token (#c2410c light) for High-severity text — only ~4.4:1 on a 10% tint in light, below the 4.5:1 floor (the same regression Sentinel rejected on PR #171); the ink token clears it. Using the DESIGN-TILES `#8a6d3b` ochre — only ~4.85:1 as text on white, too close to the floor; `#7c5e10` clears at 6.06:1.
+**Consequences**: All new redesign text pairings clear AA in both themes with margin. The parity + ratio assertions run in the normal Vitest suite (no browser), so any future token added to only one theme, or any value regressing below 4.5:1, fails CI. Surface-raised ochre dark uses #21262d (6.91 → 5.78 on the raised panel) — still well above the floor.
+
 ### ADR-021: Fleet edge thickness doubles as the inflame cue (5px calm / 6px broken)
 **Date**: 2026-06-21
 **Status**: Accepted
@@ -212,31 +240,3 @@ This is correctness-preserving because every **new or reopened** alert gets `upd
 **Decision**: Deploy to **GitHub Pages via GitHub Actions** (`build_type: workflow`). Set Vite **`base: '/github-dashboard/'`** so assets resolve under the project path, and add an **SPA fallback** by copying `index.html` → `404.html` so deep links resolve client-side. Pages is **enabled** (DECISION issue #1) on the **custom domain `pedrofuent.es`** with **`https_enforced: true`** (HTTPS certificate approved); the live URL is **`https://pedrofuent.es/github-dashboard/`**. **Security rationale**: the PAT-entry app MUST be served **only over a secure HTTPS origin** so the page and its strict CSP cannot be tampered with in transit — an on-path attacker on a plain-HTTP channel could rewrite the HTML/JS or the CSP and exfiltrate the pasted read-only token (ties to ADR-004's network boundary and `PRD.md` risk R5). Pipeline authoring is pre-authorized; the deploy **workflow is authored in issue #7** and the **live URL is verified in the release / Definition-of-Done phase (#25)** — production go-live is **not "done"** until that secure deploy is verified.
 **Alternatives considered**: `gh-pages`-branch deploy (option B in issue #1 — not chosen; the Actions source matches the authored workflow); third-party static hosts such as Netlify/Vercel (off-platform third parties — GitHub Pages keeps everything GitHub-owned, consistent with ADR-004).
 **Consequences**: Fully static, no server. The base path means all asset URLs are prefixed with `/github-dashboard/`; the `404.html` fallback enables client-side routing and deep links. The custom domain is provisioned with an approved HTTPS certificate and **`https_enforced: true`**, so the origin — and the strict CSP it carries — is delivered only over TLS; this is required because a read-only PAT is pasted into this page (ADR-004, `PRD.md` R5). Go-live remains a human toggle: Pages is **enabled** (DECISION #1) over enforced HTTPS, but production go-live is **not satisfied** until the deploy workflow (issue #7) ships and the live URL is verified in the release / DoD phase (#25).
-
-### ADR-007: Tile-redesign AA contrast ratios (new/changed tokens)
-**Date**: 2026-06-21
-**Status**: Accepted — Wave 3 / T19 of the dashboard tile redesign (`docs/superpowers/plans/2026-06-21-dashboard-tile-redesign.md`).
-**Context**: The tile redesign adds the age-led Stale ink token `--color-ochre` (T1) and routes high-severity ("High") status **text** through the existing `--color-coral-ink` token rather than the `--color-coral` fill (red-team R5), to clear WCAG 2.1 SC 1.4.3 (4.5:1 for normal text) in BOTH themes. Per the Global Constraints, every new/changed text pairing must document its computed ratio in light (`:root`) and dark (`.dark`). Tokens are defined once per theme in `src/index.css`; a single-theme token would break rendering in the other theme.
-**Decision**: Record the computed ratios below and enforce them mechanically. `src/lib/css-tokens.test.ts` parses `src/index.css`, asserts per-theme token **parity** (every `--color-*` defined in both `:root` and `.dark`, so a single-theme token fails CI), and asserts each new pairing clears 4.5:1 in both themes. Ratios are WCAG 2.1 relative-luminance contrast; the 10% tint is `color-mix(in srgb, <accent> 10%, <surface>)` (the tinted-badge background).
-
-Computed AA ratios (token × theme × surface; floor 4.5:1 for normal text):
-
-| Pairing (ink → surface) | Light hex | Light ratio | Dark hex | Dark ratio | Floor | Pass |
-|---|---|---|---|---|---|---|
-| `--color-ochre` → `--color-surface` (#fff / #161b22) | #7c5e10 → #ffffff | 6.06:1 | #bfa05a → #161b22 | 6.91:1 | 4.5 | ✅ |
-| `--color-ochre` → `--color-surface-raised` (#f8fafc / #21262d) | #7c5e10 → #f8fafc | 5.79:1 | #bfa05a → #21262d | 6.08:1 | 4.5 | ✅ |
-| `--color-ochre` → 10% ochre tint | #7c5e10 → tint | 5.27:1 | #bfa05a → tint | 5.91:1 | 4.5 | ✅ |
-| `--color-coral-ink` → `--color-surface` (#fff / #161b22) | #9a3412 → #ffffff | 7.31:1 | #f78166 → #161b22 | 6.83:1 | 4.5 | ✅ |
-| `--color-coral-ink` → 10% coral tint | #9a3412 → tint | 6.33:1 | #f78166 → tint | 5.88:1 | 4.5 | ✅ |
-| `--color-warning-ink` → 10% warning tint (existing, regression guard) | #92400e → tint | 6.20:1 | #d29922 → tint | 5.86:1 | 4.5 | ✅ |
-
-**Alternatives considered**: Using the `--color-coral` *fill* token (#c2410c light) for High-severity text — only ~4.4:1 on a 10% tint in light, below the 4.5:1 floor (the same regression Sentinel rejected on PR #171); the ink token clears it. Using the DESIGN-TILES `#8a6d3b` ochre — only ~4.85:1 as text on white, too close to the floor; `#7c5e10` clears at 6.06:1.
-**Consequences**: All new redesign text pairings clear AA in both themes with margin. The parity + ratio assertions run in the normal Vitest suite (no browser), so any future token added to only one theme, or any value regressing below 4.5:1, fails CI. Surface-raised ochre dark uses #21262d (6.91 → 5.78 on the raised panel) — still well above the floor.
-
-### ADR-008: Missing-states matrix — deferred SignalStatus metadata & per-tile retry
-**Date**: 2026-06-21
-**Status**: Accepted — Wave 2 / T16 of the dashboard tile redesign (`docs/superpowers/plans/2026-06-21-dashboard-tile-redesign.md`).
-**Context**: T16 introduces the shared `src/components/tiles/TileMessage.tsx` state row (kinds `loading` | `all-clear` | `failed` | `partial`) and routes every tile body's loading / zero-`0` / error branch through it, so the empty-`0` "All clear" (calm success check, `data-state="empty"`) is visually UNMISTAKABLE from failed-to-load (⚠ warning, `data-state="failed-to-load"`) per spec §7. The current `SignalStatus` union is `'unknown' | 'loading' | 'ready' | 'error'` (`src/types/fleet.ts`), which cannot express three further real-world states surfaced by the redesign brief: **not-configured** (no scope / feature off), **stale-cache** (showing last-known data while a conditional refetch is in flight), and **rate-limited** (GitHub 5,000 req/hr budget exhausted).
-**Decision**: DEFER `not-configured` / `stale-cache` / `rate-limited` to a future task that extends `SignalStatus` with the required metadata (and the matching coordinator/Zod plumbing). T16 ships only the four states expressible today. The Security `truncated` flag maps to TileMessage `partial` as an inline hint on the ready view; the Fleet `partial` hint is wired as an additive, gated `partialCount?` prop on `FleetSummaryTile` — a documented no-op until a partial-fleet count exists. Per-tile `Retry` renders ONLY where an `onRetry` handler is plumbed into a body; bodies without it rely on the existing view-level retry affordance.
-**Alternatives considered**: Faking the deferred states with ad-hoc booleans threaded through each body — rejected: it would fragment status handling and duplicate the very matrix T16 unifies, and couldn't be validated by the Zod-checked `SignalStatus` contract. Wiring `onRetry` into every body now — rejected: the data hooks don't yet expose a per-signal refetch, so it would be dead UI.
-**Consequences**: The four-state matrix is consistent and tested across all 8 bodies today. The deferred trio is tracked here and by an in-code comment on `TileMessage`; adding them later is an additive `SignalStatus` change plus per-kind `KIND_SPEC` entries, with no churn to the body call sites already routing through `TileMessage`.

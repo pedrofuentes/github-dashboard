@@ -60,16 +60,24 @@ The Dashboard view is built for triage at a glance:
 
 - **A pinned fleet summary** anchors the top: total repos and the split into **need attention** (failing CI, a D–F security grade, or an over-threshold issue backlog), **warning** (a C security grade, a pending review request, or stale items), and **healthy** — plus the non-zero per-signal rollups (failing CI, security risk, over-threshold issues, awaiting your review, stale). It's always there: not draggable, resizable, or removable.
 - **Glanceable, purpose-built tiles** — one card per (repo, signal), each
-  redesigned to use its full canvas instead of a shrunk-down table cell. Every
-  tile shares a common frame (status accent bar, header, body, footer) wrapping a
-  bespoke per-signal visual: the **CI** tile shows a big status glyph with an
-  ambient glow and the failing-run count; **Security** draws an arc gauge with
-  the **A–F grade** as its hero plus a per-severity breakdown; **Pull requests**
-  highlights new outside-contributor PRs; and **Reviews / Issues / Stale** scale
-  their accent with urgency. Encoding is always icon + colour + text (never
-  colour alone), with per-status states (loading / error / unknown / ready).
-  Activate any tile (click or Enter/Space) to open the same drill-down drawer as
-  the grid.
+  redesigned to use its full canvas instead of a shrunk-down table cell. Tiles
+  follow a **salience model**: only the ones that need action carry colour — a
+  failing or at-risk tile, and the "needs-you" Reviews tile — while healthy tiles
+  stay **calm**, keeping their identity in the header icon, and a **thicker top
+  accent bar** (growing on problems) reinforces the hierarchy. Every tile shares a
+  common frame (accent bar, header, body, footer) wrapping a bespoke per-signal
+  visual: **CI** shows an honest failing status with the most-recent run;
+  **Security** leads with the worst severity over a **stacked severity bar**;
+  **Pull requests** highlights new outside-contributor PRs and the oldest external
+  PR's age; **Reviews** shows what's awaiting **you** and the oldest waiting age;
+  **Issues** pairs open with stale; and **Stale** is age-led over an age-bucket
+  bar. Encoding is always icon + text (never colour alone) and the micro-visuals
+  stay legible in grayscale. A unified **states matrix** makes _loading_,
+  _All clear_, and _Couldn't load_ visually distinct. Activate any tile (click or
+  Enter/Space) to open the same drill-down drawer as the grid.
+- **A density toggle** — switch the standard tiles between **Balanced** (the
+  default) and **Glanceable** to control how much detail each tile shows; your
+  choice is remembered.
 - **An Activity tile** — a seventh signal, unique to the Dashboard view, that
   charts each repo's recent commit cadence: a commit **sparkline** of weekly
   totals (with the total as a hero number) that expands into a weeks × 7-day
