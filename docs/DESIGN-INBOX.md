@@ -600,9 +600,12 @@ INBOX-2B.
 
 ### INBOX-7 · `FleetView` extension + `ViewToggle` wiring + unread badge
 `src/lib/view-preference.ts`, `src/App.tsx`.
-- **AC-15.** `FleetView` persists `'inbox'` under `fleet:view` (round-trips,
-  defaults safely on corrupt value); the toggle offers three options
-  (Grid/Dashboard/Inbox) and renders `InboxView` when active.
+- **AC-15.** _Superseded (ADR-024):_ the app no longer persists the last-used
+  view under `fleet:view`. It always opens to the user's configurable default,
+  persisted under `fleet:default-view` (factory `'dashboard'`) and chosen via the
+  "Default view" control; in-session switches are not remembered. The view toggle
+  still offers three options (Grid/Dashboard/Inbox) and renders `InboxView` when
+  active.
 - **AC-16.** Opening the Inbox (or clicking an item) marks items read / advances
   the watermark and updates the unread badge on the toggle.
 

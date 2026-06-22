@@ -50,7 +50,7 @@ Together that's the seven at-a-glance signals from the [mission brief](MISSION.m
 
 ## Dashboard view
 
-Prefer a spatial layout over a table? A **Grid / Dashboard / Inbox** toggle (top-left of the overview, persisted in your browser under `fleet:view` and defaulting to the table grid) switches the fleet between the row-per-repo grid, an **at-a-glance Dashboard view**, and the **[Inbox](#inbox-view)**.
+Prefer a spatial layout over a table? A **Grid / Dashboard / Inbox** toggle (top-left of the overview) switches the fleet between the row-per-repo grid, an **at-a-glance Dashboard view**, and the **[Inbox](#inbox-view)**. The app **opens to the Dashboard by default**, and a **Default view** control next to the toggle lets you choose which view it opens to (persisted in your browser under `fleet:default-view`). In-session switches are not remembered — the app always reopens to your chosen default, not your last-used view.
 
 <div align="center">
   <img src="docs/screenshots/dashboard.png" alt="At-a-glance Dashboard view: a pinned fleet summary (6 repos — 2 need attention, 4 warning, 0 healthy — with per-signal rollups for failing CI, security risk, awaiting your review and stale) above a grid of glanceable per-repo, per-signal tiles showing failing CI, A–F security grades, review requests, open and new-contributor pull requests, open issues and stale items" width="920">
