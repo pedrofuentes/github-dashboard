@@ -184,6 +184,16 @@ describe('usePullRequestsSignal', () => {
         author_association: 'FIRST_TIME_CONTRIBUTOR',
       },
     ]);
+    // INBOX-2A (#228): the POPULATED new-pr path is a request-free retain. The
+    // external list is un-projected from the already-fetched `/pulls?state=open`
+    // payload, so it issues the SAME single request as the zero-external path —
+    // never an extra per-PR fetch. The AC-5 (empty) test guards the same
+    // invariant; without this a regression that fetched only when externals
+    // exist would slip through.
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    expect(mockFetchWithETag.mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/octo/a/pulls?state=open&per_page=100',
+    );
   });
 
   it('omits the external list (and adds no request) when there are no external PRs (AC-5)', async () => {
@@ -201,6 +211,33 @@ describe('usePullRequestsSignal', () => {
       'https://api.github.com/repos/octo/a/pulls?state=open&per_page=100',
     );
     expect(result.current.get('octo/a')?.externalPullRequests).toBeUndefined();
+  });
+
+  it('defaults a null-author (ghost) external PR to an empty user_login without crashing (new-pr null author)', async () => {
+    // GitHub returns `user: null` for a deleted/ghost author. The summarize
+    // un-projection reads `user?.login ?? ''`; the `pull()` helper always sets a
+    // user, so this exercises the otherwise-uncovered null-author branch. A
+    // non-null-safe regression would throw and degrade the whole slice to error.
+    const ghostAuthored = { ...(pull(7, 'NONE') as Record<string, unknown>), user: null };
+    mockFetchWithETag.mockResolvedValue([ghostAuthored]);
+
+    const { result } = renderHook(() => usePullRequestsSignal(REPOS, 'ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.get('octo/a')?.status).toBe('ready');
+    });
+    const slice = result.current.get('octo/a');
+    expect(slice?.externalCount).toBe(1);
+    expect(slice?.externalPullRequests).toEqual([
+      {
+        number: 7,
+        title: 'PR 7',
+        html_url: 'https://github.com/octo/a/pull/7',
+        created_at: '2024-03-07T00:00:00Z',
+        user_login: '',
+        author_association: 'NONE',
+      },
+    ]);
   });
 
   it('reports zero counts for a repo with no open PRs', async () => {
