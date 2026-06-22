@@ -130,7 +130,12 @@ describe('SignalTile', () => {
         onActivate={vi.fn()}
       />,
     );
-    expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
+    // The hero word renders exactly twice: the StatusGlyph's accessible <title>
+    // (role="img") and the visible BigValue span. Pin BOTH so dropping the
+    // visible value while keeping the SVG <title> regresses the test (#193).
+    expect(screen.getByRole('img', { name: 'Failing' })).toBeInTheDocument();
+    expect(screen.getByText('Failing', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getAllByText('Failing')).toHaveLength(2);
   });
 
   it.each<[TileSignalType, string, RegExp]>([
