@@ -29,8 +29,8 @@ import { CenteredState } from './CenteredState';
 import { safeCount } from './safeCount';
 
 export interface StaleTileBodyProps {
-  /** The repository this tile represents (reserved for deep links/labels). */
-  repo: Repo;
+  /** The repository this tile represents (optional; reserved for deep links/labels). */
+  repo?: Repo;
   /** The repo's resolved signal payload. */
   data: RepoSignalData;
   /** Density tier to render at (DESIGN-TILES §3.4). */
