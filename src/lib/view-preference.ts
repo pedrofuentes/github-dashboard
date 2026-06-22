@@ -29,7 +29,7 @@ function safeSet(key: string, value: string): void {
   }
 }
 
-function isFleetView(value: string | null): value is FleetView {
+export function isFleetView(value: string | null): value is FleetView {
   return value === 'grid' || value === 'dashboard' || value === 'inbox';
 }
 
