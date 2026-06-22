@@ -39,7 +39,7 @@ live design session with the cofounder.
 | Fact | Value | Source |
 | --- | --- | --- |
 | Fleet view union | `'grid' \| 'dashboard'` (Inbox adds `'inbox'`) | `src/lib/view-preference.ts` `FleetView` |
-| View persistence key | `fleet:view` (localStorage, default `'grid'`) | `src/lib/view-preference.ts` |
+| View persistence key | `fleet:default-view` (localStorage, default `'dashboard'`) | `src/lib/default-view-preference.ts` |
 | Row-data seam | `getRowData(repo): RepoSignalData` | `src/hooks/useRepoSignals.ts`; `src/types/fleet.ts` `GetRowData` |
 | Per-repo signal payload | `{ ci?, security?, reviews?, pullRequests?, issues?, stale? }` | `src/types/fleet.ts` `RepoSignalData` |
 | Signal lifecycle | `'unknown' \| 'loading' \| 'ready' \| 'error'` | `src/types/fleet.ts` `SignalStatus` |
