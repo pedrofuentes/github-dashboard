@@ -207,6 +207,25 @@ describe('DashboardView', () => {
     expect(within(summary).getByText(/1\s+need attention/i)).toBeInTheDocument();
   });
 
+  it('feeds per-repo health entries into the fleet summary (strip + worst-child)', () => {
+    const getRowData: GetRowData = (repo) =>
+      repo.nameWithOwner === 'octo/a' ? { ci: { status: 'ready', conclusion: 'failure' } } : {};
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a'), makeRepo('octo/b')]}
+        getRowData={getRowData}
+        onRepoActivate={vi.fn()}
+      />,
+    );
+    const summary = screen.getByRole('region', { name: /fleet summary/i });
+    // The per-repo strip has one cell per repo (entries derived from repoData).
+    const strip = summary.querySelector('[data-part="repo-strip"]');
+    expect(strip?.querySelectorAll('[data-health]')).toHaveLength(2);
+    // The worst-child chip names the broken repo.
+    const worstChild = summary.querySelector('[data-part="worst-child"]');
+    expect(worstChild).toHaveTextContent('octo/a');
+  });
+
   it('still renders the fleet summary in the empty state', () => {
     render(<DashboardView repos={[]} getRowData={emptyData} onRepoActivate={vi.fn()} />);
     expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
