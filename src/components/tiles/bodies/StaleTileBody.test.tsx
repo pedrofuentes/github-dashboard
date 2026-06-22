@@ -107,6 +107,20 @@ describe('StaleTileBody — age-led hero (redesign T12)', () => {
     // oldest item was 65d before NOW → 75d before `later`
     expect(getByText('75d')).toBeInTheDocument();
   });
+
+  it('uses the singular noun when exactly one item is stale', () => {
+    const singular: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 1,
+      staleItems: [item('pr', 12)],
+    };
+    const { getByText, container } = renderBody(singular, 'standard');
+    // meta line: singular "item", not "items"
+    expect(getByText(/1 item \(1 PR · 0 issue\)/)).toBeInTheDocument();
+    // sr sentence also reads singular "stale item"
+    const srTexts = [...container.querySelectorAll('.sr-only')].map((n) => n.textContent ?? '');
+    expect(srTexts.some((t) => /1 stale item,/i.test(t) && /oldest 12 days/i.test(t))).toBe(true);
+  });
 });
 
 describe('StaleTileBody — size tiers', () => {
