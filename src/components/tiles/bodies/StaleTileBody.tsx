@@ -57,27 +57,41 @@ function safeCount(value: number | undefined): number {
   return Number.isFinite(value) && (value as number) > 0 ? Math.trunc(value as number) : 0;
 }
 
-/** Whole-day age of an ISO timestamp relative to `now` (0 when unparseable). */
-function ageInDays(updatedAt: string, now: Date): number {
+/**
+ * Whole-day age of an ISO timestamp relative to `now`, or `null` when the
+ * timestamp is missing/unparseable. Returning `null` (rather than 0) keeps an
+ * undatable item from masquerading as a fresh "0d" one (#283).
+ */
+function ageInDays(updatedAt: string, now: Date): number | null {
   const then = new Date(updatedAt).getTime();
   if (!Number.isFinite(then)) {
-    return 0;
+    return null;
   }
   return Math.max(0, Math.floor((now.getTime() - then) / DAY_MS));
 }
 
-/** Age (in days) of the oldest item, or 0 when there are no items. */
-function oldestAgeDays(items: StaleItem[], now: Date): number {
-  return items.reduce((max, entry) => Math.max(max, ageInDays(entry.updated_at, now)), 0);
+/**
+ * Age (in days) of the oldest item whose date is parseable, or `null` when no
+ * item carries a usable timestamp — so the hero can show an explicit unknown
+ * state instead of a misleading "0d".
+ */
+function oldestAgeDays(items: StaleItem[], now: Date): number | null {
+  return items.reduce<number | null>((oldest, entry) => {
+    const age = ageInDays(entry.updated_at, now);
+    if (age === null) {
+      return oldest;
+    }
+    return oldest === null ? age : Math.max(oldest, age);
+  }, null);
 }
 
-/** Partition items into the ascending-age buckets (each item lands in one). */
+/** Partition items into the ascending-age buckets (undatable items land in none). */
 function buildBuckets(items: StaleItem[], now: Date): AgeBucket[] {
   return BUCKET_DEFS.map((def) => ({
     label: def.label,
     value: items.filter((entry) => {
       const age = ageInDays(entry.updated_at, now);
-      return age > def.min && age <= def.max;
+      return age !== null && age > def.min && age <= def.max;
     }).length,
   }));
 }
@@ -165,14 +179,20 @@ export function StaleTileBody({
 
   // Age is the story: the hero is the oldest age when items are known. If a
   // ready slice carries a positive count but no item details, fall back to the
-  // count so the tile never renders a misleading "0d".
+  // count so the tile never renders a misleading "0d". When items exist but none
+  // carries a parseable date, surface an explicit unknown marker instead of a
+  // deceptively-fresh "0d" (#283).
   const hasItems = items.length > 0;
-  const heroValue = hasItems ? `${String(oldest)}d` : String(count);
+  const hasKnownAge = oldest !== null;
+  const oldestLabel = hasKnownAge ? `${String(oldest)}d` : '—';
+
+  const heroValue = hasItems ? oldestLabel : String(count);
   const metaText = hasItems
     ? `${String(count)} ${noun} (${String(prCount)} PR · ${String(issueCount)} issue)`
     : `${String(count)} ${noun}`;
+  const oldestSrPhrase = hasKnownAge ? `oldest ${String(oldest)} days` : 'oldest age unknown';
   const srLabel = hasItems
-    ? `${String(count)} stale ${noun}, oldest ${String(oldest)} days — ${String(prCount)} pull requests, ${String(issueCount)} issues`
+    ? `${String(count)} stale ${noun}, ${oldestSrPhrase} — ${String(prCount)} pull requests, ${String(issueCount)} issues`
     : `${String(count)} stale ${noun}`;
   const bucketSrLabel = `Stale items by age: ${String(count)} total`;
   // Glanceable standard drops the age-bucket bar; balanced and expanded keep it.
@@ -213,7 +233,7 @@ export function StaleTileBody({
           </li>
           <li className="flex items-center justify-between">
             <span className="text-accent-ochre">Oldest</span>
-            <span className="tabular-nums text-accent-ochre">{oldest}d</span>
+            <span className="tabular-nums text-accent-ochre">{oldestLabel}</span>
           </li>
         </ul>
       ) : null}
