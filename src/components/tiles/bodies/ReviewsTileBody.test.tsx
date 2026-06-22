@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { formatRelativeTime } from '../../../lib/format';
@@ -183,7 +183,11 @@ describe('ReviewsTileBody — oldest-waiting age (urgency driver, T10)', () => {
 describe('ReviewsTileBody — actionable hero a11y (R6)', () => {
   it('wraps the hero count in an aria-live region when work awaits the viewer', () => {
     const { container } = renderBody({ status: 'ready', requestedCount: 3 });
-    expect(container.querySelector('[aria-live="polite"]')).not.toBeNull();
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    // The count itself must live inside the region, so in-place updates announce
+    // the new number — not merely that *a* polite region exists (#278).
+    expect(within(live as HTMLElement).getByText('3')).toBeInTheDocument();
   });
 
   it('omits the aria-live hero in the calm zero state', () => {
