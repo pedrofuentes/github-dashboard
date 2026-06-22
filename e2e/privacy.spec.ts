@@ -217,6 +217,12 @@ async function recordPrivacyFlow(page: Page, appOrigin: string): Promise<Recorde
     await route.abort();
   });
 
+  // Start from the table grid regardless of the factory default view, so the
+  // FleetGrid repo row this flow asserts on renders on load.
+  await page.addInitScript(() => {
+    window.localStorage.setItem('fleet:default-view', 'grid');
+  });
+
   await page.goto('/');
   await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
   await page.getByRole('button', { name: 'Connect to GitHub' }).click();
