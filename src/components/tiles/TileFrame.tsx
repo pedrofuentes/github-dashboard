@@ -13,6 +13,7 @@
  */
 import type { ReactElement, ReactNode, RefObject } from 'react';
 
+import { cn } from '../../lib/cn';
 import type { MoveDirection, ResizeDimension } from '../../lib/grid-keyboard';
 import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo, SignalStatus } from '../../types/fleet';
@@ -93,6 +94,15 @@ export interface TileFrameProps {
    * "View <signal> details for <repo>" label when omitted.
    */
   accessibleSummary?: string;
+  /**
+   * Drops the redundant visible repo header line (Phase 3 D1). When the
+   * dashboard is filtered to exactly one repo every tile shares that repo, so
+   * the per-tile repo name is noise. Only the VISIBLE heading is hidden
+   * (`sr-only`): the real `nameWithOwner` still rides the `title`, the activate
+   * `accessibleSummary`, and the visually-hidden alias note, so repo identity
+   * never leaves the accessibility tree (AC-10). Defaults to showing the header.
+   */
+  hideRepoHeader?: boolean;
   /** The signal-specific body content. */
   children: ReactNode;
 }
@@ -118,6 +128,7 @@ export function TileFrame({
   alias,
   identityTone,
   accessibleSummary,
+  hideRepoHeader = false,
   children,
 }: TileFrameProps): ReactElement {
   const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
@@ -178,7 +189,10 @@ export function TileFrame({
       <AccentBar tone={barTone} thickness={isProblem ? 'problem' : 'calm'} />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-4">
         <header className="flex items-baseline justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold text-text" title={repo.nameWithOwner}>
+          <h3
+            className={cn('truncate text-sm font-semibold text-text', hideRepoHeader && 'sr-only')}
+            title={repo.nameWithOwner}
+          >
             {displayName}
             {alias != null ? (
               <span className="sr-only"> (alias for {repo.nameWithOwner})</span>

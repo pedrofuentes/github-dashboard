@@ -134,6 +134,13 @@ export function DashboardView({
   // Drag, resize, the keyboard rail and the editing visual all gate on this so a
   // filtered layout can be neither rearranged nor compacted.
   const editControlsActive = editing && !filterActive;
+  // D1: when the filter narrows to exactly ONE repo, every visible tile shares
+  // that repo, so the per-tile repo header line is redundant — drop it from each
+  // tile (identity still rides the title/activate summary/alias note, AC-10).
+  // Guarded on `repoFilter` directly (not the `filterActive` boolean) so TS
+  // narrows it; `size === 1` implies `size > 0`, so this equals `filterActive &&
+  // size === 1`.
+  const filteredToOneRepo = repoFilter !== undefined && repoFilter.size === 1;
 
   // The active tile density (DESIGN-TILES §6; T15). Threaded to every SignalTile
   // so `glanceable` sheds the standard-tier micro-viz while `balanced` keeps it.
@@ -493,6 +500,7 @@ export function DashboardView({
                 colIndex={tile.x + 1}
                 density={density}
                 alias={aliases?.[tile.repo]}
+                hideRepoHeader={filteredToOneRepo}
               />
             </div>
           ))}
