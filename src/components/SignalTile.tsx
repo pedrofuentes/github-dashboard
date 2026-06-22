@@ -69,6 +69,13 @@ export interface SignalTileProps {
   /** 1-based grid row this tile occupies, surfaced as `aria-rowindex`. */
   rowIndex?: number;
   /**
+   * Optional per-repo display alias (Phase 3 setting; stub prop, default
+   * undefined). When set the frame shows the alias as visible text plus a
+   * visually-hidden `(alias for <owner/repo>)`, while the activate label keeps
+   * announcing the real `nameWithOwner` via `accessibleSummary` (§8).
+   */
+  alias?: string;
+  /**
    * Tile density (DESIGN-TILES §6; T15), threaded to the body. In `glanceable`
    * the standard tier sheds its micro-viz/meta so only the hero + delta remain;
    * `balanced` (the default) keeps the full standard layout, and compact/
@@ -153,6 +160,7 @@ export function SignalTile({
   onResize,
   colIndex,
   rowIndex,
+  alias,
   density = 'balanced',
 }: SignalTileProps): ReactElement {
   const isActivity = tile.signal === 'activity';
@@ -195,6 +203,7 @@ export function SignalTile({
       rowIndex={rowIndex}
       salience={salience}
       identityTone={identityTone}
+      alias={alias}
       accessibleSummary={accessibleSummary}
     >
       <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
