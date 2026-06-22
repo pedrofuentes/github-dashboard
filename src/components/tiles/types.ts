@@ -68,6 +68,25 @@ export function toneTextClass(tone: AccentTone): string {
   return TONE_TEXT_CLASS[tone];
 }
 
+/**
+ * Tint-safe text classes (DESIGN-TILES §1.5). When accent text sits on its own
+ * low-opacity tint (the Chip / tinted-badge pattern) the `warning` and `coral`
+ * accent-700 hues only reach ~4.2–4.4:1 for 12px text in light — below AA — so
+ * they switch to their darker `-ink` variants (amber-800 / orange-800 in light;
+ * the ink equals the accent in dark, so the badge renders identically). Every
+ * other accent already clears 4.5:1 over its tint and keeps the plain token.
+ */
+const TONE_TINT_TEXT_CLASS: Record<AccentTone, string> = {
+  ...TONE_TEXT_CLASS,
+  warning: 'text-accent-warning-ink',
+  coral: 'text-accent-coral-ink',
+};
+
+/** Tailwind text-colour class for a tone rendered over its own accent tint. */
+export function toneTintTextClass(tone: AccentTone): string {
+  return TONE_TINT_TEXT_CLASS[tone];
+}
+
 const TONE_BG_CLASS: Record<AccentTone, string> = {
   success: 'bg-accent-success',
   failure: 'bg-accent-failure',
