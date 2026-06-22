@@ -63,6 +63,7 @@ describe('App fleet signal wiring', () => {
   });
 
   it('passes the aggregator getRowData down to the fleet grid', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
     await signIn();
 
     expect(fleetGridSpy).toHaveBeenCalledWith(expect.objectContaining({ getRowData }));
