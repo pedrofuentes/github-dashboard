@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchCommitActivityWeeks } from './security-branches';
 import { fetchCommitActivity } from './commit-activity';
 import { ETagCache } from './etag-cache';
-import { GitHubApiError } from './index';
+import { GitHubApiError, GitHubErrorCode } from './index';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
@@ -269,5 +269,59 @@ describe('fetchCommitActivity', () => {
     const result = await fetchCommitActivity('owner', 'repo');
     expect(result.status).toBe('empty');
     expect(headersOf(0)['Authorization']).toBeUndefined();
+  });
+
+  it('throws a GitHubApiError when a 304 arrives with no cached entry', async () => {
+    // A 304 can only be honoured when a prior 200 seeded the cache. With an
+    // empty cache there is nothing to replay, so the fetcher surfaces the
+    // unexpected 304 as a server error instead of returning undefined weeks.
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(304, '', mockHeaders({ etag: 'W/"v1"' })),
+    );
+
+    const error = await fetchCommitActivity('owner', 'repo', 'ghp_test', {
+      cache: new ETagCache(),
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect((error as GitHubApiError).status).toBe(304);
+    expect((error as GitHubApiError).code).toBe(GitHubErrorCode.SERVER_ERROR);
+    // An empty cache sends no conditional validator with the request.
+    expect(headersOf(0)['If-None-Match']).toBeUndefined();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts cleanly when the signal fires during the 202 retry backoff', async () => {
+    vi.useFakeTimers();
+    try {
+      // Always-202 keeps the loop in its bounded backoff so the abort lands
+      // inside abortableSleep rather than between requests.
+      vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(202, ''));
+      const controller = new AbortController();
+
+      const pending = fetchCommitActivity('owner', 'repo', 'ghp_test', {
+        cache: new ETagCache(),
+        maxComputingRetries: 3,
+        computingRetryDelayMs: 1000,
+        signal: controller.signal,
+      });
+      // Attach the rejection expectation before driving the clock so the abort
+      // can never surface as an unhandled rejection.
+      const settled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+      // Flush the initial 202 so the loop parks in the 1s backoff sleep (the
+      // backoff timer is pending, not yet fired).
+      await vi.advanceTimersByTimeAsync(0);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      // Abort mid-backoff: abortableSleep rejects and short-circuits the loop.
+      controller.abort();
+      await settled;
+
+      // The abort prevented a second attempt; no further fetch was issued.
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
