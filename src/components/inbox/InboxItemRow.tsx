@@ -12,11 +12,12 @@
  *
  * The title is an origin-gated GitHub link (`safeGitHubHref`, §6.2): a value
  * that fails the guard degrades to inert text instead of an off-origin link.
- * Opening the link (pointer, Enter, or Space) marks the item read. Dismiss /
- * Restore are real, labelled buttons reachable in tab order with a visible
- * `focus-visible` ring. All colour comes from semantic theme tokens so the row
- * recolours with a single `.dark` flip and stays within the AA budget in both
- * themes — warning/coral text uses the `-ink` variants (DESIGN-TILES §1.5).
+ * A pointer click or Enter opens the link and marks the item read (via the
+ * anchor's click); Space marks read without navigating. Dismiss / Restore are
+ * real, labelled buttons reachable in tab order with a visible `focus-visible`
+ * ring. All colour comes from semantic theme tokens so the row recolours with a
+ * single `.dark` flip and stays within the AA budget in both themes —
+ * warning/coral text uses the `-ink` variants (DESIGN-TILES §1.5).
  */
 import type { KeyboardEvent, ReactElement } from 'react';
 
@@ -102,14 +103,13 @@ export function InboxItemRow({
     onMarkRead(item.id);
   }
 
-  // Keep the row keyboard-operable: Enter keeps the anchor's native open (and
-  // also marks read via the activation click); Space marks read and is stopped
-  // from scrolling the page.
+  // Anchors do not natively activate on Space (the key scrolls the page), so
+  // handle Space here: mark read and prevent the scroll. Enter is deliberately
+  // left to the browser's native activation, which fires the click — `onClick`
+  // marks read — so handling Enter here too would mark read twice (#246).
   function handleKeyDown(event: KeyboardEvent<HTMLAnchorElement>): void {
-    if (event.key === 'Enter' || event.key === ' ') {
-      if (event.key === ' ') {
-        event.preventDefault();
-      }
+    if (event.key === ' ') {
+      event.preventDefault();
       activate();
     }
   }

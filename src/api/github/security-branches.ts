@@ -10,6 +10,8 @@ import { z } from 'zod';
 
 import {
   GITHUB_API_BASE,
+  GitHubApiError,
+  GitHubErrorCode,
   buildHeaders,
   fetchWithRetry,
   handleApiError,
@@ -227,6 +229,20 @@ async function readAlertFeed<T>(
     return { hit: true, feed: cached.data };
   }
 
+  // A 304 with no cached feed is a protocol violation: we only send
+  // `If-None-Match` when we already hold an ETag, so the server cannot validly
+  // answer 304 on a cold cache. Surface it as an explicit cold-cache diagnostic
+  // rather than the generic `GitHub API error (304)` the `!ok` path throws (#234).
+  if (first.status === 304) {
+    throw new GitHubApiError(
+      'Received 304 Not Modified but no cached alert feed is available',
+      304,
+      parseRateLimitHeaders(first.headers),
+      undefined,
+      GitHubErrorCode.SERVER_ERROR,
+    );
+  }
+
   if (!first.ok) {
     handleApiError(
       first.status,
@@ -300,6 +316,30 @@ function buildAlertRow(
 }
 
 /**
+ * Builds an alert's inbox identity row and pushes it onto `rows`, or debug-logs
+ * the skip when {@link buildAlertRow} returns `null` because the alert lacked an
+ * identity field (its `number`, `html_url`, or `created_at`). The alert is still
+ * counted in the tally — only its inbox row is dropped — so this surfaces an
+ * otherwise-silent divergence between the counts and the retained rows (#235).
+ */
+function pushAlertRow(
+  rows: SecurityAlertRow[],
+  type: 'dependabot' | 'code-scanning',
+  severity: AlertSeverity,
+  alert: { number?: number | null; html_url?: string | null; created_at?: string | null },
+): void {
+  const row = buildAlertRow(type, severity, alert);
+  if (row) {
+    rows.push(row);
+    return;
+  }
+  console.debug(
+    `[security] skipped ${type} alert from inbox rows: missing identity field (number/html_url/created_at)`,
+    { number: alert.number ?? null },
+  );
+}
+
+/**
  * Fetches open Dependabot alerts across every page and summarizes by severity.
  * Requires `Dependabot alerts: Read` permission.
  *
@@ -357,9 +397,9 @@ export async function fetchDependabotAlerts(
     }
     summary.total++;
     // Retain this alert's identity for the inbox; severity falls back to 'low'
-    // for the same unrecognized values the counts already bucket out (#216).
-    const row = buildAlertRow('dependabot', isAlertSeverity(severity) ? severity : 'low', alert);
-    if (row) rows.push(row);
+    // for the same unrecognized values the counts already bucket out (#216). A
+    // skipped row (missing identity) is debug-logged rather than silent (#235).
+    pushAlertRow(rows, 'dependabot', isAlertSeverity(severity) ? severity : 'low', alert);
   }
   const feed: SecurityAlertFeed = { ...summary, rows };
   read.commit(feed);
@@ -469,9 +509,9 @@ export async function fetchCodeScanningAlerts(
       summary[severity]++;
       summary.total++;
       // Retain identity for the inbox only for alerts the tally recognized, so
-      // rows and counts stay in lock-step (issue #216).
-      const row = buildAlertRow('code-scanning', severity, alert);
-      if (row) rows.push(row);
+      // rows and counts stay in lock-step (issue #216). A skipped row (missing
+      // identity) is debug-logged rather than dropped silently (#235).
+      pushAlertRow(rows, 'code-scanning', severity, alert);
     }
   }
   const feed: SecurityAlertFeed = { ...summary, rows };

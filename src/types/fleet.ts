@@ -152,7 +152,7 @@ export interface IssuesSignalSlice extends SignalSlice {
  * A stale open PR or issue, un-projected from the same per-repo Search call
  * (its `per_page` widened and `sort=updated&order=desc` appended — no extra
  * request). One `stale:<repo>:<pr|issue>:#<number>` Inbox item is emitted per
- * entry, ordered by `updatedAt`.
+ * entry, ordered by `updated_at`.
  */
 export interface StaleItem {
   number: number;

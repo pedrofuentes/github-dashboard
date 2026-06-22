@@ -38,16 +38,35 @@ const STALE_RE = new RegExp(`^stale:(${REPO}):(pr|issue):#([0-9]+)$`);
 
 const REPO_RE = /^[^:#/]+\/[^:#/]+$/;
 
+/** Allowed enum segments per the §1.4/§1.5 grammars (internal discriminators). */
+const SECURITY_ALERT_TYPES: readonly SecurityAlertType[] = ['dependabot', 'code-scanning'];
+const STALE_TARGETS: readonly StaleTarget[] = ['pr', 'issue'];
+
 function assertRepo(repo: string): void {
   if (!REPO_RE.test(repo)) {
     throw new Error(`Invalid inbox-id repo: ${JSON.stringify(repo)} (expected "owner/name")`);
   }
 }
 
+/**
+ * Belt-and-suspenders guard for the string-literal enum segments. They are
+ * compile-time unions, but asserting them keeps an internal mis-call from
+ * interpolating an off-grammar value into an id.
+ */
+function assertEnum(label: string, value: string, allowed: readonly string[]): void {
+  if (!allowed.includes(value)) {
+    throw new Error(
+      `Invalid inbox-id ${label}: ${JSON.stringify(value)} (expected one of ${allowed.join(', ')})`,
+    );
+  }
+}
+
 function numericSegment(label: string, value: number | string): string {
   if (typeof value === 'number') {
-    if (!Number.isInteger(value) || value < 0) {
-      throw new Error(`Invalid inbox-id ${label}: ${value} (expected a non-negative integer)`);
+    // A safe integer is required: `String(1e21) === '1e+21'` (and any value
+    // above 2^53−1) would not round-trip through the digit grammar (#226).
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`Invalid inbox-id ${label}: ${value} (expected a non-negative safe integer)`);
     }
     return String(value);
   }
@@ -82,12 +101,14 @@ export function buildSecurityId(
   alertNumber: number,
 ): string {
   assertRepo(repo);
+  assertEnum('security type', type, SECURITY_ALERT_TYPES);
   return `security:${repo}:${type}:${numericSegment('alert number', alertNumber)}`;
 }
 
 /** `stale:<repo>:<pr|issue>:#<number>` — stale PR or issue (§1.5). */
 export function buildStaleId(repo: string, target: StaleTarget, itemNumber: number): string {
   assertRepo(repo);
+  assertEnum('stale target', target, STALE_TARGETS);
   return `stale:${repo}:${target}:#${numericSegment('item number', itemNumber)}`;
 }
 
