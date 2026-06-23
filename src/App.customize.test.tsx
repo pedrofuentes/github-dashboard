@@ -99,8 +99,8 @@ describe('App — customize + repo-filter wiring (C1)', () => {
     await authenticateOnDashboard(user, [repo('octo/a')]);
 
     await user.click(screen.getByRole('button', { name: /customize layout/i }));
-    // Hide every tile for the only repo via the panel's group toggle.
-    await user.click(screen.getByRole('button', { name: /hide all octo\/a/i }));
+    // Hide every tile via the panel's bulk "Hide all tiles" rule action.
+    await user.click(screen.getByRole('button', { name: /^hide all tiles$/i }));
 
     // The dashboard collapses to the all-hidden recovery copy …
     expect(screen.getByText(/all tiles hidden/i)).toBeInTheDocument();
@@ -118,7 +118,8 @@ describe('App — customize + repo-filter wiring (C1)', () => {
     // The CI tile is in the live grid before toggling.
     expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toBeInTheDocument();
 
-    // Hide the CI tile from inside the panel.
+    // Hide the CI tile via the panel's per-repo override (surfaced by search).
+    await user.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
     await user.click(screen.getByRole('checkbox', { name: /octo\/a, ci tile/i }));
 
     // It disappears from the rendered DashboardView grid — proving App passes ONE
