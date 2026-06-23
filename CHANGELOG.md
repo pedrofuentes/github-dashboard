@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Keyboard shortcuts + "?" help overlay**: power-user navigation lands in the
+  authenticated app. Press `g` then `t`/`m`/`g`/`b`/`i` to jump to
+  Triage/Matrix/Grid/Boards/Inbox, `?` to open a discoverable shortcuts cheat
+  sheet, and `,` to open Settings. Shortcuts never fire while you are typing in a
+  filter/search field, and ⌘K (command palette) and browser chords pass through
+  untouched. The help overlay is a fully accessible dialog (focus trap, `Esc` /
+  backdrop close, focus restore) and also points to ⌘K and Saved Views.
 - **⌘K command palette (live)**: press ⌘K (or Ctrl-K) anywhere in the
   authenticated app to open a searchable command palette. It exposes navigation
   (Go to Triage/Matrix/Grid/Inbox/Boards), filter presets (Needs attention,
