@@ -8,7 +8,16 @@ import {
   type SavedViewsState,
 } from '../lib/saved-views';
 import { EMPTY_QUERY, type RepoFilterQueryV2 } from '../lib/repo-filter-query';
-import { useSavedViews, validateViewName } from './useSavedViews';
+import { useSavedViews, validateViewName, type SavedViewMutationResult } from './useSavedViews';
+
+/** Asserts a successful mutation and returns its non-optional view. */
+function expectView(result: SavedViewMutationResult): SavedView {
+  expect(result.ok).toBe(true);
+  if (result.view === undefined) {
+    throw new Error('expected a created view');
+  }
+  return result.view;
+}
 
 /** Reads the persisted state straight from storage (round-trip, not a spy). */
 function persisted(): SavedViewsState | null {
@@ -123,7 +132,9 @@ describe('useSavedViews', () => {
     const { result } = renderHook(() => useSavedViews());
     let created!: SavedView;
     act(() => {
-      created = result.current.create({ name: 'Old', view: 'grid', filter: EMPTY_QUERY }).view!;
+      created = expectView(
+        result.current.create({ name: 'Old', view: 'grid', filter: EMPTY_QUERY }),
+      );
     });
 
     let outcome!: ReturnType<typeof result.current.rename>;
@@ -140,7 +151,9 @@ describe('useSavedViews', () => {
     const { result } = renderHook(() => useSavedViews());
     let created!: SavedView;
     act(() => {
-      created = result.current.create({ name: 'Keep', view: 'grid', filter: EMPTY_QUERY }).view!;
+      created = expectView(
+        result.current.create({ name: 'Keep', view: 'grid', filter: EMPTY_QUERY }),
+      );
     });
 
     let outcome!: ReturnType<typeof result.current.rename>;
@@ -157,7 +170,9 @@ describe('useSavedViews', () => {
     const { result } = renderHook(() => useSavedViews());
     let created!: SavedView;
     act(() => {
-      created = result.current.create({ name: 'Gone', view: 'inbox', filter: EMPTY_QUERY }).view!;
+      created = expectView(
+        result.current.create({ name: 'Gone', view: 'inbox', filter: EMPTY_QUERY }),
+      );
     });
 
     act(() => {
@@ -172,7 +187,9 @@ describe('useSavedViews', () => {
     const { result } = renderHook(() => useSavedViews());
     let created!: SavedView;
     act(() => {
-      created = result.current.create({ name: 'Patch', view: 'grid', filter: EMPTY_QUERY }).view!;
+      created = expectView(
+        result.current.create({ name: 'Patch', view: 'grid', filter: EMPTY_QUERY }),
+      );
     });
 
     act(() => {

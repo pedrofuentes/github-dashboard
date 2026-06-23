@@ -118,7 +118,9 @@ describe('SavedViewsMenu', () => {
 
   it('shows inline feedback and does not clear input when create is rejected', async () => {
     const user = userEvent.setup();
-    const onCreate = vi.fn(() => ({ ok: false, error: 'Name is required.' }) as SavedViewMutationResult);
+    const onCreate = vi.fn(
+      () => ({ ok: false, error: 'Name is required.' }) as SavedViewMutationResult,
+    );
     renderMenu({ onCreate });
 
     await user.click(screen.getByRole('button', { name: /saved views/i }));
