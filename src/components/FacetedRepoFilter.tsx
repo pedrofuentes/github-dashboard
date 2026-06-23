@@ -360,6 +360,17 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
     );
   }, [visibleRepos.length]);
 
+  // Keep the active option visible (WCAG 2.4.7 Focus Visible, #469): the active
+  // descendant is the only visible keyboard-focus indicator, so scroll the
+  // highlighted repo into the listbox viewport whenever the active index moves
+  // while the panel is open. `'nearest'` avoids gratuitous motion.
+  useEffect(() => {
+    if (!expanded || activeIndex < 0 || activeIndex >= visibleRepos.length) {
+      return;
+    }
+    document.getElementById(`${optionBaseId}-${activeIndex}`)?.scrollIntoView({ block: 'nearest' });
+  }, [expanded, activeIndex, optionBaseId, visibleRepos.length]);
+
   const close = useCallback((returnFocus: boolean) => {
     setExpanded(false);
     setActiveIndex(-1);

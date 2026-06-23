@@ -168,6 +168,17 @@ export function CommandPalette({ open, onClose, commands, recents }: CommandPale
     };
   }, [open]);
 
+  // Keep the active option visible (WCAG 2.4.7 Focus Visible, #468): the active
+  // descendant is the only visible keyboard-focus indicator, so scroll it into
+  // the listbox viewport whenever the highlight moves while the palette is open.
+  // `'nearest'` avoids gratuitous motion and is a no-op when already visible.
+  useEffect(() => {
+    if (!open || activeIndex < 0 || activeIndex >= results.length) {
+      return;
+    }
+    document.getElementById(`${optionBaseId}-${activeIndex}`)?.scrollIntoView({ block: 'nearest' });
+  }, [open, activeIndex, optionBaseId, results.length]);
+
   if (!open) {
     return null;
   }
