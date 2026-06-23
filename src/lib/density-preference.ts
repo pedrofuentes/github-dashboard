@@ -3,7 +3,7 @@
  * Mirrors the defensive pattern in `view-preference.ts` / `theme-preference.ts`:
  * every read is validated and every failure (unavailable / corrupt storage)
  * degrades to the default rather than throwing. The toggle persists the
- * preference now; tiles consume it in a later task.
+ * preference and every {@link useDensity} consumer reads it live.
  */
 
 /** How densely the dashboard tiles present their content. */

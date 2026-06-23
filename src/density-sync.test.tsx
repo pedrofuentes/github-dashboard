@@ -14,6 +14,7 @@ import { DensityToggle } from './components/DensityToggle';
 import { FleetMatrix } from './components/FleetMatrix';
 import type { CommitActivityState } from './hooks/useCommitActivity';
 import { useCommitActivity } from './hooks/useCommitActivity';
+import { __resetDensityStoreForTests } from './hooks/useDensity';
 import type { GetRowData, Repo, RepoSignalData } from './types/fleet';
 
 vi.mock('./hooks/useCommitActivity', () => ({ useCommitActivity: vi.fn() }));
@@ -44,6 +45,7 @@ const getRowData: GetRowData = () => BROKEN;
 
 beforeEach(() => {
   localStorage.clear();
+  __resetDensityStoreForTests();
   mockActivity.mockReturnValue(OK_ACTIVITY);
 });
 

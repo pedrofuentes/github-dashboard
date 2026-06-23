@@ -2,12 +2,13 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadDensityPreference } from '../lib/density-preference';
-import { useDensity } from './useDensity';
+import { __resetDensityStoreForTests, useDensity } from './useDensity';
 
 const DENSITY_KEY = 'fleet:density';
 
 beforeEach(() => {
   localStorage.clear();
+  __resetDensityStoreForTests();
   vi.restoreAllMocks();
 });
 
