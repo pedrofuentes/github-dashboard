@@ -260,9 +260,11 @@ describe('DashboardView — keyboard reorder & resize', () => {
     // setLayout persists (debounced). Assert the stored value, not a spy count,
     // so the assertion is robust under Node 20's localStorage shim (see #122).
     await vi.waitFor(() => {
-      const raw = localStorage.getItem('fleet:dashboard-layout');
+      const raw = localStorage.getItem('fleet:dashboard-view:v2');
       expect(raw).not.toBeNull();
-      const tiles = JSON.parse(raw ?? '[]') as Array<{ i: string; x: number }>;
+      const { tiles } = JSON.parse(raw ?? 'null') as {
+        tiles: Array<{ i: string; x: number }>;
+      };
       const ci = tiles.find((tile) => tile.i === 'octo/a:ci');
       expect(ci?.x).toBe(1);
     });

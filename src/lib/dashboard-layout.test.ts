@@ -13,6 +13,8 @@ import {
 } from './dashboard-layout';
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+const LAYOUT_VERSION = 2;
 
 const SIGNALS: TileSignalType[] = [
   'ci',
@@ -184,7 +186,7 @@ describe('loadDashboardLayout', () => {
     saveDashboardLayout(saved);
 
     // Persistence actually wrote (not silently skipped by the schema cap).
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull();
     expect(loadDashboardLayout(repos)).toEqual(saved);
   });
 
@@ -408,11 +410,14 @@ describe('loadDashboardLayout', () => {
 });
 
 describe('saveDashboardLayout', () => {
-  it('persists the layout as JSON', () => {
+  it('persists the layout under the versioned v2 key as a {version, tiles} envelope', () => {
     const repos = [makeRepo('octo/a')];
     const layout = DEFAULT_LAYOUT(repos);
     saveDashboardLayout(layout);
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(layout);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: layout,
+    });
   });
 
   it('swallows localStorage.setItem throwing', () => {
@@ -427,16 +432,24 @@ describe('saveDashboardLayout', () => {
       { i: 'octo/a:ci', signal: 'ci', repo: 'octo/a', x: -5, y: 0, w: 3, h: 2, visible: true },
     ];
     saveDashboardLayout(invalid);
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 
 describe('resetDashboardLayout', () => {
-  it('removes the stored layout key', () => {
+  it('removes the versioned v2 key', () => {
     saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]));
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull();
+    resetDashboardLayout();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
+  });
+
+  it('also clears the legacy v1 key so the default is truly restored', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_LAYOUT([makeRepo('octo/a')])));
     resetDashboardLayout();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(loadDashboardLayout([makeRepo('octo/a')])).toEqual(DEFAULT_LAYOUT([makeRepo('octo/a')]));
   });
 
   it('swallows localStorage.removeItem throwing', () => {
@@ -444,5 +457,75 @@ describe('resetDashboardLayout', () => {
       throw new Error('blocked');
     });
     expect(() => resetDashboardLayout()).not.toThrow();
+  });
+});
+
+describe('versioned layout migration (v1 → v2)', () => {
+  it('loads a legacy v1 array unchanged (same tiles/positions) into the new shape', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    expect(loadDashboardLayout(repos)).toEqual(legacy);
+  });
+
+  it('persists a migrated v2 envelope on read while preserving the legacy key', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    loadDashboardLayout(repos);
+
+    // v2 is written with the same tiles...
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: legacy,
+    });
+    // ...and the legacy key is kept intact for rollback (NOT deleted).
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(legacy);
+  });
+
+  it('prefers the v2 envelope over the legacy key when both are present', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos);
+    const v2Tiles = legacy.map((tile) => (tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+    localStorage.setItem(
+      STORAGE_KEY_V2,
+      JSON.stringify({ version: LAYOUT_VERSION, tiles: v2Tiles }),
+    );
+
+    expect(loadDashboardLayout(repos)).toEqual(v2Tiles);
+  });
+
+  it('round-trips through the v2 envelope', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    const saved = DEFAULT_LAYOUT(repos);
+    saveDashboardLayout(saved);
+    expect(loadDashboardLayout(repos)).toEqual(saved);
+  });
+
+  it('falls back to the default on a corrupt v2 envelope', () => {
+    const repos = [makeRepo('octo/a')];
+    localStorage.setItem(STORAGE_KEY_V2, '{not json');
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default on a v2 envelope with the wrong version', () => {
+    const repos = [makeRepo('octo/a')];
+    localStorage.setItem(
+      STORAGE_KEY_V2,
+      JSON.stringify({ version: 99, tiles: DEFAULT_LAYOUT(repos) }),
+    );
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default on a v2 envelope whose tiles are invalid', () => {
+    const repos = [makeRepo('octo/a')];
+    localStorage.setItem(
+      STORAGE_KEY_V2,
+      JSON.stringify({ version: LAYOUT_VERSION, tiles: [{ i: 'x', signal: 'nope' }] }),
+    );
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
   });
 });

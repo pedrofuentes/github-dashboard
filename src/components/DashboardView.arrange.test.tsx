@@ -70,6 +70,7 @@ vi.mock('../hooks/useCommitActivity', () => ({
 const { DashboardView } = await import('./DashboardView');
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -79,7 +80,11 @@ function makeRepo(nameWithOwner: string): Repo {
 const emptyData: GetRowData = () => ({});
 
 function readPersisted(): DashboardTile[] {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as DashboardTile[];
+  const raw = localStorage.getItem(STORAGE_KEY_V2);
+  if (raw === null) {
+    return [];
+  }
+  return (JSON.parse(raw) as { tiles: DashboardTile[] }).tiles;
 }
 
 /**
@@ -258,7 +263,7 @@ describe('DashboardView — AC-13 arrange disabled while filtered', () => {
       act(() => {
         vi.advanceTimersByTime(400);
       });
-      expect(localStorage.getItem(STORAGE_KEY)).toBe(seeded);
+      expect(readPersisted()).toEqual(JSON.parse(seeded));
     } finally {
       vi.useRealTimers();
     }
