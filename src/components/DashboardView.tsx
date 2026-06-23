@@ -126,11 +126,12 @@ export function DashboardView({
   error = null,
   onRetry,
 }: DashboardViewProps): ReactElement {
-  // A narrowing repo filter is active only when a non-empty selection is set.
-  // The tile projection below is purely presentational; while it is active every
-  // arrange affordance is also guarded so a filtered (partial) layout can never
-  // be compacted and persisted over the real geometry (red-team B1).
-  const filterActive = repoFilter !== undefined && repoFilter.size > 0;
+  // A narrowing repo filter is active whenever a Set is provided — including an
+  // EMPTY one. `repoFilter === undefined` is the only "no filter" state (whole
+  // fleet, arrange enabled); any defined Set narrows the projection (an empty Set
+  // matches nothing ⇒ 0 tiles), making the App↔DashboardView contract explicit so
+  // a zero-match query can never re-show the fleet or re-enable arrange (ADR-025).
+  const filterActive = repoFilter !== undefined;
   // Drag, resize, the keyboard rail and the editing visual all gate on this so a
   // filtered layout can be neither rearranged nor compacted.
   const editControlsActive = editing && !filterActive;
@@ -174,10 +175,12 @@ export function DashboardView({
         continue;
       }
       // Presentational repo-scope projection: drop tiles whose repo is outside a
-      // non-empty selection. Applied AFTER the visibility check and BEFORE the
+      // defined selection. Applied AFTER the visibility check and BEFORE the
       // RGL layout is built, so it never mutates `layout` or `visible` (AC-7).
-      // An empty selection (size 0) means "all shown", so it filters nothing.
-      if (repoFilter !== undefined && repoFilter.size > 0 && !repoFilter.has(tile.repo)) {
+      // A defined-but-empty selection matches nothing, so it filters EVERY tile
+      // (zero-match ⇒ 0 tiles); `undefined` means "no filter" and is handled by
+      // the guard above (this block is skipped entirely).
+      if (repoFilter !== undefined && !repoFilter.has(tile.repo)) {
         continue;
       }
       const repo = repoIndex.get(tile.repo);

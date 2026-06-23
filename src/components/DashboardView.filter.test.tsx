@@ -97,7 +97,7 @@ describe('DashboardView — repo-filter projection', () => {
     expect(screen.queryByRole('button', { name: /: .*octo\/b/i })).toBeNull();
   });
 
-  it('renders the whole fleet when no filter is active (empty selection ⇒ all shown)', () => {
+  it('renders the whole fleet when no filter is active (undefined ⇒ all shown)', () => {
     const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
     render(
       <DashboardView
@@ -106,7 +106,7 @@ describe('DashboardView — repo-filter projection', () => {
         onRepoActivate={vi.fn()}
         layout={DEFAULT_LAYOUT(repos)}
         onLayoutChange={vi.fn()}
-        repoFilter={new Set()}
+        repoFilter={undefined}
       />,
     );
     expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBe(7);
@@ -130,13 +130,13 @@ describe('DashboardView — repo-filter projection', () => {
       onLayoutChange,
     };
 
-    const { rerender } = render(<DashboardView {...props} repoFilter={new Set()} />);
+    const { rerender } = render(<DashboardView {...props} repoFilter={undefined} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
     rerender(<DashboardView {...props} repoFilter={new Set(['octo/a'])} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
-    rerender(<DashboardView {...props} repoFilter={new Set()} />);
+    rerender(<DashboardView {...props} repoFilter={undefined} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
     // The filter is purely presentational: it never called the layout setter, and
@@ -180,7 +180,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
     repoFilter,
   }: {
     repos: Repo[];
-    repoFilter: Set<string>;
+    repoFilter: Set<string> | undefined;
   }): ReactElement {
     const { layout, setLayout } = useDashboardLayout(repos);
     return (
@@ -227,7 +227,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
       const seeded = JSON.stringify(DEFAULT_LAYOUT(repos));
       localStorage.setItem(STORAGE_KEY, seeded);
 
-      render(<GuardHarness repos={repos} repoFilter={new Set()} />);
+      render(<GuardHarness repos={repos} repoFilter={undefined} />);
       fireEvent.click(screen.getByText('rgl-emit-change'));
       act(() => {
         vi.advanceTimersByTime(400);
@@ -268,7 +268,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
         onRepoActivate={vi.fn()}
         layout={DEFAULT_LAYOUT(repos)}
         onLayoutChange={vi.fn()}
-        repoFilter={new Set()}
+        repoFilter={undefined}
         editing
       />,
     );
@@ -470,8 +470,8 @@ describe('DashboardView — hideRepoHeader derivation reaches the tiles (#335)',
     }
   });
 
-  it('keeps the visible repo header when no filter is active (empty selection ⇒ all shown)', () => {
-    renderFiltered(new Set());
+  it('keeps the visible repo header when no filter is active (undefined ⇒ all shown)', () => {
+    renderFiltered(undefined);
 
     for (const name of ['octo/a', 'octo/b']) {
       const headings = screen.getAllByRole('heading', { level: 3, name });
