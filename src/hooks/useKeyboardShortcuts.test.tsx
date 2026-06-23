@@ -124,6 +124,48 @@ describe('useKeyboardShortcuts', () => {
     expect(handlers.navigate).not.toHaveBeenCalled();
   });
 
+  it('ignores keydown events that carry altKey', () => {
+    const handlers = makeSpies();
+    render(<Harness handlers={handlers} />);
+
+    press('g', { altKey: true });
+    press('i', { altKey: true });
+
+    expect(handlers.navigate).not.toHaveBeenCalled();
+    expect(handlers.openHelp).not.toHaveBeenCalled();
+    expect(handlers.openSettings).not.toHaveBeenCalled();
+  });
+
+  it('resets a pending "g" prefix when Escape is pressed', () => {
+    const handlers = makeSpies();
+    render(<Harness handlers={handlers} />);
+
+    press('g');
+    press('Escape');
+    press('i');
+
+    expect(handlers.navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not act while a modal is open, but resumes once it closes', () => {
+    const handlers = makeSpies();
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(modal);
+    render(<Harness handlers={handlers} />);
+
+    press('g');
+    press('i');
+    expect(handlers.navigate).not.toHaveBeenCalled();
+
+    modal.remove();
+
+    press('g');
+    press('i');
+    expect(handlers.navigate).toHaveBeenCalledTimes(1);
+    expect(handlers.navigate).toHaveBeenCalledWith('inbox');
+  });
+
   it('removes its keydown listener on unmount', () => {
     const removeSpy = vi.spyOn(window, 'removeEventListener');
     const handlers = makeSpies();

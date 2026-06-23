@@ -5,6 +5,9 @@
  * sequences (e.g. `g i` → Inbox), `?` → help, and `,` → Settings.
  *
  * Guards (so shortcuts never hijack typing or browser/OS chords):
+ * - while any modal is open (an element with `aria-modal="true"`, e.g. the help
+ *   or settings overlay or the ⌘K palette), all shortcuts are suppressed so they
+ *   never act on the content behind the modal;
  * - events whose target is an `<input>`, `<textarea>`, `<select>` or a
  *   `contenteditable` element are ignored — EXCEPT `Escape`, which always
  *   resets a half-typed sequence;
@@ -68,6 +71,15 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers): void {
     }
 
     function handleKeyDown(event: KeyboardEvent): void {
+      // While any modal is open (help/settings overlays or the ⌘K palette, all
+      // of which set `aria-modal="true"`), suppress global shortcuts so they
+      // never act on the content behind the modal. The pending `g` prefix is
+      // reset so a half-typed sequence cannot survive across the modal.
+      if (document.querySelector('[aria-modal="true"]') !== null) {
+        pending = null;
+        clearTimer();
+        return;
+      }
       // Escape always cancels a half-typed sequence, even from within an input.
       if (event.key === 'Escape') {
         pending = null;
