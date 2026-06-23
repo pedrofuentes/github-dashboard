@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Rule-based dashboard customization**: the **Customize dashboard** panel now
+  shapes the board with signal *rules* instead of a per-repo checkbox grind.
+  Seven tri-state signal toggles each show or hide that signal across **every**
+  repository at once (with a live "shown of total" status), backed by bulk
+  **Show all tiles**, **Hide all tiles**, and **Show only selected** actions. A
+  repository search still surfaces targeted per-repo tile overrides and display
+  aliases for power users, and **Reset to default layout** plus the dialog's
+  focus-trap/`Esc`/return-focus accessibility are unchanged.
 - **Settings overlay**: the previously scattered preference controls — the
   header **Theme** and **Density** toggles, the toolbar **Default view** control,
   and the authenticated-as / **Forget token** account bar — are now consolidated
