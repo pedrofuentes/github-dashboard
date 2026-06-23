@@ -8,6 +8,7 @@ import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FacetedRepoFilter } from './components/FacetedRepoFilter';
 import { FleetGrid } from './components/FleetGrid';
+import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
@@ -124,6 +125,18 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
     [repos, getRowData],
   );
 
+  // The matrix and the dashboard both honour the active faceted filter. When the
+  // filter narrows the fleet, the matrix renders ONLY the matching repos; with
+  // no active filter it shows the whole fleet. Memoised so the matrix's own
+  // worst-first model only recomputes when the fleet or selection changes.
+  const matrixRepos = useMemo(
+    () =>
+      filter.isActive
+        ? repos.filter((repo) => filter.derivedSelected.has(repo.nameWithOwner))
+        : repos,
+    [repos, filter.isActive, filter.derivedSelected],
+  );
+
   // Advance the "last visited" watermark once per Inbox visit, but only after the
   // signals have settled so the hook's triage GC runs against the real live ids
   // (never the transiently-empty set of the load window, which would drop every
@@ -176,9 +189,20 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
               <FacetedRepoFilter repos={repos} filter={filter} />
               <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
             </>
+          ) : view === 'matrix' ? (
+            <FacetedRepoFilter repos={repos} filter={filter} />
           ) : null}
         </div>
-        {view === 'dashboard' ? (
+        {view === 'matrix' ? (
+          <FleetMatrix
+            repos={matrixRepos}
+            getRowData={getRowData}
+            onRepoActivate={handleRepoActivate}
+            loading={status === 'loading'}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+          />
+        ) : view === 'dashboard' ? (
           <>
             <DashboardView
               repos={repos}
@@ -265,6 +289,7 @@ interface ViewToggleProps {
 }
 
 const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
+  { value: 'matrix', label: 'Matrix' },
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Dashboard' },
   { value: 'inbox', label: 'Inbox' },

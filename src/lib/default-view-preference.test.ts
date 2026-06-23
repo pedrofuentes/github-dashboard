@@ -16,8 +16,8 @@ afterEach(() => {
 });
 
 describe('loadDefaultView', () => {
-  it('defaults to "dashboard" when nothing is stored', () => {
-    expect(loadDefaultView()).toBe('dashboard');
+  it('defaults to "matrix" when nothing is stored', () => {
+    expect(loadDefaultView()).toBe('matrix');
   });
 
   it('reads a stored "grid" default', () => {
@@ -35,16 +35,21 @@ describe('loadDefaultView', () => {
     expect(loadDefaultView()).toBe('inbox');
   });
 
-  it('falls back to "dashboard" for an unrecognised value', () => {
-    localStorage.setItem(DEFAULT_VIEW_KEY, 'cards');
-    expect(loadDefaultView()).toBe('dashboard');
+  it('reads a stored "matrix" default', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'matrix');
+    expect(loadDefaultView()).toBe('matrix');
   });
 
-  it('falls back to "dashboard" when localStorage.getItem throws', () => {
+  it('falls back to "matrix" for an unrecognised value', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'cards');
+    expect(loadDefaultView()).toBe('matrix');
+  });
+
+  it('falls back to "matrix" when localStorage.getItem throws', () => {
     vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    expect(loadDefaultView()).toBe('dashboard');
+    expect(loadDefaultView()).toBe('matrix');
   });
 });
 
@@ -75,10 +80,11 @@ describe('saveDefaultView', () => {
 
 // Folded guard coverage (view-preference.test.ts is deleted in a later PR).
 describe('isFleetView', () => {
-  it('accepts the three valid views', () => {
+  it('accepts the four valid views', () => {
     expect(isFleetView('grid')).toBe(true);
     expect(isFleetView('dashboard')).toBe(true);
     expect(isFleetView('inbox')).toBe(true);
+    expect(isFleetView('matrix')).toBe(true);
   });
 
   it('rejects unknown values and null', () => {
