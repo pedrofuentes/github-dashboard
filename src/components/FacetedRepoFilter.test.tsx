@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
 import { FacetedRepoFilter } from './FacetedRepoFilter';
@@ -47,6 +47,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('FacetedRepoFilter', () => {
@@ -382,5 +383,50 @@ describe('FacetedRepoFilter', () => {
 
     // No filters applied yet ⇒ no recent filters group.
     expect(screen.queryByRole('group', { name: /recent filters/i })).toBeNull();
+  });
+});
+
+// #469 — WCAG 2.4.7 Focus Visible: arrowing past the ~7 visible rows of the
+// max-h-40 listbox moves the active descendant (the only visible keyboard-focus
+// indicator) out of view. These tests assert the scroll *contract* (jsdom has
+// no layout): scrollIntoView({ block: 'nearest' }) fires on the CORRECT active
+// option, and never when the panel is closed or no option is active.
+describe('FacetedRepoFilter active-option visibility (WCAG 2.4.7)', () => {
+  function searchBox(): HTMLElement {
+    return screen.getByRole('combobox', { name: /search repositories/i });
+  }
+
+  it('scrolls the active repository option into view as the highlight moves', async () => {
+    const user = userEvent.setup();
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<Harness />);
+    await user.click(disclosure());
+    const listbox = screen.getByRole('listbox', { name: /matching repositories/i });
+    scrollSpy.mockClear();
+
+    await user.type(searchBox(), '{ArrowDown}{ArrowDown}');
+
+    const active = within(listbox).getAllByRole('option')[1];
+    expect(active).toHaveAttribute('aria-selected', 'true');
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollSpy.mock.instances[scrollSpy.mock.instances.length - 1]).toBe(active);
+  });
+
+  it('does not scroll while the panel is closed', () => {
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    render(<Harness />);
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not scroll when the panel opens with no active option', async () => {
+    const user = userEvent.setup();
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<Harness />);
+
+    await user.click(disclosure());
+
+    expect(scrollSpy).not.toHaveBeenCalled();
   });
 });

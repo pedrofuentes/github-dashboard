@@ -301,3 +301,61 @@ describe('CommandPalette keyboard model', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 });
+
+// #468 — WCAG 2.4.7 Focus Visible: the active descendant is the only visible
+// keyboard-focus indicator, so moving the highlight past the scroll viewport
+// must scroll it back into view. These tests assert the scroll *contract*
+// (jsdom has no layout): scrollIntoView({ block: 'nearest' }) is called on the
+// CORRECT (active) option element, and never when there is no active option.
+describe('CommandPalette active-option visibility (WCAG 2.4.7)', () => {
+  it('scrolls the newly active option into view on ArrowDown', async () => {
+    const user = userEvent.setup();
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+    await screen.findByRole('combobox');
+    scrollSpy.mockClear();
+
+    await user.keyboard('{ArrowDown}');
+
+    const active = screen.getAllByRole('option')[1];
+    expect(active).toHaveAttribute('aria-selected', 'true');
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollSpy.mock.instances[scrollSpy.mock.instances.length - 1]).toBe(active);
+  });
+
+  it('scrolls the last option into view on End', async () => {
+    const user = userEvent.setup();
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+    await screen.findByRole('combobox');
+    scrollSpy.mockClear();
+
+    await user.keyboard('{End}');
+
+    const options = screen.getAllByRole('option');
+    const last = options[options.length - 1];
+    expect(last).toHaveAttribute('aria-selected', 'true');
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollSpy.mock.instances[scrollSpy.mock.instances.length - 1]).toBe(last);
+  });
+
+  it('does not scroll while the palette is closed', () => {
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    render(<CommandPalette open={false} onClose={vi.fn()} commands={makeCommands()} />);
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not scroll when navigating with no matching options', async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+    const input = await screen.findByRole('combobox');
+    await user.type(input, 'zzzzzz');
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    await user.keyboard('{ArrowDown}');
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+});

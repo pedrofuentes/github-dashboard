@@ -69,3 +69,17 @@ class ResizeObserverStub {
 if (typeof (globalThis as Record<string, unknown>).ResizeObserver === 'undefined') {
   (globalThis as Record<string, unknown>).ResizeObserver = ResizeObserverStub;
 }
+
+/**
+ * `Element.prototype.scrollIntoView` stub for the jsdom environment.
+ *
+ * jsdom does not implement `scrollIntoView` (it is `undefined` and throws when
+ * called). The `aria-activedescendant` listboxes (CommandPalette,
+ * FacetedRepoFilter) call it to keep the active option within the scroll
+ * viewport (WCAG 2.4.7). The no-op stub lets those effects run under test
+ * without crashing; individual tests spy on it (`vi.spyOn`) to assert the
+ * scroll contract.
+ */
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+}
