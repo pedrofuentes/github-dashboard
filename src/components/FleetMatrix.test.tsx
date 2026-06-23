@@ -49,6 +49,12 @@ const HEALTHY: RepoSignalData = {
   ci: { status: 'ready', conclusion: 'success' },
 };
 
+/** A "warning" repo (has a stale item). */
+const WARNING: RepoSignalData = {
+  ci: { status: 'ready', conclusion: 'success' },
+  stale: { status: 'ready', staleCount: 1 },
+};
+
 function rowDataFor(map: Record<string, RepoSignalData>): GetRowData {
   return (r) => map[r.nameWithOwner] ?? EMPTY;
 }
@@ -229,5 +235,128 @@ describe('FleetMatrix states', () => {
     render(<FleetMatrix repos={[]} getRowData={() => EMPTY} />);
     expect(screen.getByText(/no repositories/i)).toBeInTheDocument();
     expect(screen.queryAllByRole('rowheader')).toHaveLength(0);
+  });
+});
+
+describe('FleetMatrix health groups', () => {
+  it('renders group header rows with correct band label and count', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/broken2': BROKEN,
+      'octo/healthy1': HEALTHY,
+    });
+    const repos = [repo('octo/broken1'), repo('octo/broken2'), repo('octo/healthy1')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    expect(screen.getByRole('button', { name: /broken.*2/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /healthy.*1/i })).toBeInTheDocument();
+  });
+
+  it('collapses Healthy group by default (its repo rows are absent from DOM)', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/healthy1': HEALTHY,
+      'octo/healthy2': HEALTHY,
+    });
+    const repos = [repo('octo/broken1'), repo('octo/healthy1'), repo('octo/healthy2')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Broken row should be visible
+    expect(screen.getByRole('rowheader', { name: /octo\/broken1/i })).toBeInTheDocument();
+    // Healthy rows should NOT be in the DOM
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy2/i })).toBeNull();
+  });
+
+  it('expands Healthy group when its toggle button is clicked', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({
+      'octo/healthy1': HEALTHY,
+      'octo/healthy2': HEALTHY,
+    });
+    const repos = [repo('octo/healthy1'), repo('octo/healthy2')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Initially collapsed
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+
+    // Click toggle
+    await user.click(screen.getByRole('button', { name: /healthy.*2/i }));
+
+    // Now visible
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy2/i })).toBeInTheDocument();
+  });
+
+  it('updates aria-expanded when toggling a group', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({ 'octo/healthy1': HEALTHY });
+    render(<FleetMatrix repos={[repo('octo/healthy1')]} getRowData={getRowData} />);
+
+    const toggle = screen.getByRole('button', { name: /healthy.*1/i });
+
+    // Initially collapsed (Healthy default)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Expand
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    // Collapse again
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('renders Broken and Warning groups expanded by default', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/warning1': { ci: { status: 'ready', conclusion: 'success' }, stale: { status: 'ready', staleCount: 1 } },
+    });
+    const repos = [repo('octo/broken1'), repo('octo/warning1')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Both groups should have their rows visible
+    expect(screen.getByRole('rowheader', { name: /octo\/broken1/i })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /octo\/warning1/i })).toBeInTheDocument();
+
+    // Verify aria-expanded
+    expect(screen.getByRole('button', { name: /broken.*1/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /warning.*1/i })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('allows drill-down on visible rows within expanded groups', async () => {
+    const user = userEvent.setup();
+    const onRepoActivate = vi.fn();
+    const getRowData = rowDataFor({ 'octo/broken1': BROKEN });
+    render(
+      <FleetMatrix
+        repos={[repo('octo/broken1')]}
+        getRowData={getRowData}
+        onRepoActivate={onRepoActivate}
+      />,
+    );
+
+    // Click the repo row (not the group header)
+    await user.click(screen.getByRole('button', { name: /view details for octo\/broken1/i }));
+
+    expect(onRepoActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ nameWithOwner: 'octo/broken1' }),
+    );
+  });
+
+  it('supports keyboard navigation (Enter/Space) on group toggle buttons', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({ 'octo/healthy1': HEALTHY });
+    render(<FleetMatrix repos={[repo('octo/healthy1')]} getRowData={getRowData} />);
+
+    const toggle = screen.getByRole('button', { name: /healthy.*1/i });
+    toggle.focus();
+
+    // Initially collapsed
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+
+    // Expand with Enter
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
   });
 });
