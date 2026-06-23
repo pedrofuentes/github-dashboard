@@ -958,4 +958,98 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
   });
+
+  // The faceted repo filter is a GLOBAL scope (ADR-027): the active filter must
+  // narrow EVERY view — including Grid and Inbox — and the filter control must be
+  // reachable from those views, exactly as it already is for Matrix/Triage.
+  describe('global repo scope (ADR-027)', () => {
+    function inboxItemsList(): HTMLElement {
+      return screen.getByRole('list', { name: /inbox items/i });
+    }
+
+    it('offers the faceted repo filter control on the Grid view', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      expect(screen.getByRole('button', { name: /filter repositories/i })).toBeInTheDocument();
+    });
+
+    it('offers the faceted repo filter control on the Inbox view', async () => {
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      expect(screen.getByRole('button', { name: /filter repositories/i })).toBeInTheDocument();
+    });
+
+    it('narrows the Grid rows via the faceted repo filter', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      // No filter: every repo is a row.
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: /octo\/beta/i })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'alpha');
+
+      // Active filter: only the matching repo row remains.
+      await waitFor(() =>
+        expect(screen.queryByRole('rowheader', { name: /octo\/beta/i })).toBeNull(),
+      );
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+    });
+
+    it('narrows the Inbox items via the faceted repo filter', async () => {
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      // No filter: one failing-CI item per repo.
+      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'alpha');
+
+      // Active filter: only the matching repo's item survives.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+      const list = inboxItemsList();
+      expect(within(list).getByText('octo/alpha')).toBeInTheDocument();
+      expect(within(list).queryByText('octo/beta')).toBeNull();
+    });
+
+    it('shows all repos in Grid and Inbox when no filter is active', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      // Grid: every repo without a filter.
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: /octo\/beta/i })).toBeInTheDocument();
+
+      // Inbox: every repo's item without a filter.
+      await user.click(inboxToggleButton());
+      await screen.findByRole('region', { name: /notifications inbox/i });
+      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+    });
+  });
 });
