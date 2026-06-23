@@ -11,8 +11,8 @@ import type { FleetView } from './view-preference';
 
 const DEFAULT_VIEW_KEY = 'fleet:default-view';
 
-/** The fleet matrix (ADR-026) is the out-of-the-box scannable landing surface. */
-const FALLBACK_DEFAULT_VIEW: FleetView = 'matrix';
+/** Triage (ADR-030) is the default home that answers "what needs me now?". */
+const FALLBACK_DEFAULT_VIEW: FleetView = 'triage';
 
 function safeGet(key: string): string | null {
   try {
@@ -30,7 +30,7 @@ function safeSet(key: string, value: string): void {
   }
 }
 
-/** Reads the stored default view, defaulting to `'matrix'` on any problem. */
+/** Reads the stored default view, defaulting to `'triage'` on any problem. */
 export function loadDefaultView(): FleetView {
   const raw = safeGet(DEFAULT_VIEW_KEY);
   return isFleetView(raw) ? raw : FALLBACK_DEFAULT_VIEW;
