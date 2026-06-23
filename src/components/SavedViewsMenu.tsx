@@ -32,6 +32,8 @@ import {
 interface SavedViewsMenuProps {
   /** The user's saved views (typically from {@link useSavedViews}). */
   views: SavedView[];
+  /** Read-only built-in starter views, rendered apply-only above the saved set. */
+  presets?: SavedView[];
   /** The live repo filter, captured when saving a new view. */
   currentFilter: RepoFilterQueryV2;
   /** The live target view, captured when saving a new view. */
@@ -178,6 +180,7 @@ function SavedViewRow({
 
 export function SavedViewsMenu({
   views,
+  presets,
   currentFilter,
   currentView,
   onApply,
@@ -348,40 +351,70 @@ export function SavedViewsMenu({
           onKeyDown={handlePanelKeyDown}
           className="absolute left-0 top-full z-20 mt-1 flex w-80 flex-col gap-3 rounded-md border border-border-strong bg-surface-overlay p-3 shadow-lg transition motion-reduce:transition-none"
         >
-          {views.length === 0 ? (
-            <p className="px-1 text-sm text-text-muted">
-              No saved views yet — save your current filter to get started.
+          {presets !== undefined && presets.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <p className="px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Presets
+              </p>
+              <ul
+                aria-label="View presets"
+                className="flex max-h-48 flex-col gap-0.5 overflow-auto"
+              >
+                {presets.map((preset) => (
+                  <li key={preset.id} className="rounded px-1 py-1 hover:bg-surface-raised">
+                    <button
+                      type="button"
+                      onClick={() => handleApply(preset)}
+                      aria-label={`Apply preset ${preset.name}`}
+                      className={`w-full truncate rounded px-1.5 py-1 text-left text-sm text-text hover:bg-surface-hover ${FOCUS_RING}`}
+                    >
+                      {preset.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1">
+            <p className="px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              Saved views
             </p>
-          ) : (
-            <ul aria-label="Saved views" className="flex max-h-72 flex-col gap-0.5 overflow-auto">
-              {views.map((view) => (
-                <SavedViewRow
-                  key={view.id}
-                  view={view}
-                  isRenaming={renamingId === view.id}
-                  isConfirmingDelete={confirmingDeleteId === view.id}
-                  renameError={renamingId === view.id ? renameError : null}
-                  onApply={() => handleApply(view)}
-                  onStartRename={() => {
-                    setRenamingId(view.id);
-                    setRenameError(null);
-                    setConfirmingDeleteId(null);
-                  }}
-                  onCancelRename={() => {
-                    setRenamingId(null);
-                    setRenameError(null);
-                  }}
-                  onSubmitRename={(nextName) => handleSubmitRename(view.id, nextName)}
-                  onStartDelete={() => {
-                    setConfirmingDeleteId(view.id);
-                    setRenamingId(null);
-                  }}
-                  onCancelDelete={() => setConfirmingDeleteId(null)}
-                  onConfirmDelete={() => handleConfirmDelete(view)}
-                />
-              ))}
-            </ul>
-          )}
+            {views.length === 0 ? (
+              <p className="px-1 text-sm text-text-muted">
+                No saved views yet — save your current filter to get started.
+              </p>
+            ) : (
+              <ul aria-label="Saved views" className="flex max-h-72 flex-col gap-0.5 overflow-auto">
+                {views.map((view) => (
+                  <SavedViewRow
+                    key={view.id}
+                    view={view}
+                    isRenaming={renamingId === view.id}
+                    isConfirmingDelete={confirmingDeleteId === view.id}
+                    renameError={renamingId === view.id ? renameError : null}
+                    onApply={() => handleApply(view)}
+                    onStartRename={() => {
+                      setRenamingId(view.id);
+                      setRenameError(null);
+                      setConfirmingDeleteId(null);
+                    }}
+                    onCancelRename={() => {
+                      setRenamingId(null);
+                      setRenameError(null);
+                    }}
+                    onSubmitRename={(nextName) => handleSubmitRename(view.id, nextName)}
+                    onStartDelete={() => {
+                      setConfirmingDeleteId(view.id);
+                      setRenamingId(null);
+                    }}
+                    onCancelDelete={() => setConfirmingDeleteId(null)}
+                    onConfirmDelete={() => handleConfirmDelete(view)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
 
           <div className="flex flex-col gap-1.5 border-t border-border pt-3">
             <label htmlFor={nameInputId} className="text-xs font-medium text-text-muted">

@@ -10,6 +10,7 @@ import { FacetedRepoFilter } from './components/FacetedRepoFilter';
 import { FleetGrid } from './components/FleetGrid';
 import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
+import { SavedViewsMenu } from './components/SavedViewsMenu';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { TokenInput } from './components/TokenInput';
 import { TriageView } from './components/TriageView';
@@ -24,11 +25,14 @@ import { useInbox } from './hooks/useInbox';
 import { useRepoFilterQuery } from './hooks/useRepoFilterQuery';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
+import { useSavedViews } from './hooks/useSavedViews';
 import { useTheme } from './hooks/useTheme';
 import { addCommandRecent, createCommandRecentsStore } from './lib/command-recents';
 import { buildCommandRegistry } from './lib/commands';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
+import type { SavedView } from './lib/saved-views';
 import type { VersionedStore } from './lib/versioned-storage';
+import { buildViewPresets } from './lib/view-presets';
 import type { FleetView } from './lib/view-preference';
 import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
@@ -198,6 +202,8 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
   const { layout, setLayout, reset } = useDashboardLayout(repos);
   const aliases = useAliases(repos);
   const filter = useRepoFilterQuery(repos, getRowData);
+  const saved = useSavedViews();
+  const presets = useMemo(() => buildViewPresets(), []);
   const inbox = useInbox(repos, getRowData);
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
@@ -261,6 +267,18 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
   // Closing the CustomizePanel (Esc, backdrop, ✕) leaves edit mode, which also
   // unmounts the panel via the `editing` coupling and returns focus to the opener.
   const handleCloseCustomize = useCallback(() => setEditing(false), []);
+
+  // Applying a saved view (or built-in preset) atomically restores its repo
+  // filter and switches to its target view — the visible payoff of Saved Views.
+  // `sort`/`density` are not centrally tracked here, so only filter + view are
+  // restored (matching what the menu captures on save).
+  const handleApplySavedView = useCallback(
+    (savedView: SavedView) => {
+      filter.applyQuery(savedView.filter);
+      onViewChange(savedView.view);
+    },
+    [filter, onViewChange],
+  );
 
   // ⌘K command palette: a global, app-wide command surface. The hook owns the
   // open state + the ⌘K/Ctrl-K listener; the registry below maps existing
@@ -343,14 +361,20 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
+          <FacetedRepoFilter repos={repos} filter={filter} />
           {view === 'dashboard' ? (
-            <>
-              <FacetedRepoFilter repos={repos} filter={filter} />
-              <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
-            </>
-          ) : (
-            <FacetedRepoFilter repos={repos} filter={filter} />
-          )}
+            <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+          ) : null}
+          <SavedViewsMenu
+            views={saved.views}
+            presets={presets}
+            currentFilter={filter.query}
+            currentView={view}
+            onApply={handleApplySavedView}
+            onCreate={saved.create}
+            onRename={saved.rename}
+            onRemove={saved.remove}
+          />
         </div>
         {view === 'triage' ? (
           <TriageView

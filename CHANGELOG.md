@@ -29,8 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   disclosure (backed by the `useSavedViews` hook) lets you save the current repo
   filter + target view as a named workspace and apply, rename, or delete saved
   views. Names are validated (non-empty, bounded length) before persisting, with
-  inline feedback. Standalone for now — wiring it into the app toolbar is a
-  follow-up.
+  inline feedback.
+- **Saved Views in the toolbar + built-in presets**: the Saved Views menu is now
+  mounted in the app toolbar for every view, wired to the live filter and target
+  view, so you can save the current scope and apply, rename, or delete views from
+  anywhere. It also ships six read-only starter **presets** (Needs attention,
+  Awaiting my review, Failing CI, Security risk, Stale, All repositories) — each
+  applies a sensible filter + view in one click, making the menu useful out of
+  the box.
 - **Global repo scope across all views**: the faceted repo filter is now a
   single global scope (ADR-027). Activating it narrows **every** primary view —
   including the Grid table and the Notifications Inbox, which previously ignored
