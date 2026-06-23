@@ -463,10 +463,27 @@ describe('resetDashboardLayout', () => {
 describe('versioned layout migration (v1 → v2)', () => {
   it('loads a legacy v1 array unchanged (same tiles/positions) into the new shape', () => {
     const repos = [makeRepo('octo/a')];
-    const legacy = DEFAULT_LAYOUT(repos);
+    // Seed a NON-DEFAULT legacy layout so the assertion can distinguish a working
+    // migration from a fallback to DEFAULT_LAYOUT. Mutate one tile's position and
+    // flip another's visibility to clearly non-default values.
+    const legacy = DEFAULT_LAYOUT(repos).map((tile) => {
+      if (tile.signal === 'ci') return { ...tile, x: 6, y: 8 };
+      if (tile.signal === 'security') return { ...tile, visible: false };
+      return tile;
+    });
+    // Guard: the fixture must actually differ from the default, otherwise the test
+    // would silently revert to being tautological.
+    expect(legacy).not.toEqual(DEFAULT_LAYOUT(repos));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
 
+    // The migrated tiles must equal the seeded non-default layout — if migration
+    // fell back to DEFAULT_LAYOUT, this fails.
     expect(loadDashboardLayout(repos)).toEqual(legacy);
+    // And the migration persists those same non-default tiles under the v2 key.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: legacy,
+    });
   });
 
   it('persists a migrated v2 envelope on read while preserving the legacy key', () => {
