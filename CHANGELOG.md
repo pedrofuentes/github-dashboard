@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Global repo scope across all views**: the faceted repo filter is now a
+  single global scope (ADR-027). Activating it narrows **every** primary view —
+  including the Grid table and the Notifications Inbox, which previously ignored
+  it — and the filter control is now available on those views too, matching the
+  existing Matrix/Triage placement. The Inbox's per-device triage and fleet-wide
+  unread badge are unchanged (scope narrows what's shown, not what's stored), and
+  the Boards filter-gating (ADR-025) is untouched.
 - **Rule-based dashboard customization**: the **Customize dashboard** panel now
   shapes the board with signal *rules* instead of a per-repo checkbox grind.
   Seven tri-state signal toggles each show or hide that signal across **every**
