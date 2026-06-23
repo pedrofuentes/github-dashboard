@@ -171,4 +171,102 @@ describe('FacetedRepoFilter', () => {
 
     expect(live).toHaveTextContent(/1 repository/i);
   });
+
+  it('shows an empty-state option when no repository matches the search', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    await user.type(screen.getByRole('combobox', { name: /search repositories/i }), 'zzzznope');
+
+    const listbox = screen.getByRole('listbox', { name: /matching repositories/i });
+    expect(within(listbox).getByText(/no repositories match/i)).toBeInTheDocument();
+    expect(screen.getByTestId('repo-filter-live')).toHaveTextContent(/0 repositories/i);
+  });
+
+  it('scopes to a single owner via the owner facet', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Two repos belong to octo, one to acme.
+    await user.click(screen.getByRole('checkbox', { name: /^octo \(2\)/i }));
+
+    expect(screen.getByText(/2 repos · 1 filter/i)).toBeInTheDocument();
+  });
+
+  it('selects and clears all owners with the bulk controls', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    await user.click(screen.getByRole('button', { name: /select all owners/i }));
+    // All owners selected ⇒ every repo still matches (2 owners as chips).
+    expect(screen.getByText(/3 repos · 2 filters/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /^octo \(2\)/i })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /^acme \(1\)/i })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: /no owners/i }));
+    expect(screen.getByText('All repositories')).toBeInTheDocument();
+  });
+
+  it('inverts the visible selection into an include pin set', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // No pins yet ⇒ everything is selected; inverting pins the complement (none).
+    await user.click(screen.getByRole('combobox', { name: /search repositories/i }));
+    await user.keyboard('{ArrowDown}{Enter}'); // pin octo/alpha (include mode)
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+
+    // Inverting over the (all) visible repos now selects the other two.
+    await user.click(screen.getByRole('button', { name: /invert visible/i }));
+    expect(screen.getByText(/2 repos · 2 filters/i)).toBeInTheDocument();
+  });
+
+  it('toggles non-owner facets (visibility) and reflects them as chips', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Only acme/gamma is private in the fixture.
+    await user.click(screen.getByRole('checkbox', { name: /^private$/i }));
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove private filter/i })).toBeInTheDocument();
+  });
+
+  it('wraps ArrowUp navigation to the last option', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    const search = screen.getByRole('combobox', { name: /search repositories/i });
+    await user.click(search);
+    // From the unset active index, ArrowUp wraps to the last repo; Enter pins it.
+    await user.keyboard('{ArrowUp}{Enter}');
+
+    const listbox = screen.getByRole('listbox');
+    const lastOption = within(listbox)
+      .getAllByRole('option')
+      .find((el) => el.textContent?.includes('acme/gamma')) as HTMLElement;
+    expect(lastOption).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+  });
+
+  it('closes when a pointer lands outside the panel', async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <button type="button">outside</button>
+        <Harness />
+      </div>,
+    );
+    await user.click(disclosure());
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'outside' }));
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
 });
