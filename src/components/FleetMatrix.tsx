@@ -22,6 +22,7 @@ import { memo, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import * as React from 'react';
 
+import { useDensity } from '../hooks/useDensity';
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import { buildMatrixModel } from '../lib/matrix-model';
 import type { RepoHealth } from '../lib/fleet-summary';
@@ -133,6 +134,7 @@ interface MatrixRowProps {
   signals: readonly TileSignalType[];
   getRowData: GetRowData;
   onRepoActivate?: (repo: Repo) => void;
+  cellPaddingY: string;
 }
 
 /**
@@ -146,11 +148,15 @@ const MatrixRow = memo(function MatrixRow({
   signals,
   getRowData,
   onRepoActivate,
+  cellPaddingY,
 }: MatrixRowProps) {
   const data = getRowData(repo);
   return (
     <tr className="border-b border-border last:border-0 hover:bg-surface-hover">
-      <th scope="row" className="px-3 py-2 text-left align-middle font-normal text-text">
+      <th
+        scope="row"
+        className={`px-3 ${cellPaddingY} text-left align-middle font-normal text-text`}
+      >
         {onRepoActivate ? (
           <button
             type="button"
@@ -165,7 +171,10 @@ const MatrixRow = memo(function MatrixRow({
         )}
       </th>
       {signals.map((signal) => (
-        <td key={signal} className="px-3 py-2 text-center align-middle text-text-muted">
+        <td
+          key={signal}
+          className={`px-3 ${cellPaddingY} text-center align-middle text-text-muted`}
+        >
           {renderSignalCell(signal, repo, data)}
         </td>
       ))}
@@ -181,6 +190,7 @@ export function FleetMatrix({
   error = null,
   onRetry,
 }: FleetMatrixProps) {
+  const { density } = useDensity();
   const model = useMemo(() => buildMatrixModel(repos, getRowData), [repos, getRowData]);
   const { groups, signals, rows } = model;
 
@@ -231,6 +241,10 @@ export function FleetMatrix({
     ? 'Loading repositories…'
     : `${rows.length} ${rows.length === 1 ? 'repository' : 'repositories'}`;
 
+  // Map density to vertical cell padding (glanceable = tighter, balanced = current)
+  const cellPaddingY = density === 'glanceable' ? 'py-1' : 'py-2';
+  const skeletonPaddingY = density === 'glanceable' ? 'py-1.5' : 'py-2.5';
+
   return (
     <section aria-label="Fleet matrix" className="flex flex-col gap-3">
       <p role="status" aria-live="polite" className="text-sm text-text-muted">
@@ -270,7 +284,7 @@ export function FleetMatrix({
                   className="border-b border-border last:border-0"
                 >
                   {Array.from({ length: totalColumns }, (_, colIndex) => (
-                    <td key={colIndex} className="px-3 py-2.5">
+                    <td key={colIndex} className={`px-3 ${skeletonPaddingY}`}>
                       <span
                         className="block h-3 animate-pulse rounded bg-border motion-reduce:animate-none"
                         style={{ width: colIndex === 0 ? '14rem' : '2.5rem' }}
@@ -308,6 +322,7 @@ export function FleetMatrix({
                           signals={signals}
                           getRowData={getRowData}
                           onRepoActivate={onRepoActivate}
+                          cellPaddingY={cellPaddingY}
                         />
                       ))}
                   </React.Fragment>
