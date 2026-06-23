@@ -53,6 +53,18 @@ function Shell(): ReactElement {
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
+  // Shell never unmounts across auth transitions, so its lazy `view` initializer
+  // runs only once. Mirror the pre-refactor FleetPanel remount: whenever the app
+  // returns to unauthenticated, reset the live view to the persisted default so a
+  // fresh in-session sign-in always opens to the configured default (not the
+  // previously-selected live view). `defaultView` stays in sync via
+  // handleDefaultViewChange.
+  useEffect(() => {
+    if (!authenticated) {
+      setView(loadDefaultView());
+    }
+  }, [authenticated]);
+
   return (
     <div className="min-h-screen bg-bg text-text">
       <a
