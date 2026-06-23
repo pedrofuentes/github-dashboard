@@ -12,6 +12,7 @@ import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
 import { SavedViewsMenu } from './components/SavedViewsMenu';
 import { SettingsOverlay } from './components/SettingsOverlay';
+import { ShortcutsHelpOverlay } from './components/ShortcutsHelpOverlay';
 import { TokenInput } from './components/TokenInput';
 import { TriageView } from './components/TriageView';
 import { AuthProvider } from './hooks/AuthProvider';
@@ -22,6 +23,7 @@ import { useCommandPalette } from './hooks/useCommandPalette';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
 import { useDensity } from './hooks/useDensity';
 import { useInbox } from './hooks/useInbox';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useRepoFilterQuery } from './hooks/useRepoFilterQuery';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
@@ -208,6 +210,16 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [editing, setEditing] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Power-user keyboard navigation: the `g …` sequences switch views, `?` opens
+  // the shortcuts help overlay, and `,` opens Settings. The hook installs ONE
+  // global listener and ignores keystrokes while typing in inputs, so it never
+  // collides with the filter/search fields or the ⌘K palette (which owns its own
+  // ⌘K/Ctrl-K listener via `useCommandPalette`).
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+  useKeyboardShortcuts({ navigate: onViewChange, openHelp, openSettings: onOpenSettings });
 
   // Edit affordances only make sense on the dashboard; leaving it (whether via
   // the in-panel ViewToggle or the Settings overlay's default-view change, both
@@ -454,6 +466,7 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
           commands={commands}
           recents={commandRecents}
         />
+        {helpOpen ? <ShortcutsHelpOverlay onClose={closeHelp} /> : null}
       </div>
     </FleetUiStateProvider>
   );
