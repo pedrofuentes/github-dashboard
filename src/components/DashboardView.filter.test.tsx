@@ -294,6 +294,51 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
   });
 });
 
+describe('DashboardView — active zero-match filter narrows to empty (ADR-025, #401)', () => {
+  // Contract: `repoFilter === undefined` ⇒ no filter (whole fleet, arrange on);
+  // ANY defined Set — including an EMPTY one — ⇒ active narrowing filter. A
+  // defined-but-empty filter is the zero-match case (incompatible facets, or an
+  // inverted query that excludes everything visible): it must render NO tiles and
+  // keep arrange disabled, NOT fall back to showing the entire fleet with drag on.
+  it('renders NO repo tiles when an active filter matches nothing (defined empty Set)', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={new Set()}
+      />,
+    );
+    // The whole fleet must NOT render — an empty active filter matches nothing.
+    expect(screen.queryByRole('button', { name: /: .*octo\/a/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /: .*octo\/b/i })).toBeNull();
+    expect(screen.getByText(/no tiles match the current filter/i)).toBeInTheDocument();
+  });
+
+  it('disables arrange (drag/resize + keyboard rail) under an active zero-match filter while editing', () => {
+    const repos = [makeRepo('octo/a')];
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={new Set()}
+        editing
+      />,
+    );
+    // No fleet renders, so there is no drag surface or keyboard rail to arrange —
+    // the ADR-025 guard must NOT re-enable layout editing for a zero-match filter.
+    expect(screen.queryByRole('button', { name: /move ci · octo\/a right/i })).toBeNull();
+    expect(lastGridProps?.isDraggable).not.toBe(true);
+    expect(lastGridProps?.isResizable).not.toBe(true);
+  });
+});
+
 describe('DashboardView — empty-state discrimination (I1)', () => {
   it('shows the empty-fleet copy when there are no repos', () => {
     render(
