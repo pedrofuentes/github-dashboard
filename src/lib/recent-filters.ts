@@ -10,7 +10,6 @@ import {
   isQueryActive,
   RepoFilterQueryV2Schema,
   type RepoFilterQueryV2,
-  EMPTY_QUERY,
 } from './repo-filter-query';
 import { createVersionedStore, type VersionedStore } from './versioned-storage';
 

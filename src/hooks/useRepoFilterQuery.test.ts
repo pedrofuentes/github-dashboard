@@ -297,4 +297,3 @@ describe('applyQuery', () => {
     expect(result.current.query.repoSelection.names).toEqual(['octo/a']);
   });
 });
-
