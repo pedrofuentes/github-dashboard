@@ -180,7 +180,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Dashboard 2.0 — "Signal Keys" tile redesign**: the dashboard tiles were
+- **Dashboard view renamed to "Boards" and demoted**: the free-form,
+  drag-and-drop react-grid-layout view is now labelled **Boards** in the view
+  switcher and the **Default view** control, and sits **after Matrix and Grid**
+  as a secondary, optional surface (the **Fleet Matrix** remains the scannable
+  default per ADR-026). The view keeps all of its existing behaviour — tiles,
+  drag/resize, keyboard rearrange and the customize flow are unchanged; only the
+  label and ordering moved. Existing saved defaults are unaffected.
+- **Forward-compatible Boards layout storage**: the persisted tile layout now
+  uses a **versioned envelope** (`{ version: 2, tiles }`) under the new
+  `fleet:dashboard-view:v2` key. An existing unversioned layout under the legacy
+  `fleet:dashboard-layout` key is **migrated automatically on first load** (your
+  tiles and positions are preserved exactly) and the legacy key is **kept for
+  rollback**. Corrupt or missing storage degrades to the default layout as
+  before. This is a storage-format change only — nothing changes on screen.
+
+
   reworked around a **3-tier salience model** so a glance reads problems first.
   Only tiles that need action carry colour — a PROBLEM tile (e.g. failing CI, a
   D–F security grade) and the "needs-you" Reviews tile — while healthy tiles stay
