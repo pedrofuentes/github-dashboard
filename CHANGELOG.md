@@ -198,6 +198,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Keyboard focus stays visible in the ⌘K palette and repo filter**: both
+  `aria-activedescendant` listboxes now scroll the highlighted option into view
+  as you arrow/Home/End through long lists, so the active descendant — the only
+  visible keyboard-focus indicator — never disappears off-screen (WCAG 2.1 AA
+  2.4.7 Focus Visible, #468/#469).
 - **Tinted-badge label contrast (light theme)**: the **warning** and **coral**
   badge/chip text now uses darker **amber-800 (`#92400e`)** / **orange-800
   (`#9a3412`)** ink instead of the amber-700 / orange-700 accent, so small labels
