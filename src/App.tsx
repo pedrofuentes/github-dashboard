@@ -208,10 +208,11 @@ function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElemen
     [repos, getRowData],
   );
 
-  // The matrix, the triage home and the dashboard all honour the active faceted
-  // filter. When the filter narrows the fleet, these surfaces render ONLY the
-  // matching repos; with no active filter they show the whole fleet. Memoised so
-  // the worst-first models only recompute when the fleet or selection changes.
+  // Every primary surface honours the active faceted filter — the repo scope is
+  // global across views (ADR-027). When the filter narrows the fleet, the matrix,
+  // triage, grid and inbox render ONLY the matching repos; with no active filter
+  // they show the whole fleet. Memoised so the worst-first models only recompute
+  // when the fleet or selection changes.
   const filteredRepos = useMemo(
     () =>
       filter.isActive
@@ -256,9 +257,9 @@ function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElemen
               <FacetedRepoFilter repos={repos} filter={filter} />
               <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
             </>
-          ) : view === 'matrix' || view === 'triage' ? (
+          ) : (
             <FacetedRepoFilter repos={repos} filter={filter} />
-          ) : null}
+          )}
         </div>
         {view === 'triage' ? (
           <TriageView
@@ -309,14 +310,15 @@ function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElemen
         ) : view === 'inbox' ? (
           <InboxView
             inbox={inbox}
-            repos={repos}
+            repos={filteredRepos}
+            repoScope={filter.isActive ? filter.derivedSelected : undefined}
             loading={status === 'loading'}
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
         ) : (
           <FleetGrid
-            repos={repos}
+            repos={filteredRepos}
             getRowData={getRowData}
             loading={status === 'loading'}
             error={status === 'error' ? error : null}

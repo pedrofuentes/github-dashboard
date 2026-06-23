@@ -67,6 +67,14 @@ export interface InboxViewProps {
   inbox: UseInboxResult;
   /** Fleet repositories (drive the repo filter dropdown). */
   repos: Repo[];
+  /**
+   * Active GLOBAL repo scope (ADR-027). When provided, only items whose repo is
+   * in this set are rendered, so the faceted filter narrows the Inbox like every
+   * other view. Omitted means "no narrowing" (the whole fleet). The fleet-wide
+   * triage state and unread badge are left untouched — this scopes presentation
+   * only, so switching scope never mutates read/dismissed marks.
+   */
+  repoScope?: ReadonlySet<string>;
   /** True while the fleet fetch is in flight (skeleton on first load). */
   loading?: boolean;
   /** Fleet fetch error message; renders an alert + retry instead of the inbox. */
@@ -78,11 +86,20 @@ export interface InboxViewProps {
 export function InboxView({
   inbox,
   repos,
+  repoScope,
   loading = false,
   error = null,
   onRetry,
 }: InboxViewProps): ReactElement {
   const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
+
+  // Apply the global repo scope on top of the inbox's own session filters: it is
+  // a presentation-only narrowing, so the hook's triage GC and fleet-wide unread
+  // badge stay computed over the whole fleet (ADR-027).
+  const scopedItems =
+    repoScope === undefined
+      ? items
+      : items.filter((item) => repoScope.has(item.repo.nameWithOwner));
 
   const repoFilterId = useId();
   const kindFilterId = useId();
@@ -250,7 +267,7 @@ export function InboxView({
         </div>
       </header>
 
-      {items.length === 0 ? (
+      {scopedItems.length === 0 ? (
         narrowingActive ? (
           <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-surface px-4 py-10 text-center">
             <p className="text-sm text-text-muted">No items match these filters.</p>
@@ -272,7 +289,7 @@ export function InboxView({
         )
       ) : (
         <InboxList
-          items={items}
+          items={scopedItems}
           onMarkRead={handleMarkRead}
           onDismiss={handleDismiss}
           onRestore={handleRestore}
