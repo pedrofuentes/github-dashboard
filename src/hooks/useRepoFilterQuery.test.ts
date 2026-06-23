@@ -259,3 +259,42 @@ describe('immutability', () => {
     expect(result.current.query.facets.owners).toEqual(['octo']);
   });
 });
+
+describe('applyQuery', () => {
+  it('replaces the entire query atomically', () => {
+    const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
+    // Start with an empty query.
+    expect(result.current.query).toEqual(EMPTY_QUERY);
+
+    // Apply a complex saved query (e.g., from recent filters).
+    const savedQuery: RepoFilterQueryV2 = {
+      version: 2,
+      text: 'search term',
+      repoSelection: { mode: 'include', names: ['octo/a'] },
+      facets: {
+        ...emptyFacets(),
+        health: ['broken'],
+        visibility: ['private'],
+      },
+    };
+    act(() => result.current.applyQuery(savedQuery));
+
+    expect(result.current.query).toEqual(savedQuery);
+    expect(result.current.isActive).toBe(true);
+    expect(readStored()).toEqual(savedQuery);
+  });
+
+  it('reconciles pins when applying a query', () => {
+    const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
+    // Apply a query with a pin that doesn't exist in the fleet.
+    const queryWithAbsentPin: RepoFilterQueryV2 = {
+      ...EMPTY_QUERY,
+      repoSelection: { mode: 'include', names: ['octo/a', 'nonexistent/repo'] },
+    };
+    act(() => result.current.applyQuery(queryWithAbsentPin));
+
+    // Absent pin should be dropped.
+    expect(result.current.query.repoSelection.names).toEqual(['octo/a']);
+  });
+});
+
