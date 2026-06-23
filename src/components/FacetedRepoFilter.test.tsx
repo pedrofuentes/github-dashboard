@@ -269,4 +269,118 @@ describe('FacetedRepoFilter', () => {
 
     expect(screen.queryByRole('combobox')).toBeNull();
   });
+
+  it('shows zero-result state when filters are active but match no repos', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Filter to private (only acme/gamma) then exclude it (0 repos).
+    await user.click(screen.getByRole('checkbox', { name: /^private$/i }));
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+
+    // Pin acme/gamma in include mode, then switch to exclude mode by toggling it off
+    // from the currently selected set. Actually, let's use a simpler approach:
+    // apply two contradictory filters (e.g., broken + healthy only).
+    await user.click(screen.getByRole('checkbox', { name: /^broken$/i }));
+    // Now we have private AND broken, which matches nothing (alpha is broken but public).
+    expect(screen.getByText(/0 repos · 2 filters/i)).toBeInTheDocument();
+
+    // Zero-result state should show a message and a Clear filters button.
+    const zeroState = screen.getByTestId('zero-result-state');
+    expect(zeroState).toHaveTextContent(/no repositories match these filters/i);
+    const clearButton = within(zeroState).getByRole('button', { name: /clear filters/i });
+    expect(clearButton).toBeInTheDocument();
+
+    // Clicking Clear filters should reset to "All repositories".
+    await user.click(clearButton);
+    expect(screen.getByText('All repositories')).toBeInTheDocument();
+  });
+
+  it('does not show zero-result state when filters are inactive', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // No filters active ⇒ no zero-result state even though we could show 3 repos.
+    expect(screen.queryByTestId('zero-result-state')).toBeNull();
+  });
+
+  it('persists recent filters when a query becomes active', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Apply a filter (broken) to make the query active.
+    await user.click(screen.getByRole('checkbox', { name: /^broken$/i }));
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+
+    // Close and reopen the popover — the recent filter should appear.
+    await user.keyboard('{Escape}');
+    await user.click(disclosure());
+
+    const recentsGroup = screen.getByRole('group', { name: /recent filters/i });
+    expect(recentsGroup).toBeInTheDocument();
+    expect(within(recentsGroup).getByRole('button', { name: /broken/i })).toBeInTheDocument();
+  });
+
+  it('applies a recent filter when clicked', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Apply and clear a filter to record it as recent.
+    await user.click(screen.getByRole('checkbox', { name: /^healthy$/i }));
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /clear all/i }));
+    expect(screen.getByText('All repositories')).toBeInTheDocument();
+
+    // Close and reopen — the recent filter should be listed.
+    await user.keyboard('{Escape}');
+    await user.click(disclosure());
+
+    const recentsGroup = screen.getByRole('group', { name: /recent filters/i });
+    const recentButton = within(recentsGroup).getByRole('button', { name: /healthy/i });
+    await user.click(recentButton);
+
+    // The healthy filter should now be re-applied.
+    expect(screen.getByText(/1 repo · 1 filter/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /^healthy$/i })).toBeChecked();
+  });
+
+  it('caps recent filters at 5 and shows most recent first', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // Apply 6 different filters one by one (clear between each).
+    const facets = [/^broken$/i, /^warning$/i, /^healthy$/i, /^private$/i, /^public$/i, /^octo/i];
+    for (const name of facets) {
+      const checkbox = screen.getByRole('checkbox', { name });
+      await user.click(checkbox);
+      await user.click(screen.getByRole('button', { name: /clear all/i }));
+    }
+
+    // Close and reopen — recent filters should show only the last 5.
+    await user.keyboard('{Escape}');
+    await user.click(disclosure());
+
+    const recentsGroup = screen.getByRole('group', { name: /recent filters/i });
+    const buttons = within(recentsGroup).getAllByRole('button');
+    expect(buttons).toHaveLength(5);
+
+    // Most recent (octo owner) should be first.
+    expect(buttons[0]).toHaveTextContent(/octo/i);
+    // Oldest (broken) should NOT appear.
+    expect(within(recentsGroup).queryByRole('button', { name: /broken/i })).toBeNull();
+  });
+
+  it('does not show recent filters group when list is empty', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(disclosure());
+
+    // No filters applied yet ⇒ no recent filters group.
+    expect(screen.queryByRole('group', { name: /recent filters/i })).toBeNull();
+  });
 });
