@@ -11,8 +11,8 @@ import type { FleetView } from './view-preference';
 
 const DEFAULT_VIEW_KEY = 'fleet:default-view';
 
-/** Dashboard is the out-of-the-box default landing surface. */
-const FALLBACK_DEFAULT_VIEW: FleetView = 'dashboard';
+/** The fleet matrix (ADR-026) is the out-of-the-box scannable landing surface. */
+const FALLBACK_DEFAULT_VIEW: FleetView = 'matrix';
 
 function safeGet(key: string): string | null {
   try {
@@ -30,7 +30,7 @@ function safeSet(key: string, value: string): void {
   }
 }
 
-/** Reads the stored default view, defaulting to `'dashboard'` on any problem. */
+/** Reads the stored default view, defaulting to `'matrix'` on any problem. */
 export function loadDefaultView(): FleetView {
   const raw = safeGet(DEFAULT_VIEW_KEY);
   return isFleetView(raw) ? raw : FALLBACK_DEFAULT_VIEW;
