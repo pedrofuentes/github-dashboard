@@ -241,9 +241,11 @@ describe('CommandPalette keyboard model', () => {
   });
 
   // #417: a throwing command must not strand the palette open — onClose() and
-  // focus-restore still run via try/finally around the command execution.
+  // focus-restore still run via try/catch/finally around the command execution,
+  // and the error is surfaced (console.error) instead of escaping React.
   it('still closes (and restores focus) when a command run throws on Enter', async () => {
     const onClose = vi.fn();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const boom = vi.fn(() => {
       throw new Error('boom');
     });
@@ -273,11 +275,13 @@ describe('CommandPalette keyboard model', () => {
 
     expect(boom).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('still closes when a clicked command run throws', async () => {
     const onClose = vi.fn();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const boom = vi.fn(() => {
       throw new Error('boom');
     });
@@ -294,5 +298,6 @@ describe('CommandPalette keyboard model', () => {
 
     expect(boom).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalled();
   });
 });

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { CommandPalette } from './components/CommandPalette';
+import type { CommandItem } from './components/CommandPalette';
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -15,12 +17,18 @@ import { AuthProvider } from './hooks/AuthProvider';
 import { FleetUiStateProvider } from './hooks/FleetUiStateProvider';
 import { useAliases } from './hooks/useAliases';
 import { useAuth } from './hooks/useAuth';
+import { useCommandPalette } from './hooks/useCommandPalette';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
+import { useDensity } from './hooks/useDensity';
 import { useInbox } from './hooks/useInbox';
 import { useRepoFilterQuery } from './hooks/useRepoFilterQuery';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
+import { useTheme } from './hooks/useTheme';
+import { addCommandRecent, createCommandRecentsStore } from './lib/command-recents';
+import { buildCommandRegistry } from './lib/commands';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
+import type { VersionedStore } from './lib/versioned-storage';
 import type { FleetView } from './lib/view-preference';
 import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
@@ -105,7 +113,12 @@ function Shell(): ReactElement {
           Fleet overview
         </h2>
         {authenticated ? (
-          <FleetPanel token={token} view={view} onViewChange={handleViewChange} />
+          <FleetPanel
+            token={token}
+            view={view}
+            onViewChange={handleViewChange}
+            onOpenSettings={openSettings}
+          />
         ) : (
           <TokenInput />
         )}
@@ -172,9 +185,11 @@ interface FleetPanelProps {
   view: FleetView;
   /** Switches the live view (e.g. from the in-panel ViewToggle). */
   onViewChange: (view: FleetView) => void;
+  /** Opens the Settings overlay (owned by {@link Shell}); wired to the ⌘K palette. */
+  onOpenSettings: () => void;
 }
 
-function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElement {
+function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelProps): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
   // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
@@ -246,6 +261,82 @@ function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElemen
   // Closing the CustomizePanel (Esc, backdrop, ✕) leaves edit mode, which also
   // unmounts the panel via the `editing` coupling and returns focus to the opener.
   const handleCloseCustomize = useCallback(() => setEditing(false), []);
+
+  // ⌘K command palette: a global, app-wide command surface. The hook owns the
+  // open state + the ⌘K/Ctrl-K listener; the registry below maps existing
+  // handlers (navigation, filter presets, settings, appearance) to commands —
+  // adding NO new behaviour, only a faster way to reach what already exists.
+  const { open: paletteOpen, closePalette } = useCommandPalette();
+
+  const { resolved, setChoice } = useTheme();
+  const { density, setDensity } = useDensity();
+  const toggleTheme = useCallback(
+    () => setChoice(resolved === 'dark' ? 'light' : 'dark'),
+    [resolved, setChoice],
+  );
+  const toggleDensity = useCallback(
+    () => setDensity(density === 'balanced' ? 'glanceable' : 'balanced'),
+    [density, setDensity],
+  );
+
+  // A tiny localStorage-backed list of recently-run command ids, surfaced as the
+  // palette's "Recent" section for an empty query. Reuses the shared versioned
+  // store; failures degrade to an empty list (never throw).
+  const recentsStoreRef = useRef<VersionedStore<string[]> | null>(null);
+  if (recentsStoreRef.current === null) {
+    recentsStoreRef.current = createCommandRecentsStore();
+  }
+  const recentsStore = recentsStoreRef.current;
+  const [commandRecents, setCommandRecents] = useState<string[]>(() => recentsStore.load());
+  const recordCommandRecent = useCallback(
+    (id: string) => {
+      setCommandRecents((current) => {
+        const next = addCommandRecent(current, id);
+        recentsStore.save(next);
+        return next;
+      });
+    },
+    [recentsStore],
+  );
+
+  const { toggleHealth, toggleReviewsAwaitingMe, toggleCi, setSecurityMaxGrade, toggleStale } =
+    filter;
+  const clearAllFilters = filter.clearAll;
+  const commands = useMemo<CommandItem[]>(() => {
+    const base = buildCommandRegistry({
+      navigate: onViewChange,
+      openSettings: onOpenSettings,
+      filterNeedsAttention: () => toggleHealth('broken'),
+      filterAwaitingReview: () => toggleReviewsAwaitingMe(),
+      filterFailingCi: () => toggleCi('failure'),
+      filterSecurityRisk: () => setSecurityMaxGrade('C'),
+      filterStale: () => toggleStale('any'),
+      clearFilters: () => clearAllFilters(),
+      toggleTheme,
+      toggleDensity,
+    });
+    // Record each command as recent when it runs (before delegating), so the
+    // recents list reflects usage even from keyboard activation.
+    return base.map((command) => ({
+      ...command,
+      run: () => {
+        recordCommandRecent(command.id);
+        command.run();
+      },
+    }));
+  }, [
+    onViewChange,
+    onOpenSettings,
+    toggleHealth,
+    toggleReviewsAwaitingMe,
+    toggleCi,
+    setSecurityMaxGrade,
+    toggleStale,
+    clearAllFilters,
+    toggleTheme,
+    toggleDensity,
+    recordCommandRecent,
+  ]);
 
   return (
     <FleetUiStateProvider>
@@ -333,6 +424,12 @@ function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElemen
             onClose={handleCloseDrawer}
           />
         ) : null}
+        <CommandPalette
+          open={paletteOpen}
+          onClose={closePalette}
+          commands={commands}
+          recents={commandRecents}
+        />
       </div>
     </FleetUiStateProvider>
   );
