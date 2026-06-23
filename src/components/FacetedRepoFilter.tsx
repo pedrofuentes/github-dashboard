@@ -19,6 +19,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react';
 
 import { fuzzyRankBy } from '../lib/fuzzy-match';
+import { addRecentFilter, loadRecentFilters } from '../lib/recent-filters';
+import type { RepoFilterQueryV2 } from '../lib/repo-filter-query';
 import type {
   CiState,
   HealthBand,
@@ -186,6 +188,44 @@ function buildChips(
   return chips;
 }
 
+/** Builds a short human-readable summary for a recent filter query. */
+function summarizeQuery(query: RepoFilterQueryV2): string {
+  const parts: string[] = [];
+  if (query.text.trim() !== '') {
+    parts.push(`"${query.text.trim()}"`);
+  }
+  const { facets } = query;
+  if (facets.owners.length > 0) {
+    parts.push(facets.owners.slice(0, 2).join(', '));
+  }
+  if (facets.health.length > 0) {
+    const labels = HEALTH_OPTIONS.filter((o) => facets.health.includes(o.value)).map(
+      (o) => o.label,
+    );
+    parts.push(labels.slice(0, 2).join(', '));
+  }
+  if (facets.ci.length > 0) {
+    const labels = CI_OPTIONS.filter((o) => facets.ci.includes(o.value)).map((o) => o.label);
+    parts.push(labels[0] ?? 'CI');
+  }
+  if (facets.pullRequests.length > 0) {
+    parts.push('PRs');
+  }
+  if (facets.reviews.length > 0) {
+    parts.push('Reviews');
+  }
+  if (facets.issues.length > 0) {
+    parts.push('Issues');
+  }
+  if (facets.stale.length > 0) {
+    parts.push('Stale');
+  }
+  if (facets.visibility.length > 0) {
+    parts.push(facets.visibility.join(', '));
+  }
+  return parts.slice(0, 3).join(' · ') || 'Recent filter';
+}
+
 /** A labelled group of facet checkboxes sharing one toggle updater. */
 function FacetGroup<T extends string>({
   label,
@@ -238,16 +278,34 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
     toggleRepoPin,
     setRepoSelection,
     clearAll,
+    applyQuery,
   } = filter;
 
   const [expanded, setExpanded] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [recentFilters, setRecentFilters] = useState<RepoFilterQueryV2[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const listId = useId();
   const optionBaseId = useId();
+
+  // Load recent filters when the panel opens.
+  useEffect(() => {
+    if (expanded) {
+      setRecentFilters(loadRecentFilters());
+    }
+  }, [expanded]);
+
+  // Record the current query when it becomes active (debounced via useEffect).
+  const previousIsActive = useRef(isActive);
+  useEffect(() => {
+    if (isActive && !previousIsActive.current) {
+      addRecentFilter(query);
+    }
+    previousIsActive.current = isActive;
+  }, [isActive, query]);
 
   const visibleRepos = useMemo(
     () => fuzzyRankBy(query.text, repos, (r) => [r.nameWithOwner, r.owner, r.name]),
@@ -506,6 +564,43 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
               )}
             </ul>
           </div>
+
+          {isActive && derivedSelected.size === 0 && (
+            <div
+              data-testid="zero-result-state"
+              role="status"
+              className="flex flex-col items-center gap-2 rounded border border-border-strong bg-surface px-3 py-4 text-center"
+            >
+              <p className="text-sm text-text-muted">No repositories match these filters.</p>
+              <button
+                type="button"
+                onClick={clearAll}
+                className={`rounded bg-surface-raised px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-raised-hover ${FOCUS_RING}`}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+
+          {recentFilters.length > 0 && (
+            <div role="group" aria-label="Recent filters" className="flex flex-col gap-1.5">
+              <p className="px-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Recent
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {recentFilters.map((recentQuery, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => applyQuery(recentQuery)}
+                    className="rounded-full border border-border-strong bg-surface px-2.5 py-1 text-xs text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    {summarizeQuery(recentQuery)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {chips.length > 0 && (
             <div role="group" aria-label="Active filters" className="flex flex-wrap gap-1.5">

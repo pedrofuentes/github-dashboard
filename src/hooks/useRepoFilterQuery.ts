@@ -88,6 +88,8 @@ export interface UseRepoFilterQueryResult {
   toggleRepoPin: (name: string) => void;
   /** Resets the entire query back to {@link EMPTY_QUERY}. */
   clearAll: () => void;
+  /** Replaces the entire query atomically (reconciling pins). For recent filters. */
+  applyQuery: (query: RepoFilterQueryV2) => void;
   /** Distinct owners present in the fleet with repo counts, sorted by owner. */
   availableOwners: AvailableOwner[];
 }
@@ -299,6 +301,11 @@ export function useRepoFilterQuery(
 
   const clearAll = useCallback(() => update(() => freshEmptyQuery()), [update]);
 
+  const applyQuery = useCallback(
+    (query: RepoFilterQueryV2) => update(() => reconcileQuery(query, repos)),
+    [update, repos],
+  );
+
   const derivedSelected = useMemo(
     () => evaluateRepoFilterQuery(query, repos, getRowData),
     [query, repos, getRowData],
@@ -335,6 +342,7 @@ export function useRepoFilterQuery(
     setRepoSelection,
     toggleRepoPin,
     clearAll,
+    applyQuery,
     availableOwners,
   };
 }
