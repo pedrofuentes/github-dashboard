@@ -135,11 +135,7 @@ export function removeSavedView(state: SavedViewsState, id: string): SavedViewsS
  * Renames the view with the given id. Returns a new state; the original is
  * unchanged. If the id is not found, returns the state unchanged.
  */
-export function renameSavedView(
-  state: SavedViewsState,
-  id: string,
-  name: string,
-): SavedViewsState {
+export function renameSavedView(state: SavedViewsState, id: string, name: string): SavedViewsState {
   const index = state.views.findIndex((v) => v.id === id);
   if (index === -1) return state;
   const updated = [...state.views];
