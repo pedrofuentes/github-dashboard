@@ -386,9 +386,7 @@ describe('FleetMatrix density modes (T-c4)', () => {
   });
 
   it('applies balanced density spacing by default (current py-2 spacing)', () => {
-    const { container } = render(
-      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
-    );
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const row = screen.getByRole('row', { name: /octo\/hello/i });
     const rowHeader = within(row).getByRole('rowheader');
     // Balanced uses py-2 (current spacing)
@@ -397,9 +395,7 @@ describe('FleetMatrix density modes (T-c4)', () => {
 
   it('applies glanceable density spacing when stored (tighter py-1 spacing)', () => {
     localStorage.setItem(DENSITY_KEY, 'glanceable');
-    const { container } = render(
-      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
-    );
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const row = screen.getByRole('row', { name: /octo\/hello/i });
     const rowHeader = within(row).getByRole('rowheader');
     // Glanceable uses py-1 (tighter spacing)
@@ -407,9 +403,7 @@ describe('FleetMatrix density modes (T-c4)', () => {
   });
 
   it('applies balanced density spacing to signal cells', () => {
-    const { container } = render(
-      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
-    );
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const row = screen.getByRole('row', { name: /octo\/hello/i });
     const cells = within(row).getAllByRole('cell');
     // All signal cells should have balanced spacing (py-2)
@@ -420,9 +414,7 @@ describe('FleetMatrix density modes (T-c4)', () => {
 
   it('applies glanceable density spacing to signal cells', () => {
     localStorage.setItem(DENSITY_KEY, 'glanceable');
-    const { container } = render(
-      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
-    );
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const row = screen.getByRole('row', { name: /octo\/hello/i });
     const cells = within(row).getAllByRole('cell');
     // All signal cells should have glanceable spacing (py-1)
