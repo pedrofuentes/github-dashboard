@@ -463,7 +463,7 @@ describe('App', () => {
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
   });
 
@@ -692,12 +692,13 @@ describe('App', () => {
     expect(matrixToggleButton()).toBeInTheDocument();
   });
 
-  it('falls back to the matrix view when no default is stored', async () => {
+  it('falls back to the triage view when no default is stored', async () => {
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
     expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
   });
 
@@ -730,6 +731,7 @@ describe('App', () => {
   });
 
   it('narrows the matrix rows via the faceted repo filter', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
     mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
     const user = userEvent.setup();
     render(<App />);
@@ -754,11 +756,109 @@ describe('App', () => {
   });
 
   it('opens the drill-down drawer from a matrix row', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
     mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello-world/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  function triageToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /triage/i });
+  }
+
+  it('offers a Triage option listed first in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(triageToggleButton()).toBeInTheDocument();
+    const buttons = within(viewToggle()).getAllByRole('button');
+    expect(buttons[0]).toHaveAccessibleName(/triage/i);
+  });
+
+  it('renders the triage view when it is the fallback default and hides the matrix/grid', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /needs attention/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /repository/i })).toBeNull();
+  });
+
+  it('selects the triage view from another view and hides the matrix', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(triageToggleButton());
+
+    expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('honours a persisted matrix default over the triage fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /triage/i })).toBeNull();
+  });
+
+  it('honours a persisted dashboard default over the triage fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /triage/i })).toBeNull();
+  });
+
+  it('narrows the triage repos via the faceted repo filter', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+    await screen.findByRole('region', { name: /triage/i });
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/beta/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    const search = await screen.findByRole('combobox', { name: /search repositories/i });
+    await user.type(search, 'alpha');
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /view details for octo\/beta/i })).toBeNull();
+  });
+
+  it('opens the drill-down drawer from a triage row', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('region', { name: /triage/i });
 
     await user.click(screen.getByRole('button', { name: /view details for octo\/hello-world/i }));
 

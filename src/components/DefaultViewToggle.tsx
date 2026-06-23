@@ -18,6 +18,7 @@ interface DefaultViewOption {
 }
 
 const DEFAULT_VIEW_OPTIONS: ReadonlyArray<DefaultViewOption> = [
+  { value: 'triage', label: 'Triage' },
   { value: 'matrix', label: 'Matrix' },
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Dashboard' },

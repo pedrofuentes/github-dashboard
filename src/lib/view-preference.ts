@@ -7,9 +7,15 @@
  */
 
 /** The ways the authenticated fleet can be presented. */
-export type FleetView = 'matrix' | 'grid' | 'dashboard' | 'inbox';
+export type FleetView = 'triage' | 'matrix' | 'grid' | 'dashboard' | 'inbox';
 
 /** Runtime guard, reused by the default-view preference module. */
 export function isFleetView(value: string | null): value is FleetView {
-  return value === 'matrix' || value === 'grid' || value === 'dashboard' || value === 'inbox';
+  return (
+    value === 'triage' ||
+    value === 'matrix' ||
+    value === 'grid' ||
+    value === 'dashboard' ||
+    value === 'inbox'
+  );
 }

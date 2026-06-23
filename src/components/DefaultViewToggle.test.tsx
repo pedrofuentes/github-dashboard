@@ -5,10 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { DefaultViewToggle } from './DefaultViewToggle';
 
 describe('DefaultViewToggle', () => {
-  it('exposes an accessible "Default view" radiogroup with the four choices', () => {
+  it('exposes an accessible "Default view" radiogroup with the five choices', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
     const group = screen.getByRole('radiogroup', { name: /default view/i });
     expect(group).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /triage/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /matrix/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /grid/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /dashboard/i })).toBeInTheDocument();
@@ -27,13 +28,20 @@ describe('DefaultViewToggle', () => {
 
   it('renders a redundant text label for every option (never colour alone)', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+    expect(screen.getByText('Triage')).toBeInTheDocument();
     expect(screen.getByText('Matrix')).toBeInTheDocument();
     expect(screen.getByText('Grid')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Inbox')).toBeInTheDocument();
   });
 
-  it.each([/matrix/i, /grid/i, /dashboard/i, /inbox/i])(
+  it('lists Triage first as the home default', () => {
+    render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+    const radios = screen.getAllByRole('radio');
+    expect(radios[0]).toHaveAccessibleName(/triage/i);
+  });
+
+  it.each([/triage/i, /matrix/i, /grid/i, /dashboard/i, /inbox/i])(
     'exposes a visible focus ring on the %s option for keyboard users',
     (name) => {
       render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
@@ -42,6 +50,7 @@ describe('DefaultViewToggle', () => {
   );
 
   it.each([
+    { name: /triage/i, expected: 'triage' as const },
     { name: /matrix/i, expected: 'matrix' as const },
     { name: /grid/i, expected: 'grid' as const },
     { name: /dashboard/i, expected: 'dashboard' as const },

@@ -12,6 +12,7 @@ import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
+import { TriageView } from './components/TriageView';
 import { AuthProvider } from './hooks/AuthProvider';
 import { FleetUiStateProvider } from './hooks/FleetUiStateProvider';
 import { useAliases } from './hooks/useAliases';
@@ -125,11 +126,11 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
     [repos, getRowData],
   );
 
-  // The matrix and the dashboard both honour the active faceted filter. When the
-  // filter narrows the fleet, the matrix renders ONLY the matching repos; with
-  // no active filter it shows the whole fleet. Memoised so the matrix's own
-  // worst-first model only recomputes when the fleet or selection changes.
-  const matrixRepos = useMemo(
+  // The matrix, the triage home and the dashboard all honour the active faceted
+  // filter. When the filter narrows the fleet, these surfaces render ONLY the
+  // matching repos; with no active filter they show the whole fleet. Memoised so
+  // the worst-first models only recompute when the fleet or selection changes.
+  const filteredRepos = useMemo(
     () =>
       filter.isActive
         ? repos.filter((repo) => filter.derivedSelected.has(repo.nameWithOwner))
@@ -189,13 +190,22 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
               <FacetedRepoFilter repos={repos} filter={filter} />
               <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
             </>
-          ) : view === 'matrix' ? (
+          ) : view === 'matrix' || view === 'triage' ? (
             <FacetedRepoFilter repos={repos} filter={filter} />
           ) : null}
         </div>
-        {view === 'matrix' ? (
+        {view === 'triage' ? (
+          <TriageView
+            repos={filteredRepos}
+            getRowData={getRowData}
+            onRepoActivate={handleRepoActivate}
+            loading={status === 'loading'}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+          />
+        ) : view === 'matrix' ? (
           <FleetMatrix
-            repos={matrixRepos}
+            repos={filteredRepos}
             getRowData={getRowData}
             onRepoActivate={handleRepoActivate}
             loading={status === 'loading'}
@@ -289,6 +299,7 @@ interface ViewToggleProps {
 }
 
 const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
+  { value: 'triage', label: 'Triage' },
   { value: 'matrix', label: 'Matrix' },
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Dashboard' },
