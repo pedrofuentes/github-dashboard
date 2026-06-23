@@ -50,6 +50,9 @@ function inboxResult(overrides: Partial<UseInboxResult> = {}): UseInboxResult {
     markRead: vi.fn(),
     dismiss: vi.fn(),
     restore: vi.fn(),
+    markReadMany: vi.fn(),
+    dismissMany: vi.fn(),
+    restoreMany: vi.fn(),
     markAllRead: vi.fn(),
     markAllSeen: vi.fn(),
     ...overrides,
@@ -269,5 +272,130 @@ describe('InboxView triage announcements (AC-14)', () => {
     // re-read to act on — the nonce marker guarantees that mutation.
     expect(liveRegion).toHaveTextContent('Dismissed');
     expect(afterSecond).not.toEqual(afterFirst);
+  });
+});
+
+describe('InboxView bulk selection + actions (T-f5-inbox-bulk)', () => {
+  const itemA = makeItem({ id: 'a', title: 'Alpha', repo: REPOS[0] });
+  const itemB = makeItem({ id: 'b', title: 'Bravo', repo: REPOS[1] });
+
+  it('hides the bulk bar until a row is selected, then shows the selection count', async () => {
+    const user = userEvent.setup();
+    render(<InboxView inbox={inboxResult({ items: [itemA, itemB] })} repos={REPOS} />);
+
+    expect(screen.queryByRole('toolbar', { name: /bulk actions/i })).toBeNull();
+
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    const toolbar = screen.getByRole('toolbar', { name: /bulk actions/i });
+    expect(toolbar).toHaveTextContent(/1 selected/i);
+
+    await user.click(screen.getByRole('checkbox', { name: /select bravo/i }));
+    expect(toolbar).toHaveTextContent(/2 selected/i);
+  });
+
+  it('Mark read routes the selection to markReadMany, announces, and clears the selection', async () => {
+    const user = userEvent.setup();
+    const markReadMany = vi.fn();
+    render(
+      <InboxView inbox={inboxResult({ items: [itemA, itemB], markReadMany })} repos={REPOS} />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select bravo/i }));
+    await user.click(screen.getByRole('button', { name: /^mark read$/i }));
+
+    expect(markReadMany).toHaveBeenCalledTimes(1);
+    expect([...markReadMany.mock.calls[0][0]].sort()).toEqual(['a', 'b']);
+    expect(screen.getByText('Marked 2 as read')).toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: /bulk actions/i })).toBeNull();
+  });
+
+  it('Dismiss routes the selection to dismissMany, announces, and clears', async () => {
+    const user = userEvent.setup();
+    const dismissMany = vi.fn();
+    render(<InboxView inbox={inboxResult({ items: [itemA, itemB], dismissMany })} repos={REPOS} />);
+
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    await user.click(screen.getByRole('button', { name: /^dismiss$/i }));
+
+    expect(dismissMany).toHaveBeenCalledWith(['a']);
+    expect(screen.getByText('Dismissed 1 items')).toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: /bulk actions/i })).toBeNull();
+  });
+
+  it('enables Restore only when a dismissed item is selected, then routes to restoreMany', async () => {
+    const user = userEvent.setup();
+    const restoreMany = vi.fn();
+    const dismissedItem = makeItem({ id: 'd', title: 'Dead', dismissed: true, repo: REPOS[0] });
+    render(
+      <InboxView
+        inbox={inboxResult({
+          items: [itemA, dismissedItem],
+          filters: { ...DEFAULT_FILTERS, showDismissed: true },
+          restoreMany,
+        })}
+        repos={REPOS}
+      />,
+    );
+
+    // Selecting only a non-dismissed item leaves Restore disabled.
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    expect(screen.getByRole('button', { name: /^restore$/i })).toBeDisabled();
+
+    // Adding a dismissed item enables it.
+    await user.click(screen.getByRole('checkbox', { name: /select dead/i }));
+    expect(screen.getByRole('button', { name: /^restore$/i })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /^restore$/i }));
+    expect(restoreMany).toHaveBeenCalledTimes(1);
+    expect([...restoreMany.mock.calls[0][0]].sort()).toEqual(['a', 'd']);
+    expect(screen.getByText('Restored 2 items')).toBeInTheDocument();
+  });
+
+  it('Select all selects every visible item; Clear selection empties it', async () => {
+    const user = userEvent.setup();
+    render(<InboxView inbox={inboxResult({ items: [itemA, itemB] })} repos={REPOS} />);
+
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    await user.click(screen.getByRole('button', { name: /select all/i }));
+
+    expect(screen.getByRole('toolbar', { name: /bulk actions/i })).toHaveTextContent(/2 selected/i);
+    expect(screen.getByRole('checkbox', { name: /select alpha/i })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /select bravo/i })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: /clear selection/i }));
+    expect(screen.queryByRole('toolbar', { name: /bulk actions/i })).toBeNull();
+  });
+
+  it('prunes the selection when a scope change hides a selected item, so it is never acted on', async () => {
+    const user = userEvent.setup();
+    const markReadMany = vi.fn();
+    const { rerender } = render(
+      <InboxView inbox={inboxResult({ items: [itemA, itemB], markReadMany })} repos={REPOS} />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select alpha/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select bravo/i }));
+    expect(screen.getByRole('toolbar', { name: /bulk actions/i })).toHaveTextContent(/2 selected/i);
+
+    // Narrow the global scope to only itemB's repo: itemA (octo/app) is hidden.
+    rerender(
+      <InboxView
+        inbox={inboxResult({ items: [itemA, itemB], markReadMany })}
+        repos={REPOS}
+        repoScope={new Set([REPOS[1].nameWithOwner])}
+      />,
+    );
+    expect(screen.getByRole('toolbar', { name: /bulk actions/i })).toHaveTextContent(/1 selected/i);
+
+    await user.click(screen.getByRole('button', { name: /^mark read$/i }));
+    expect(markReadMany).toHaveBeenCalledWith(['b']);
+  });
+
+  it('labels each row checkbox so the multi-select grid is screen-reader navigable', () => {
+    render(<InboxView inbox={inboxResult({ items: [itemA, itemB] })} repos={REPOS} />);
+
+    expect(screen.getByRole('checkbox', { name: /select alpha/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /select bravo/i })).toBeInTheDocument();
   });
 });

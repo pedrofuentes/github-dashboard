@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Inbox multi-select + bulk-action bar**: triage many notifications at once
+  instead of clicking one by one. Each Inbox row now has a selection checkbox;
+  selecting one or more reveals an accessible bulk-action toolbar that shows the
+  selection count and lets you **Mark read**, **Dismiss**, or **Restore** the
+  whole batch (Restore enables only when a dismissed item is selected), plus
+  **Select all** visible and **Clear selection**. Each batch is one persisted
+  triage update, the action is announced for screen readers, and the selection is
+  pruned to currently-visible items so a bulk action never touches a hidden one.
 - **Keyboard shortcuts + "?" help overlay**: power-user navigation lands in the
   authenticated app. Press `g` then `t`/`m`/`g`/`b`/`i` to jump to
   Triage/Matrix/Grid/Boards/Inbox, `?` to open a discoverable shortcuts cheat

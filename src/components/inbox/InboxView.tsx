@@ -21,12 +21,13 @@
  * / "Restored" alongside the re-announced unread count (§6.2). All colour comes
  * from semantic theme tokens, so the view recolours with a single `.dark` flip.
  */
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import type { ChangeEvent, ReactElement } from 'react';
 
 import type { UseInboxResult } from '../../hooks/useInbox';
 import type { Repo } from '../../types/fleet';
 import type { InboxKind } from '../../types/inbox';
+import { InboxBulkBar } from './InboxBulkBar';
 import { InboxList } from './InboxList';
 import { KIND_LABELS } from './labels';
 
@@ -92,14 +93,18 @@ export function InboxView({
   onRetry,
 }: InboxViewProps): ReactElement {
   const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
+  const { markReadMany, dismissMany, restoreMany } = inbox;
 
   // Apply the global repo scope on top of the inbox's own session filters: it is
   // a presentation-only narrowing, so the hook's triage GC and fleet-wide unread
   // badge stay computed over the whole fleet (ADR-027).
-  const scopedItems =
-    repoScope === undefined
-      ? items
-      : items.filter((item) => repoScope.has(item.repo.nameWithOwner));
+  const scopedItems = useMemo(
+    () =>
+      repoScope === undefined
+        ? items
+        : items.filter((item) => repoScope.has(item.repo.nameWithOwner)),
+    [items, repoScope],
+  );
 
   const repoFilterId = useId();
   const kindFilterId = useId();
@@ -113,6 +118,82 @@ export function InboxView({
   const announce = useCallback((text: string) => {
     setAnnouncement((prev) => ({ text, nonce: prev.nonce + 1 }));
   }, []);
+
+  // Multi-select state lives here (ADR-027: selection is presentation-only). The
+  // ids of every currently-visible row, used to drive Select-all and to prune the
+  // selection so a bulk action can never target a hidden (filtered/scoped) item.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const visibleIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems]);
+
+  // Drop any selected id that is no longer visible whenever the visible set
+  // changes (filter/scope change, or an item hidden after a dismiss) so a bulk
+  // action only ever targets currently-visible items.
+  useEffect(() => {
+    const visible = new Set(visibleIds);
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [visibleIds]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set(visibleIds));
+  }, [visibleIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set());
+  }, []);
+
+  // The selected items that are still visible drive the bulk-bar enablement: a
+  // batch only acts where it can meaningfully apply.
+  const selectedVisible = useMemo(
+    () => scopedItems.filter((item) => selected.has(item.id)),
+    [scopedItems, selected],
+  );
+  const canMarkRead = selectedVisible.some((item) => !item.read);
+  const canDismiss = selectedVisible.some((item) => !item.dismissed);
+  const canRestore = selectedVisible.some((item) => item.dismissed);
+
+  const handleBulkMarkRead = useCallback(() => {
+    const ids = [...selected];
+    markReadMany(ids);
+    announce(`Marked ${ids.length} as read`);
+    setSelected(new Set());
+  }, [selected, markReadMany, announce]);
+
+  const handleBulkDismiss = useCallback(() => {
+    const ids = [...selected];
+    dismissMany(ids);
+    announce(`Dismissed ${ids.length} items`);
+    setSelected(new Set());
+  }, [selected, dismissMany, announce]);
+
+  const handleBulkRestore = useCallback(() => {
+    const ids = [...selected];
+    restoreMany(ids);
+    announce(`Restored ${ids.length} items`);
+    setSelected(new Set());
+  }, [selected, restoreMany, announce]);
 
   const handleMarkRead = useCallback(
     (id: string) => {
@@ -288,12 +369,29 @@ export function InboxView({
           </div>
         )
       ) : (
-        <InboxList
-          items={scopedItems}
-          onMarkRead={handleMarkRead}
-          onDismiss={handleDismiss}
-          onRestore={handleRestore}
-        />
+        <>
+          {selected.size > 0 ? (
+            <InboxBulkBar
+              count={selected.size}
+              canMarkRead={canMarkRead}
+              canDismiss={canDismiss}
+              canRestore={canRestore}
+              onMarkRead={handleBulkMarkRead}
+              onDismiss={handleBulkDismiss}
+              onRestore={handleBulkRestore}
+              onSelectAll={selectAll}
+              onClear={clearSelection}
+            />
+          ) : null}
+          <InboxList
+            items={scopedItems}
+            onMarkRead={handleMarkRead}
+            onDismiss={handleDismiss}
+            onRestore={handleRestore}
+            selectedIds={selected}
+            onToggleSelect={toggleSelect}
+          />
+        </>
       )}
 
       <div aria-live="polite" aria-atomic="true" className="sr-only">

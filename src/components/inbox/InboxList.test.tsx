@@ -77,3 +77,40 @@ describe('InboxList', () => {
     expect(onDismiss).toHaveBeenCalledWith('b');
   });
 });
+
+describe('InboxList selection threading', () => {
+  it('passes selection state + onToggleSelect to each row when provided', async () => {
+    const user = userEvent.setup();
+    const onToggleSelect = vi.fn();
+    const items = [makeItem({ id: 'a', title: 'Alpha' }), makeItem({ id: 'b', title: 'Bravo' })];
+    render(
+      <InboxList
+        items={items}
+        selectedIds={new Set(['a'])}
+        onToggleSelect={onToggleSelect}
+        onMarkRead={vi.fn()}
+        onDismiss={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('checkbox', { name: /select alpha/i })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /select bravo/i })).not.toBeChecked();
+
+    await user.click(screen.getByRole('checkbox', { name: /select bravo/i }));
+    expect(onToggleSelect).toHaveBeenCalledWith('b');
+  });
+
+  it('renders no checkboxes when the selection props are omitted', () => {
+    render(
+      <InboxList
+        items={[makeItem()]}
+        onMarkRead={vi.fn()}
+        onDismiss={vi.fn()}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+});

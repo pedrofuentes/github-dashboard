@@ -76,6 +76,22 @@ export interface UseInboxResult {
   dismiss: (id: string) => void;
   /** Restores a previously dismissed item and persists. */
   restore: (id: string) => void;
+  /**
+   * Marks every given id read in ONE persisted triage update (not one per id),
+   * affecting only those ids. Idempotent: already-read ids are skipped and an
+   * empty array is a no-op.
+   */
+  markReadMany: (ids: string[]) => void;
+  /**
+   * Dismisses every given id in ONE persisted triage update, affecting only
+   * those ids. Idempotent; an empty array is a no-op.
+   */
+  dismissMany: (ids: string[]) => void;
+  /**
+   * Restores every given dismissed id in ONE persisted triage update. Ids that
+   * were not dismissed are ignored; an empty array is a no-op.
+   */
+  restoreMany: (ids: string[]) => void;
   /** Marks every derived item read and persists. */
   markAllRead: () => void;
   /** Advances the watermark to now (the on-open action) and persists. */
@@ -294,6 +310,53 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
     [applyTriage],
   );
 
+  const markReadMany = useCallback(
+    (ids: string[]) => {
+      applyTriage((prev) => {
+        const seen = new Set(prev.readIds);
+        const toAdd: string[] = [];
+        for (const id of ids) {
+          if (!seen.has(id)) {
+            seen.add(id);
+            toAdd.push(id);
+          }
+        }
+        return toAdd.length === 0 ? prev : { ...prev, readIds: [...prev.readIds, ...toAdd] };
+      });
+    },
+    [applyTriage],
+  );
+
+  const dismissMany = useCallback(
+    (ids: string[]) => {
+      applyTriage((prev) => {
+        const seen = new Set(prev.dismissedIds);
+        const toAdd: string[] = [];
+        for (const id of ids) {
+          if (!seen.has(id)) {
+            seen.add(id);
+            toAdd.push(id);
+          }
+        }
+        return toAdd.length === 0
+          ? prev
+          : { ...prev, dismissedIds: [...prev.dismissedIds, ...toAdd] };
+      });
+    },
+    [applyTriage],
+  );
+
+  const restoreMany = useCallback(
+    (ids: string[]) => {
+      applyTriage((prev) => {
+        const removeSet = new Set(ids);
+        const next = prev.dismissedIds.filter((id) => !removeSet.has(id));
+        return next.length === prev.dismissedIds.length ? prev : { ...prev, dismissedIds: next };
+      });
+    },
+    [applyTriage],
+  );
+
   const markAllRead = useCallback(() => {
     applyTriage((prev) => ({
       ...prev,
@@ -353,6 +416,9 @@ export function useInbox(repos: Repo[], getRowData: GetRowData): UseInboxResult 
     markRead,
     dismiss,
     restore,
+    markReadMany,
+    dismissMany,
+    restoreMany,
     markAllRead,
     markAllSeen,
   };

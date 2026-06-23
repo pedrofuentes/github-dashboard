@@ -21,6 +21,13 @@ export interface InboxListProps {
   onDismiss: (id: string) => void;
   /** Restores a previously dismissed item. */
   onRestore: (id: string) => void;
+  /** Ids of currently-selected items (only meaningful with `onToggleSelect`). */
+  selectedIds?: ReadonlySet<string>;
+  /**
+   * Toggles a row's selection. When provided each row renders a selection
+   * checkbox; when omitted the list and its rows are unchanged.
+   */
+  onToggleSelect?: (id: string) => void;
 }
 
 export function InboxList({
@@ -28,6 +35,8 @@ export function InboxList({
   onMarkRead,
   onDismiss,
   onRestore,
+  selectedIds,
+  onToggleSelect,
 }: InboxListProps): ReactElement {
   return (
     <ul role="list" aria-label="Inbox items" className="flex flex-col gap-2">
@@ -38,6 +47,8 @@ export function InboxList({
           onMarkRead={onMarkRead}
           onDismiss={onDismiss}
           onRestore={onRestore}
+          selected={selectedIds?.has(item.id) ?? false}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </ul>
