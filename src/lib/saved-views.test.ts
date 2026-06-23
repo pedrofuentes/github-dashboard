@@ -469,6 +469,7 @@ describe('persistence via createSavedViewsStore', () => {
 
   it('rejects save of invalid state', () => {
     const store = createSavedViewsStore();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const invalid = { version: 1 as const, views: [{ id: 'bad', name: '' }] } as any;
     store.save(invalid);
     const loaded = store.load();
