@@ -1,35 +1,39 @@
 /**
- * CustomizePanel — an accessible modal dialog for tailoring the dashboard: per
- * repository it shows a fieldset of tile-visibility checkboxes, a group
- * hide/show toggle, and an inline display-alias input, plus a reset action.
+ * CustomizePanel — an accessible modal dialog for tailoring the dashboard with
+ * RULE-BASED controls instead of a per-repo checkbox grind: global signal
+ * toggles (show/hide a signal across ALL repos), bulk Show all / Hide all /
+ * Show only… actions, and — for power users — a repo search that surfaces
+ * targeted per-repo signal overrides and display-alias inputs, plus a reset.
  *
  * It is a *controlled, presentational* component: the parent owns every hook
  * (layout + alias state) and passes values and callbacks as props, so the panel
- * itself holds no persistence logic and is trivially testable. Visibility flips
- * are computed with the pure {@link flipTileVisibility} / {@link flipRepoVisibility}
- * helpers (never mutating `layout`). Accessibility mirrors {@link DrillDownDrawer}:
+ * itself holds no persistence logic and is trivially testable. Visibility
+ * changes are computed with the pure transforms in {@link tile-visibility}
+ * (never mutating `layout`). Accessibility mirrors {@link DrillDownDrawer}:
  * `role="dialog"` / `aria-modal`, an `aria-labelledby` title, focus moves inside
  * on open, Tab is trapped, `Esc` or a backdrop click closes, and focus returns to
  * the opener on unmount.
  */
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent } from 'react';
 
 import { ALIAS_MAX_LENGTH } from '../lib/alias-preference';
 import { MAX_TILES } from '../lib/dashboard-layout';
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import {
-  flipRepoVisibility,
   flipTileVisibility,
   groupTilesByRepo,
-  isAllHidden,
+  setAllVisibility,
+  setSignalVisibility,
+  showOnlySignals,
+  signalVisibilitySummary,
 } from '../lib/tile-visibility';
-import type { DashboardTile } from '../types/dashboard';
+import type { DashboardTile, TileSignalType } from '../types/dashboard';
 
 interface CustomizePanelProps {
   /** The current dashboard layout (hidden tiles included). */
   layout: DashboardTile[];
-  /** Emits the next layout after a visibility flip — wires to `useDashboardLayout.setLayout`. */
+  /** Emits the next layout after a visibility change — wires to `useDashboardLayout.setLayout`. */
   onLayoutChange: (next: DashboardTile[]) => void;
   /** Repo → display alias map (parent-owned). */
   aliases: Record<string, string>;
@@ -44,7 +48,7 @@ interface CustomizePanelProps {
 }
 
 // Mirrors DrillDownDrawer's trap selector, extended with form controls so the
-// checkboxes and alias inputs participate in the Tab focus cycle.
+// toggles, checkboxes and inputs participate in the Tab focus cycle.
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -67,6 +71,10 @@ export function CustomizePanel({
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // Local-only UI state: which signals are checked for the "Show only…" action,
+  // and the repo-search query that surfaces targeted per-repo overrides.
+  const [onlySelection, setOnlySelection] = useState<Set<TileSignalType>>(new Set());
+  const [repoQuery, setRepoQuery] = useState('');
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -113,10 +121,29 @@ export function CustomizePanel({
     }
   }
 
-  const groups = groupTilesByRepo(layout);
-  // Flips never grow the array so show/hide can't exceed the cap; the guard
+  function toggleOnlySelection(signal: TileSignalType) {
+    setOnlySelection((current) => {
+      const next = new Set(current);
+      if (next.has(signal)) next.delete(signal);
+      else next.add(signal);
+      return next;
+    });
+  }
+
+  const summary = signalVisibilitySummary(layout);
+  // Changes never grow the array so show/hide can't exceed the cap; the guard
   // exists for any future "add tile" path and feeds the status region (AC-5).
   const atCapacity = layout.length >= MAX_TILES;
+
+  // Power-user escape hatch: a repo search keeps targeted per-repo overrides
+  // available without re-introducing the ~300-checkbox default grind.
+  const matchingRepos = useMemo(() => {
+    const query = repoQuery.trim().toLowerCase();
+    if (query === '') return [] as Array<[string, DashboardTile[]]>;
+    return Array.from(groupTilesByRepo(layout)).filter(([repo]) =>
+      repo.toLowerCase().includes(query),
+    );
+  }, [layout, repoQuery]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -140,7 +167,7 @@ export function CustomizePanel({
               Customize dashboard
             </h2>
             <p className="mt-1 text-sm text-text-muted">
-              Show or hide tiles per repository and set short display aliases.
+              Shape the board with signal rules — show or hide a signal across every repo at once.
             </p>
           </div>
           <button
@@ -164,28 +191,101 @@ export function CustomizePanel({
             : ''}
         </div>
 
-        <div className="mt-4 flex flex-col gap-6">
-          {Array.from(groups, ([repo, tiles]) => {
-            const groupHidden = isAllHidden(tiles);
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onLayoutChange(setAllVisibility(layout, true))}
+            className="rounded border border-border-strong px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Show all tiles
+          </button>
+          <button
+            type="button"
+            onClick={() => onLayoutChange(setAllVisibility(layout, false))}
+            className="rounded border border-border-strong px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Hide all tiles
+          </button>
+        </div>
+
+        <fieldset
+          aria-label="Signal rules"
+          className="mt-6 flex flex-col gap-2 border-t border-border pt-4"
+        >
+          <legend className="px-1 text-sm font-semibold text-text">Signal rules</legend>
+          <p className="px-1 text-xs text-text-muted">
+            Each toggle applies to every repository at once.
+          </p>
+          {summary.map(({ signal, shown, total }) => {
+            const allShown = shown === total;
+            const state = shown === 0 ? 'none' : allShown ? 'all' : 'some';
+            const nextVisible = !allShown;
+            const label = SIGNAL_LABELS[signal];
+            return (
+              <div key={signal} className="flex items-center gap-3 px-1">
+                <label className="flex items-center gap-2 text-sm text-text">
+                  <input
+                    type="checkbox"
+                    checked={onlySelection.has(signal)}
+                    onChange={() => toggleOnlySelection(signal)}
+                    aria-label={`Include ${label} in show-only selection`}
+                    className="h-4 w-4 rounded border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  />
+                  <span className="font-medium">{label}</span>
+                </label>
+                <span className="ml-auto text-xs text-text-muted" data-state={state}>
+                  {`${shown} of ${total} shown`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onLayoutChange(setSignalVisibility(layout, signal, nextVisible))}
+                  aria-label={`${nextVisible ? 'Show' : 'Hide'} all ${label} tiles`}
+                  className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-accent-info hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  {nextVisible ? `Show all ${label}` : `Hide all ${label}`}
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            disabled={onlySelection.size === 0}
+            onClick={() => onLayoutChange(showOnlySignals(layout, onlySelection))}
+            className="mt-2 self-start rounded border border-border-strong px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Show only selected
+          </button>
+        </fieldset>
+
+        <fieldset className="mt-6 flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="px-1 text-sm font-semibold text-text">Per-repository overrides</legend>
+          <div className="flex flex-col gap-1 px-1">
+            <label
+              htmlFor={`${titleId}-repo-search`}
+              className="text-xs font-medium text-text-muted"
+            >
+              Search repositories
+            </label>
+            <input
+              id={`${titleId}-repo-search`}
+              type="text"
+              value={repoQuery}
+              onChange={(event) => setRepoQuery(event.target.value)}
+              placeholder="owner/name"
+              aria-describedby={`${titleId}-repo-search-hint`}
+              className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            />
+            <p id={`${titleId}-repo-search-hint`} className="text-xs text-text-muted">
+              Search a repository to override individual tiles or set a display alias.
+            </p>
+          </div>
+
+          {matchingRepos.map(([repo, tiles]) => {
             const aliasInputId = `${titleId}-alias-${repo}`;
             return (
-              <fieldset key={repo} className="border-t border-border pt-4">
-                <legend className="break-words px-1 text-sm font-semibold text-text">{repo}</legend>
-
-                <div className="mt-1 flex items-center justify-between gap-3">
-                  <span className="text-xs text-text-muted">
-                    {`${tiles.length} ${tiles.length === 1 ? 'tile' : 'tiles'}`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onLayoutChange(flipRepoVisibility(layout, repo, groupHidden))}
-                    className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-accent-info hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                  >
-                    {groupHidden ? `Show all ${repo}` : `Hide all ${repo}`}
-                  </button>
-                </div>
-
-                <div className="mt-2 flex flex-col gap-2">
+              <div key={repo} className="flex flex-col gap-2 px-1">
+                <p className="break-words text-sm font-semibold text-text">{repo}</p>
+                <div className="flex flex-col gap-2">
                   {tiles.map((t) => (
                     <label key={t.i} className="flex items-center gap-2 text-sm text-text">
                       <input
@@ -201,8 +301,7 @@ export function CustomizePanel({
                     </label>
                   ))}
                 </div>
-
-                <div className="mt-3 flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                   <label htmlFor={aliasInputId} className="text-xs font-medium text-text-muted">
                     {`Alias for ${repo}`}
                   </label>
@@ -216,10 +315,10 @@ export function CustomizePanel({
                     className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   />
                 </div>
-              </fieldset>
+              </div>
             );
           })}
-        </div>
+        </fieldset>
 
         <div className="mt-6 flex justify-end border-t border-border pt-4">
           <button
