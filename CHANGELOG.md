@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **⌘K command palette (live)**: press ⌘K (or Ctrl-K) anywhere in the
+  authenticated app to open a searchable command palette. It exposes navigation
+  (Go to Triage/Matrix/Grid/Inbox/Boards), filter presets (Needs attention,
+  Awaiting my review, Failing CI, Security risk, Stale, Clear all filters),
+  Open Settings, and Toggle theme/density — each wired to existing actions
+  (no new behaviour). Recently-run commands are remembered and surfaced first.
 - **Saved Views manager + quick-switcher**: a new accessible `SavedViewsMenu`
   disclosure (backed by the `useSavedViews` hook) lets you save the current repo
   filter + target view as a named workspace and apply, rename, or delete saved

@@ -234,15 +234,23 @@ export function CommandPalette({ open, onClose, commands, recents }: CommandPale
       event.preventDefault();
       const target = results[activeIndex];
       if (target !== undefined) {
-        target.run();
-        onClose();
+        runCommand(target);
       }
     }
   }
 
+  // #417: always close (and let the open-effect restore focus) even if a real
+  // command's `run` throws, so a throwing command can never strand the palette
+  // open (or escape into React's event dispatch and unmount the tree). The
+  // failure is surfaced via console.error rather than swallowed silently.
   function runCommand(item: CommandItem): void {
-    item.run();
-    onClose();
+    try {
+      item.run();
+    } catch (error) {
+      console.error(`Command "${item.id}" failed:`, error);
+    } finally {
+      onClose();
+    }
   }
 
   return (
