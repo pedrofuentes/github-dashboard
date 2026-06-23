@@ -239,4 +239,60 @@ describe('CommandPalette keyboard model', () => {
     expect(charlie).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // #417: a throwing command must not strand the palette open — onClose() and
+  // focus-restore still run via try/finally around the command execution.
+  it('still closes (and restores focus) when a command run throws on Enter', async () => {
+    const onClose = vi.fn();
+    const boom = vi.fn(() => {
+      throw new Error('boom');
+    });
+    const user = userEvent.setup();
+    function ThrowHarness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            open palette
+          </button>
+          <CommandPalette
+            open={open}
+            onClose={() => {
+              onClose();
+              setOpen(false);
+            }}
+            commands={[{ id: 'boom', label: 'Boom Action', group: 'Navigation', run: boom }]}
+          />
+        </>
+      );
+    }
+    render(<ThrowHarness />);
+
+    await screen.findByRole('combobox');
+    await user.keyboard('{Enter}');
+
+    expect(boom).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('still closes when a clicked command run throws', async () => {
+    const onClose = vi.fn();
+    const boom = vi.fn(() => {
+      throw new Error('boom');
+    });
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        open
+        onClose={onClose}
+        commands={[{ id: 'boom', label: 'Boom Action', group: 'Navigation', run: boom }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('option', { name: /boom action/i }));
+
+    expect(boom).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
