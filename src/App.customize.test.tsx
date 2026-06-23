@@ -78,7 +78,7 @@ describe('App — customize + repo-filter wiring (C1)', () => {
     render(<App />);
     await authenticateOnDashboard(user, [repo('octo/a')]);
 
-    // The RepoScopeFilter disclosure is available without entering edit mode.
+    // The faceted repo-filter disclosure is available without entering edit mode.
     expect(screen.getByRole('button', { name: /filter repositories/i })).toBeInTheDocument();
   });
 

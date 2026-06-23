@@ -6,9 +6,9 @@ import { DashboardView } from './components/DashboardView';
 import { DefaultViewToggle } from './components/DefaultViewToggle';
 import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
+import { FacetedRepoFilter } from './components/FacetedRepoFilter';
 import { FleetGrid } from './components/FleetGrid';
 import { InboxView } from './components/inbox/InboxView';
-import { RepoScopeFilter } from './components/RepoScopeFilter';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TokenInput } from './components/TokenInput';
 import { AuthProvider } from './hooks/AuthProvider';
@@ -17,7 +17,7 @@ import { useAliases } from './hooks/useAliases';
 import { useAuth } from './hooks/useAuth';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
 import { useInbox } from './hooks/useInbox';
-import { useRepoFilter } from './hooks/useRepoFilter';
+import { useRepoFilterQuery } from './hooks/useRepoFilterQuery';
 import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
@@ -105,7 +105,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   // the grid never desync. Aliases + repo filter are owned alongside it.
   const { layout, setLayout, reset } = useDashboardLayout(repos);
   const aliases = useAliases(repos);
-  const filter = useRepoFilter(repos);
+  const filter = useRepoFilterQuery(repos, getRowData);
   const inbox = useInbox(repos, getRowData);
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
@@ -173,13 +173,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
           <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
           {view === 'dashboard' ? (
             <>
-              <RepoScopeFilter
-                repos={repos}
-                selected={filter.selected}
-                onToggleRepo={filter.toggleRepo}
-                onClear={filter.clear}
-                isActive={filter.isActive}
-              />
+              <FacetedRepoFilter repos={repos} filter={filter} />
               <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
             </>
           ) : null}
@@ -193,8 +187,8 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
               editing={editing}
               layout={layout}
               onLayoutChange={setLayout}
-              repoFilter={filter.selected}
-              onClearFilter={filter.clear}
+              repoFilter={filter.isActive ? filter.derivedSelected : undefined}
+              onClearFilter={filter.clearAll}
               aliases={aliases.aliases}
               loading={status === 'loading'}
               error={status === 'error' ? error : null}
