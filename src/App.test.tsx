@@ -245,7 +245,8 @@ describe('App', () => {
     expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
   });
 
-  it('defaults to the dashboard view (AC1)', async () => {
+  it('renders the dashboard view when configured as the default (AC1)', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -279,7 +280,8 @@ describe('App', () => {
     expect(localStorage.getItem('fleet:view')).toBeNull();
   });
 
-  it('opens to the dashboard default after authenticating (AC1)', async () => {
+  it('opens to the dashboard view when configured as default (AC1)', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -358,6 +360,7 @@ describe('App', () => {
   }
 
   it('shows a loading skeleton in the dashboard view while repos load', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     mockUseRepos.mockReturnValue({
       status: 'loading',
       repos: [],
@@ -374,6 +377,7 @@ describe('App', () => {
   });
 
   it('shows an error + retry in the dashboard view and calls reload on retry', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const reload = vi.fn();
     mockUseRepos.mockReturnValue({
       status: 'error',
@@ -459,7 +463,7 @@ describe('App', () => {
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
   });
 
@@ -674,5 +678,91 @@ describe('App', () => {
       expect(stored.lastVisitedAt).not.toBeNull();
       expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
     });
+  });
+
+  function matrixToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /matrix/i });
+  }
+
+  it('offers a Matrix option in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(matrixToggleButton()).toBeInTheDocument();
+  });
+
+  it('falls back to the matrix view when no default is stored', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+  });
+
+  it('honours a persisted default over the matrix fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('renders the fleet matrix and hides the dashboard when Matrix is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('region', { name: /dashboard/i });
+
+    await user.click(matrixToggleButton());
+
+    expect(screen.getByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /repository/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/hello-world/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+  });
+
+  it('narrows the matrix rows via the faceted repo filter', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/beta/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    const search = await screen.findByRole('combobox', { name: /search repositories/i });
+    await user.type(search, 'alpha');
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /view details for octo\/beta/i })).toBeNull();
+  });
+
+  it('opens the drill-down drawer from a matrix row', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello-world/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
   });
 });

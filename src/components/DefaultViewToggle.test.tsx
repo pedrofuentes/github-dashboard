@@ -5,10 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { DefaultViewToggle } from './DefaultViewToggle';
 
 describe('DefaultViewToggle', () => {
-  it('exposes an accessible "Default view" radiogroup with the three choices', () => {
+  it('exposes an accessible "Default view" radiogroup with the four choices', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
     const group = screen.getByRole('radiogroup', { name: /default view/i });
     expect(group).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /matrix/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /grid/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /inbox/i })).toBeInTheDocument();
@@ -26,12 +27,13 @@ describe('DefaultViewToggle', () => {
 
   it('renders a redundant text label for every option (never colour alone)', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+    expect(screen.getByText('Matrix')).toBeInTheDocument();
     expect(screen.getByText('Grid')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Inbox')).toBeInTheDocument();
   });
 
-  it.each([/grid/i, /dashboard/i, /inbox/i])(
+  it.each([/matrix/i, /grid/i, /dashboard/i, /inbox/i])(
     'exposes a visible focus ring on the %s option for keyboard users',
     (name) => {
       render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
@@ -40,6 +42,7 @@ describe('DefaultViewToggle', () => {
   );
 
   it.each([
+    { name: /matrix/i, expected: 'matrix' as const },
     { name: /grid/i, expected: 'grid' as const },
     { name: /dashboard/i, expected: 'dashboard' as const },
     { name: /inbox/i, expected: 'inbox' as const },
@@ -47,7 +50,7 @@ describe('DefaultViewToggle', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     // `value="grid"` so the grid click re-selects the already-active radio while
-    // dashboard/inbox are genuine changes; the toggle calls `onChange`
+    // the others are genuine changes; the toggle calls `onChange`
     // unconditionally, so every option — re-select included — reports its value.
     render(<DefaultViewToggle value="grid" onChange={onChange} />);
     await user.click(screen.getByRole('radio', { name }));
