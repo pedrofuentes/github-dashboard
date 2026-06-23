@@ -93,11 +93,39 @@ describe('App', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
-  it('exposes the density toggle beside the theme toggle', () => {
+  it('exposes a Settings button that opens an overlay with the appearance controls', async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
-    expect(screen.getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+    // The scattered theme/density controls are no longer directly in the header.
+    expect(screen.queryByRole('radiogroup', { name: /theme/i })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: /density/i })).toBeNull();
+
+    const settings = screen.getByRole('button', { name: /settings/i });
+    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(settings);
+
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(settings).toHaveAttribute('aria-expanded', 'true');
+    expect(within(dialog).getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+  });
+
+  it('closes the settings overlay on Escape and returns focus to the Settings button', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const settings = screen.getByRole('button', { name: /settings/i });
+    await user.click(settings);
+    await screen.findByRole('dialog', { name: /settings/i });
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(settings).toHaveFocus();
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('exposes a top-level banner landmark that holds the dashboard heading', () => {
@@ -130,7 +158,7 @@ describe('App', () => {
     expect(screen.getByLabelText(/personal access token/i)).toBeInTheDocument();
   });
 
-  it('shows the authenticated identity and a forget control after sign-in', async () => {
+  it('shows the authenticated identity and a forget control in the settings overlay after sign-in', async () => {
     mockValidate.mockResolvedValue({
       ok: true,
       login: 'octocat',
@@ -141,9 +169,12 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByRole('group', { name: /view mode/i });
 
-    expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /forget token/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(within(dialog).getByText(/authenticated as octocat/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /forget token/i })).toBeInTheDocument();
   });
 
   it('renders a neutral placeholder without an external image when the avatar is dropped', async () => {
@@ -153,8 +184,11 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByRole('group', { name: /view mode/i });
 
-    expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(within(dialog).getByText(/authenticated as octocat/i)).toBeInTheDocument();
     expect(container.querySelector('img')).toBeNull();
   });
 
@@ -186,7 +220,7 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
 
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
     expect(mockUseRepos).toHaveBeenCalledWith('ghp_valid');
   });
 
@@ -232,7 +266,7 @@ describe('App', () => {
     mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
   }
 
   it('offers an accessible Grid/Dashboard view toggle once authenticated', async () => {
@@ -356,7 +390,7 @@ describe('App', () => {
     mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
   }
 
   it('shows a loading skeleton in the dashboard view while repos load', async () => {
@@ -450,7 +484,9 @@ describe('App', () => {
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    const defaultGroup = screen.getByRole('radiogroup', { name: /default view/i });
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    const defaultGroup = within(dialog).getByRole('radiogroup', { name: /default view/i });
     await user.click(within(defaultGroup).getByRole('radio', { name: /inbox/i }));
 
     expect(localStorage.getItem('fleet:default-view')).toBe('inbox');
