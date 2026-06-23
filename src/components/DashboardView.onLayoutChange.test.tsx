@@ -63,7 +63,7 @@ function DashboardView(
   return <DashboardViewImpl {...props} layout={layout} onLayoutChange={setLayout} />;
 }
 
-const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -111,8 +111,8 @@ describe('DashboardView onLayoutChange wiring', () => {
 
     await waitFor(() => {
       expect(saveSpy).toHaveBeenCalledTimes(1);
-      const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-      const first = persisted?.find(
+      const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null');
+      const first = envelope?.tiles?.find(
         (t: { i: string }) => t.i === DEFAULT_LAYOUT([makeRepo('octo/a')])[0].i,
       );
       expect(first).toMatchObject({ x: 6, y: 4, w: 4, h: 3 });
@@ -136,7 +136,7 @@ describe('DashboardView onLayoutChange wiring', () => {
     // persist (deterministic; no fake-timer advance needed).
     unmount();
 
-    expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything());
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(setItemSpy).not.toHaveBeenCalledWith(STORAGE_KEY_V2, expect.anything());
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
   });
 });

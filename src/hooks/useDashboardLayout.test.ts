@@ -2,10 +2,21 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Repo } from '../types/fleet';
+import type { DashboardTile } from '../types/dashboard';
 import { DEFAULT_LAYOUT } from '../lib/dashboard-layout';
 import { useDashboardLayout } from './useDashboardLayout';
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+
+/** Reads the tiles from the persisted v2 envelope (or null when unwritten). */
+function persistedTiles(): DashboardTile[] | null {
+  const raw = localStorage.getItem(STORAGE_KEY_V2);
+  if (raw === null) {
+    return null;
+  }
+  return (JSON.parse(raw) as { tiles: DashboardTile[] }).tiles;
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -50,7 +61,7 @@ describe('useDashboardLayout', () => {
     // State is responsive (synchronous) for the UI...
     expect(result.current.layout).toEqual(next);
     // ...but the localStorage write is deferred until the debounce settles.
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
     // Unmount runs the effect cleanup → `persist.flush()`, which writes the
     // pending change synchronously. Asserting via this flush path proves the
@@ -58,7 +69,7 @@ describe('useDashboardLayout', () => {
     // fake timers inside `act` (that flaked on the Linux CI runner — see #122).
     unmount();
 
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+    expect(persistedTiles()).toEqual(next);
   });
 
   it('coalesces a burst of rapid setLayout calls into a single persisted write', async () => {
@@ -80,7 +91,7 @@ describe('useDashboardLayout', () => {
 
     // No write yet — every call restarted the debounce timer.
     expect(saveSpy).not.toHaveBeenCalled();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
     // Unmount runs the effect cleanup → `persist.flush()`, writing the single
     // pending debounced change. Await effects + microtasks so the flush settles
@@ -93,9 +104,7 @@ describe('useDashboardLayout', () => {
     // Exactly one coalesced write, carrying the final state.
     await waitFor(() => {
       expect(saveSpy).toHaveBeenCalledTimes(1);
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(
-        base.map((t) => ({ ...t, y: 10 })),
-      );
+      expect(persistedTiles()).toEqual(base.map((t) => ({ ...t, y: 10 })));
     });
   });
 
@@ -135,14 +144,14 @@ describe('useDashboardLayout', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
 
     const { result } = renderHook(() => useDashboardLayout(repos));
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull();
 
     act(() => {
       result.current.reset();
     });
 
     expect(result.current.layout).toEqual(DEFAULT_LAYOUT(repos));
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
   });
 
   it('flushes the pending debounced write before reconciling on a fleet change (#126)', () => {
@@ -159,7 +168,7 @@ describe('useDashboardLayout', () => {
         result.current.setLayout(dragged);
       });
       // The write is still pending — the debounce window has not elapsed.
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
       // The fleet identity changes within the debounce window (a new repo loads),
       // triggering the reconcile effect. WITHOUT flushing first, reconcile would
@@ -168,7 +177,7 @@ describe('useDashboardLayout', () => {
 
       // The pending drag write must have been flushed before reconcile read storage,
       // so the dragged layout is persisted (not lost) and survives reconciliation.
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(dragged);
+      expect(persistedTiles()).toEqual(dragged);
       expect(result.current.layout).toEqual(dragged);
     } finally {
       vi.clearAllTimers();
@@ -187,7 +196,7 @@ describe('useDashboardLayout', () => {
         result.current.setLayout(next);
       });
       // Still pending — the debounce window has not elapsed.
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
       // A hard page close/navigate fires `beforeunload`; React never unmounts, so
       // only an explicit unload listener can flush the pending write before the
@@ -196,7 +205,7 @@ describe('useDashboardLayout', () => {
         window.dispatchEvent(new Event('beforeunload'));
       });
 
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+      expect(persistedTiles()).toEqual(next);
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
@@ -214,7 +223,7 @@ describe('useDashboardLayout', () => {
         result.current.setLayout(next);
       });
       // Still pending — the debounce window has not elapsed.
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
       // Backgrounding the tab fires `visibilitychange` with state `hidden`. React
       // never unmounts, so only this listener can flush the pending write before
@@ -224,7 +233,7 @@ describe('useDashboardLayout', () => {
         document.dispatchEvent(new Event('visibilitychange'));
       });
 
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+      expect(persistedTiles()).toEqual(next);
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
@@ -241,7 +250,7 @@ describe('useDashboardLayout', () => {
       act(() => {
         result.current.setLayout(next);
       });
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
       // A `visibilitychange` to `visible` (tab refocused) must NOT flush — only
       // the `hidden` transition tears the page down. The write stays pending.
@@ -250,7 +259,7 @@ describe('useDashboardLayout', () => {
         document.dispatchEvent(new Event('visibilitychange'));
       });
 
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
@@ -267,11 +276,11 @@ describe('useDashboardLayout', () => {
       act(() => {
         result.current.setLayout(next);
       });
-      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
 
       unmount();
 
-      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(next);
+      expect(persistedTiles()).toEqual(next);
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();

@@ -276,7 +276,37 @@ describe('App', () => {
 
     const toggle = screen.getByRole('group', { name: /view/i });
     expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
-    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /boards/i })).toBeInTheDocument();
+  });
+
+  it('labels the demoted RGL view "Boards" (not "Dashboard") and places it after Matrix/Grid', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    const toggle = screen.getByRole('group', { name: /view/i });
+    const boards = within(toggle).getByRole('button', { name: /boards/i });
+    expect(boards).toBeInTheDocument();
+    expect(within(toggle).queryByRole('button', { name: /^dashboard$/i })).toBeNull();
+
+    // Secondary, not the default: ordered after Matrix and Grid.
+    const labels = within(toggle)
+      .getAllByRole('button')
+      .map((button) => button.textContent ?? '');
+    expect(labels.indexOf('Boards')).toBeGreaterThan(labels.indexOf('Matrix'));
+    expect(labels.indexOf('Boards')).toBeGreaterThan(labels.indexOf('Grid'));
+  });
+
+  it('renders the RGL grid when the Boards view is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    expect(await screen.findByRole('grid')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('renders the dashboard view when configured as the default (AC1)', async () => {
@@ -296,7 +326,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByRole('region', { name: /dashboard/i })).toBeInTheDocument();
 
@@ -331,7 +361,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
     const tile = screen.getAllByRole('button', {
       name: /: .*\u2014 octo\/hello-world/i,
     })[0];
@@ -358,7 +388,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
 
     const customize = screen.getByRole('button', { name: /customize layout/i });
     expect(customize).toHaveAttribute('aria-pressed', 'false');
@@ -375,7 +405,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
     // Static before editing.
     expect(container.querySelector('.react-grid-item.react-draggable')).toBeNull();
 
@@ -443,7 +473,7 @@ describe('App', () => {
 
     const toggle = viewToggle();
     expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
-    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /boards/i })).toBeInTheDocument();
     expect(within(toggle).getByRole('button', { name: /inbox/i })).toBeInTheDocument();
   });
 

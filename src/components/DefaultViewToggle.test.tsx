@@ -12,7 +12,7 @@ describe('DefaultViewToggle', () => {
     expect(screen.getByRole('radio', { name: /triage/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /matrix/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /grid/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /boards/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /inbox/i })).toBeInTheDocument();
   });
 
@@ -20,10 +20,7 @@ describe('DefaultViewToggle', () => {
     render(<DefaultViewToggle value="inbox" onChange={vi.fn()} />);
     expect(screen.getByRole('radio', { name: /inbox/i })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /grid/i })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('radio', { name: /dashboard/i })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
+    expect(screen.getByRole('radio', { name: /boards/i })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('renders a redundant text label for every option (never colour alone)', () => {
@@ -31,7 +28,7 @@ describe('DefaultViewToggle', () => {
     expect(screen.getByText('Triage')).toBeInTheDocument();
     expect(screen.getByText('Matrix')).toBeInTheDocument();
     expect(screen.getByText('Grid')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Boards')).toBeInTheDocument();
     expect(screen.getByText('Inbox')).toBeInTheDocument();
   });
 
@@ -41,7 +38,7 @@ describe('DefaultViewToggle', () => {
     expect(radios[0]).toHaveAccessibleName(/triage/i);
   });
 
-  it.each([/triage/i, /matrix/i, /grid/i, /dashboard/i, /inbox/i])(
+  it.each([/triage/i, /matrix/i, /grid/i, /boards/i, /inbox/i])(
     'exposes a visible focus ring on the %s option for keyboard users',
     (name) => {
       render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
@@ -53,7 +50,7 @@ describe('DefaultViewToggle', () => {
     { name: /triage/i, expected: 'triage' as const },
     { name: /matrix/i, expected: 'matrix' as const },
     { name: /grid/i, expected: 'grid' as const },
-    { name: /dashboard/i, expected: 'dashboard' as const },
+    { name: /boards/i, expected: 'dashboard' as const },
     { name: /inbox/i, expected: 'inbox' as const },
   ])('calls onChange with $expected when that radio is clicked', async ({ name, expected }) => {
     const user = userEvent.setup();

@@ -368,7 +368,7 @@ const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
   { value: 'triage', label: 'Triage' },
   { value: 'matrix', label: 'Matrix' },
   { value: 'grid', label: 'Grid' },
-  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'dashboard', label: 'Boards' },
   { value: 'inbox', label: 'Inbox' },
 ];
 

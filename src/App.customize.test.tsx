@@ -69,7 +69,7 @@ async function authenticateOnDashboard(
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
   await user.click(screen.getByRole('button', { name: /connect/i }));
   await screen.findByRole('group', { name: /view mode/i });
-  await user.click(screen.getByRole('button', { name: /dashboard/i }));
+  await user.click(screen.getByRole('button', { name: /boards/i }));
   await screen.findByRole('region', { name: /dashboard/i });
 }
 

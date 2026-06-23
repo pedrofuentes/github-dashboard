@@ -62,6 +62,16 @@ vi.mock('../hooks/useCommitActivity', () => ({
 const { DashboardView } = await import('./DashboardView');
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+
+/** Reads the tiles from the persisted v2 envelope (or null when unwritten). */
+function readPersistedV2(): DashboardTile[] | null {
+  const raw = localStorage.getItem(STORAGE_KEY_V2);
+  if (raw === null) {
+    return null;
+  }
+  return (JSON.parse(raw) as { tiles: DashboardTile[] }).tiles;
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -214,7 +224,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
 
       // Byte-unchanged: the guard prevented the partial/compacted layout from
       // being persisted while filtered.
-      expect(localStorage.getItem(STORAGE_KEY)).toBe(seeded);
+      expect(readPersistedV2()).toEqual(JSON.parse(seeded));
     } finally {
       vi.useRealTimers();
     }
@@ -233,7 +243,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
         vi.advanceTimersByTime(400);
       });
 
-      expect(localStorage.getItem(STORAGE_KEY)).not.toBe(seeded);
+      expect(readPersistedV2()).not.toEqual(JSON.parse(seeded));
     } finally {
       vi.useRealTimers();
     }
