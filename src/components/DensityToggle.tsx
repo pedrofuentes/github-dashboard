@@ -2,8 +2,8 @@
  * Accessible 2-state density control (DESIGN-TILES §density). A segmented
  * `radiogroup` of Balanced / Glanceable, each with a redundant icon + text
  * label (never colour alone), a `focus`-token focus ring, and tokenised colours
- * so it meets WCAG AA in both themes. Wired to {@link useDensity}, which
- * persists the choice. Tiles consume the density in a later task.
+ * so it meets WCAG AA in both themes. Wired to {@link useDensity}, a shared
+ * store, so the choice is persisted and applied live across every consumer.
  *
  * Keyboard (WAI-ARIA APG radio-group pattern): a single roving tab stop — only
  * the checked radio is in the tab order (`tabindex="0"`); the other is

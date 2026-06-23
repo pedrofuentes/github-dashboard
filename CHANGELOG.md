@@ -198,6 +198,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Density toggle now updates the dashboard live**: switching density to
+  **Glanceable** (or back to Balanced) in Settings — or via the ⌘K "Toggle
+  density" command — immediately re-renders the Fleet Matrix and dashboard tiles
+  instead of doing nothing until a reload. `useDensity` was a per-component
+  `useState`, so each of its four consumers held an independent copy; the toggle
+  only updated its own and the matrix/tiles never heard about the change. It is
+  now a single shared `useSyncExternalStore` reading `localStorage` as the source
+  of truth, so every consumer re-renders in sync (T-fix-density-sync).
 - **Keyboard focus stays visible in the ⌘K palette and repo filter**: both
   `aria-activedescendant` listboxes now scroll the highlighted option into view
   as you arrow/Home/End through long lists, so the active descendant — the only
