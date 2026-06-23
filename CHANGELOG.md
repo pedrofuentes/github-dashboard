@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Awaiting my review, Failing CI, Security risk, Stale, Clear all filters),
   Open Settings, and Toggle theme/density — each wired to existing actions
   (no new behaviour). Recently-run commands are remembered and surfaced first.
+- **Saved Views manager + quick-switcher**: a new accessible `SavedViewsMenu`
+  disclosure (backed by the `useSavedViews` hook) lets you save the current repo
+  filter + target view as a named workspace and apply, rename, or delete saved
+  views. Names are validated (non-empty, bounded length) before persisting, with
+  inline feedback. Standalone for now — wiring it into the app toolbar is a
+  follow-up.
 - **Global repo scope across all views**: the faceted repo filter is now a
   single global scope (ADR-027). Activating it narrows **every** primary view —
   including the Grid table and the Notifications Inbox, which previously ignored
