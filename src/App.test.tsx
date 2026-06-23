@@ -493,6 +493,33 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
   });
 
+  it('resets the live view to the configured default after forget + re-auth (no reload)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    // The session opens on the configured default (Triage).
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+
+    // Switch the live view away from the default via the ViewToggle.
+    await user.click(within(viewToggle()).getByRole('button', { name: /grid/i }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    // Forget the token (sign out) from the Settings overlay — no page reload.
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    await user.click(within(dialog).getByRole('button', { name: /forget token/i }));
+
+    // Back to the unauthenticated token input; close the overlay and re-auth.
+    await user.click(screen.getByRole('button', { name: /close settings/i }));
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    // The new session must open on the configured DEFAULT (Triage), not the
+    // previously-selected Grid view.
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
   it('ignores a legacy fleet:view value on load (AC7)', async () => {
     localStorage.setItem('fleet:view', 'inbox');
     const user = userEvent.setup();
