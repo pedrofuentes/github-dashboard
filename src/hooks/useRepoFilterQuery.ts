@@ -257,8 +257,7 @@ export function useRepoFilterQuery(
   );
 
   const toggleReviewsAwaitingMe = useCallback(
-    () =>
-      update((q) => withFacet(q, 'reviews', toggleInArray(q.facets.reviews, 'awaiting-me'))),
+    () => update((q) => withFacet(q, 'reviews', toggleInArray(q.facets.reviews, 'awaiting-me'))),
     [update],
   );
 

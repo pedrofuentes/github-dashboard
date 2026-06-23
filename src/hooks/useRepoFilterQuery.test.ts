@@ -2,11 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
-import {
-  EMPTY_QUERY,
-  STORAGE_KEY_V2,
-  type RepoFilterQueryV2,
-} from '../lib/repo-filter-query';
+import { EMPTY_QUERY, STORAGE_KEY_V2, type RepoFilterQueryV2 } from '../lib/repo-filter-query';
 import { useRepoFilterQuery } from './useRepoFilterQuery';
 
 const mkRepo = (owner: string, name: string, isPrivate = false): Repo => ({
@@ -221,10 +217,9 @@ describe('clearAll', () => {
 describe('reconcile on fleet change', () => {
   it('drops absent repo pins when the fleet set changes', () => {
     persist(includeQuery(['octo/a', 'gone/x']));
-    const { result, rerender } = renderHook(
-      ({ repos }) => useRepoFilterQuery(repos, getRowData),
-      { initialProps: { repos: [] as Repo[] } },
-    );
+    const { result, rerender } = renderHook(({ repos }) => useRepoFilterQuery(repos, getRowData), {
+      initialProps: { repos: [] as Repo[] },
+    });
     rerender({ repos: [repoA] });
     expect(result.current.query.repoSelection.names).toEqual(['octo/a']);
   });
@@ -241,9 +236,7 @@ describe('reconcile on fleet change', () => {
 
 describe('availableOwners', () => {
   it('derives distinct owners with repo counts, sorted by owner', () => {
-    const { result } = renderHook(() =>
-      useRepoFilterQuery([repoA, repoB, repoC], getRowData),
-    );
+    const { result } = renderHook(() => useRepoFilterQuery([repoA, repoB, repoC], getRowData));
     expect(result.current.availableOwners).toEqual([
       { owner: 'acme', count: 1 },
       { owner: 'octo', count: 2 },
