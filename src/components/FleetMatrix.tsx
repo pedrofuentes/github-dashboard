@@ -7,21 +7,24 @@
  *
  * Responsibilities owned here: accessible table semantics (`<th scope>`, a
  * named table, a sticky header), worst-first ordering via
- * {@link buildMatrixModel}, an optional drill-down hook (REC-8), and the
- * loading / empty / error states mirrored from {@link FleetGrid}. The per-signal
- * presentation lives entirely in the reused cell components — this file never
- * invents signal semantics.
+ * {@link buildMatrixModel}, an optional drill-down hook (REC-8), collapsible
+ * health groups (Broken/Warning/Healthy) with Healthy collapsed by default,
+ * and the loading / empty / error states mirrored from {@link FleetGrid}.
+ * The per-signal presentation lives entirely in the reused cell components —
+ * this file never invents signal semantics.
  *
  * The `activity` signal has no slice on {@link RepoSignalData} (it self-fetches),
  * so its cell reuses the Dashboard's {@link ActivityTileBody} at the `compact`
  * tier, keeping the matrix consistent with the activity tile rather than
  * inventing a new activity vocabulary.
  */
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import * as React from 'react';
 
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import { buildMatrixModel } from '../lib/matrix-model';
+import type { RepoHealth } from '../lib/fleet-summary';
 import type { TileSignalType } from '../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import { CiCell } from './columns/CiCell';
@@ -34,6 +37,13 @@ import { StaleCell } from './columns/StaleCell';
 import { ActivityTileBody } from './tiles/bodies/ActivityTileBody';
 
 const SKELETON_ROWS = 6;
+
+/** Human-readable labels for health bands. */
+const HEALTH_LABELS: Record<RepoHealth, string> = {
+  broken: 'Broken',
+  warning: 'Warning',
+  healthy: 'Healthy',
+};
 
 interface FleetMatrixProps {
   /** Repositories to render (already adapted by `useRepos`). */
@@ -73,6 +83,49 @@ function renderSignalCell(signal: TileSignalType, repo: Repo, data: RepoSignalDa
     case 'activity':
       return <ActivityTileBody repo={repo} size="compact" />;
   }
+}
+
+interface GroupHeaderProps {
+  health: RepoHealth;
+  count: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+  columnCount: number;
+}
+
+/**
+ * A collapsible group header row for a health band. The entire row contains
+ * a single cell spanning all columns with an accessible toggle button.
+ */
+function GroupHeader({ health, count, isExpanded, onToggle, columnCount }: GroupHeaderProps) {
+  const label = HEALTH_LABELS[health];
+
+  return (
+    <tr className="border-b border-border bg-surface-raised">
+      <td colSpan={columnCount} className="px-3 py-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          className="flex w-full items-center gap-2 rounded text-left text-sm font-medium text-text hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          <svg
+            className="h-4 w-4 transition-transform motion-reduce:transition-none"
+            style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span>
+            {label} · {count}
+          </span>
+        </button>
+      </td>
+    </tr>
+  );
 }
 
 interface MatrixRowProps {
@@ -129,7 +182,24 @@ export function FleetMatrix({
   onRetry,
 }: FleetMatrixProps) {
   const model = useMemo(() => buildMatrixModel(repos, getRowData), [repos, getRowData]);
-  const { rows, signals } = model;
+  const { groups, signals, rows } = model;
+
+  // Track which health bands are collapsed (Healthy collapsed by default)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<RepoHealth>>(
+    () => new Set(['healthy']),
+  );
+
+  const toggleGroup = (health: RepoHealth) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(health)) {
+        next.delete(health);
+      } else {
+        next.add(health);
+      }
+      return next;
+    });
+  };
 
   if (error !== null) {
     return (
@@ -219,15 +289,30 @@ export function FleetMatrix({
                 </td>
               </tr>
             ) : (
-              rows.map(({ repo }) => (
-                <MatrixRow
-                  key={repo.nameWithOwner}
-                  repo={repo}
-                  signals={signals}
-                  getRowData={getRowData}
-                  onRepoActivate={onRepoActivate}
-                />
-              ))
+              groups.map(({ health, rows: groupRows }) => {
+                const isExpanded = !collapsedGroups.has(health);
+                return (
+                  <React.Fragment key={health}>
+                    <GroupHeader
+                      health={health}
+                      count={groupRows.length}
+                      isExpanded={isExpanded}
+                      onToggle={() => toggleGroup(health)}
+                      columnCount={totalColumns}
+                    />
+                    {isExpanded &&
+                      groupRows.map(({ repo }) => (
+                        <MatrixRow
+                          key={repo.nameWithOwner}
+                          repo={repo}
+                          signals={signals}
+                          getRowData={getRowData}
+                          onRepoActivate={onRepoActivate}
+                        />
+                      ))}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

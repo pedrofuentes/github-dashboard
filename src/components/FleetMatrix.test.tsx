@@ -55,10 +55,6 @@ function rowDataFor(map: Record<string, RepoSignalData>): GetRowData {
 
 const REPOS = [repo('octo/zebra'), repo('octo/apple')];
 
-function rowHeaderNames(): string[] {
-  return screen.getAllByRole('rowheader').map((el) => el.textContent ?? '');
-}
-
 describe('FleetMatrix structure & accessibility', () => {
   it('renders an accessible table named for the fleet matrix', () => {
     render(<FleetMatrix repos={REPOS} getRowData={() => EMPTY} />);
@@ -85,12 +81,15 @@ describe('FleetMatrix structure & accessibility', () => {
   });
 
   it('renders one body row per repo, anchored by an owner/repo row header', () => {
-    render(<FleetMatrix repos={REPOS} getRowData={() => EMPTY} />);
+    // Use broken repos so they appear in an expanded group
+    const getRowData = rowDataFor({ 'octo/zebra': BROKEN, 'octo/apple': BROKEN });
+    render(<FleetMatrix repos={REPOS} getRowData={getRowData} />);
     expect(screen.getAllByRole('rowheader')).toHaveLength(2);
   });
 
   it('marks the repo cell as a <th scope="row">', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const rowHeader = screen.getByRole('rowheader');
     expect(rowHeader.tagName).toBe('TH');
     expect(rowHeader).toHaveAttribute('scope', 'row');
@@ -107,11 +106,16 @@ describe('FleetMatrix structure & accessibility', () => {
 });
 
 describe('FleetMatrix ordering & cells', () => {
-  it('orders rows worst-first (broken before healthy)', () => {
+  it('orders groups worst-first (broken before healthy)', () => {
     const getRowData = rowDataFor({ 'octo/apple': HEALTHY, 'octo/zebra': BROKEN });
     render(<FleetMatrix repos={REPOS} getRowData={getRowData} />);
-    // zebra is broken, apple healthy → zebra must come first despite name order.
-    expect(rowHeaderNames()).toEqual(['octo/zebra', 'octo/apple']);
+    // Broken group appears first (expanded), healthy second (collapsed)
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]).toHaveTextContent(/broken/i);
+    expect(buttons[1]).toHaveTextContent(/healthy/i);
+    // Broken repo visible, healthy collapsed
+    expect(screen.getByRole('rowheader')).toHaveTextContent('octo/zebra');
+    expect(screen.queryByText('octo/apple')).toBeNull();
   });
 
   it('renders each signal cell with its existing status vocabulary', () => {
@@ -139,7 +143,8 @@ describe('FleetMatrix ordering & cells', () => {
   });
 
   it('renders the activity signal by reusing the dashboard activity body', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     // The reused ActivityTileBody self-fetches and announces commits-this-week.
     expect(mockActivity).toHaveBeenCalled();
     const row = screen.getByRole('row', { name: /octo\/hello/i });
@@ -151,10 +156,11 @@ describe('FleetMatrix drill-down', () => {
   it('activates a row via an accessible button when onRepoActivate is provided', async () => {
     const user = userEvent.setup();
     const onRepoActivate = vi.fn();
+    // Use broken repo so it appears in an expanded group
     render(
       <FleetMatrix
         repos={[repo('octo/hello')]}
-        getRowData={() => EMPTY}
+        getRowData={() => BROKEN}
         onRepoActivate={onRepoActivate}
       />,
     );
@@ -169,10 +175,11 @@ describe('FleetMatrix drill-down', () => {
   it('activates a row via the keyboard (Enter) on the row control', async () => {
     const user = userEvent.setup();
     const onRepoActivate = vi.fn();
+    // Use broken repo so it appears in an expanded group
     render(
       <FleetMatrix
         repos={[repo('octo/hello')]}
-        getRowData={() => EMPTY}
+        getRowData={() => BROKEN}
         onRepoActivate={onRepoActivate}
       />,
     );
@@ -187,7 +194,8 @@ describe('FleetMatrix drill-down', () => {
   });
 
   it('renders a plain row header (no activation button) by default', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const rowHeader = screen.getByRole('rowheader');
     expect(within(rowHeader).queryByRole('button')).toBeNull();
   });
@@ -204,7 +212,9 @@ describe('FleetMatrix states', () => {
   });
 
   it('keeps showing live rows while a reload is in flight', () => {
-    render(<FleetMatrix repos={REPOS} getRowData={() => EMPTY} loading />);
+    // Use broken repos so they appear in an expanded group
+    const getRowData = rowDataFor({ 'octo/zebra': BROKEN, 'octo/apple': BROKEN });
+    render(<FleetMatrix repos={REPOS} getRowData={getRowData} loading />);
     expect(screen.getAllByRole('rowheader')).toHaveLength(2);
   });
 
@@ -229,5 +239,137 @@ describe('FleetMatrix states', () => {
     render(<FleetMatrix repos={[]} getRowData={() => EMPTY} />);
     expect(screen.getByText(/no repositories/i)).toBeInTheDocument();
     expect(screen.queryAllByRole('rowheader')).toHaveLength(0);
+  });
+});
+
+describe('FleetMatrix health groups', () => {
+  it('renders group header rows with correct band label and count', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/broken2': BROKEN,
+      'octo/healthy1': HEALTHY,
+    });
+    const repos = [repo('octo/broken1'), repo('octo/broken2'), repo('octo/healthy1')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    expect(screen.getByRole('button', { name: /broken.*2/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /healthy.*1/i })).toBeInTheDocument();
+  });
+
+  it('collapses Healthy group by default (its repo rows are absent from DOM)', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/healthy1': HEALTHY,
+      'octo/healthy2': HEALTHY,
+    });
+    const repos = [repo('octo/broken1'), repo('octo/healthy1'), repo('octo/healthy2')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Broken row should be visible
+    expect(screen.getByRole('rowheader', { name: /octo\/broken1/i })).toBeInTheDocument();
+    // Healthy rows should NOT be in the DOM
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy2/i })).toBeNull();
+  });
+
+  it('expands Healthy group when its toggle button is clicked', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({
+      'octo/healthy1': HEALTHY,
+      'octo/healthy2': HEALTHY,
+    });
+    const repos = [repo('octo/healthy1'), repo('octo/healthy2')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Initially collapsed
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+
+    // Click toggle
+    await user.click(screen.getByRole('button', { name: /healthy.*2/i }));
+
+    // Now visible
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy2/i })).toBeInTheDocument();
+  });
+
+  it('updates aria-expanded when toggling a group', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({ 'octo/healthy1': HEALTHY });
+    render(<FleetMatrix repos={[repo('octo/healthy1')]} getRowData={getRowData} />);
+
+    const toggle = screen.getByRole('button', { name: /healthy.*1/i });
+
+    // Initially collapsed (Healthy default)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Expand
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    // Collapse again
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('renders Broken and Warning groups expanded by default', () => {
+    const getRowData = rowDataFor({
+      'octo/broken1': BROKEN,
+      'octo/warning1': {
+        ci: { status: 'ready', conclusion: 'success' },
+        stale: { status: 'ready', staleCount: 1 },
+      },
+    });
+    const repos = [repo('octo/broken1'), repo('octo/warning1')];
+    render(<FleetMatrix repos={repos} getRowData={getRowData} />);
+
+    // Both groups should have their rows visible
+    expect(screen.getByRole('rowheader', { name: /octo\/broken1/i })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: /octo\/warning1/i })).toBeInTheDocument();
+
+    // Verify aria-expanded
+    expect(screen.getByRole('button', { name: /broken.*1/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /warning.*1/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('allows drill-down on visible rows within expanded groups', async () => {
+    const user = userEvent.setup();
+    const onRepoActivate = vi.fn();
+    const getRowData = rowDataFor({ 'octo/broken1': BROKEN });
+    render(
+      <FleetMatrix
+        repos={[repo('octo/broken1')]}
+        getRowData={getRowData}
+        onRepoActivate={onRepoActivate}
+      />,
+    );
+
+    // Click the repo row (not the group header)
+    await user.click(screen.getByRole('button', { name: /view details for octo\/broken1/i }));
+
+    expect(onRepoActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ nameWithOwner: 'octo/broken1' }),
+    );
+  });
+
+  it('supports keyboard navigation (Enter/Space) on group toggle buttons', async () => {
+    const user = userEvent.setup();
+    const getRowData = rowDataFor({ 'octo/healthy1': HEALTHY });
+    render(<FleetMatrix repos={[repo('octo/healthy1')]} getRowData={getRowData} />);
+
+    const toggle = screen.getByRole('button', { name: /healthy.*1/i });
+    toggle.focus();
+
+    // Initially collapsed
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
+
+    // Expand with Enter
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
   });
 });
