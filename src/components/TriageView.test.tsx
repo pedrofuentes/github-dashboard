@@ -185,7 +185,12 @@ describe('TriageView states', () => {
 
   it('shows an All clear state when the whole fleet is healthy', () => {
     const repos = [repo('octo/a'), repo('octo/b')];
-    render(<TriageView repos={repos} getRowData={rowDataFor({ 'octo/a': HEALTHY, 'octo/b': HEALTHY })} />);
+    render(
+      <TriageView
+        repos={repos}
+        getRowData={rowDataFor({ 'octo/a': HEALTHY, 'octo/b': HEALTHY })}
+      />,
+    );
     expect(screen.getByText(/all clear/i)).toBeInTheDocument();
     // No attention bands rendered
     expect(screen.queryByRole('heading', { name: /needs attention/i })).not.toBeInTheDocument();
