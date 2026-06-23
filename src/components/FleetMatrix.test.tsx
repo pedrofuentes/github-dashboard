@@ -373,3 +373,128 @@ describe('FleetMatrix health groups', () => {
     expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
   });
 });
+
+describe('FleetMatrix density modes (T-c4)', () => {
+  const DENSITY_KEY = 'fleet:density';
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('applies balanced density spacing by default (current py-2 spacing)', () => {
+    const { container } = render(
+      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
+    );
+    const row = screen.getByRole('row', { name: /octo\/hello/i });
+    const rowHeader = within(row).getByRole('rowheader');
+    // Balanced uses py-2 (current spacing)
+    expect(rowHeader.className).toMatch(/py-2(?:\s|$)/);
+  });
+
+  it('applies glanceable density spacing when stored (tighter py-1 spacing)', () => {
+    localStorage.setItem(DENSITY_KEY, 'glanceable');
+    const { container } = render(
+      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
+    );
+    const row = screen.getByRole('row', { name: /octo\/hello/i });
+    const rowHeader = within(row).getByRole('rowheader');
+    // Glanceable uses py-1 (tighter spacing)
+    expect(rowHeader.className).toMatch(/py-1(?:\s|$)/);
+  });
+
+  it('applies balanced density spacing to signal cells', () => {
+    const { container } = render(
+      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
+    );
+    const row = screen.getByRole('row', { name: /octo\/hello/i });
+    const cells = within(row).getAllByRole('cell');
+    // All signal cells should have balanced spacing (py-2)
+    for (const cell of cells) {
+      expect(cell.className).toMatch(/py-2(?:\s|$)/);
+    }
+  });
+
+  it('applies glanceable density spacing to signal cells', () => {
+    localStorage.setItem(DENSITY_KEY, 'glanceable');
+    const { container } = render(
+      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />,
+    );
+    const row = screen.getByRole('row', { name: /octo\/hello/i });
+    const cells = within(row).getAllByRole('cell');
+    // All signal cells should have glanceable spacing (py-1)
+    for (const cell of cells) {
+      expect(cell.className).toMatch(/py-1(?:\s|$)/);
+    }
+  });
+
+  it('preserves all existing behavior at both densities (drill-down still works)', async () => {
+    const user = userEvent.setup();
+    const onRepoActivate = vi.fn();
+
+    // Test with glanceable
+    localStorage.setItem(DENSITY_KEY, 'glanceable');
+    const { unmount } = render(
+      <FleetMatrix
+        repos={[repo('octo/hello')]}
+        getRowData={() => BROKEN}
+        onRepoActivate={onRepoActivate}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello/i }));
+    expect(onRepoActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ nameWithOwner: 'octo/hello' }),
+    );
+
+    unmount();
+    onRepoActivate.mockClear();
+
+    // Test with balanced
+    localStorage.setItem(DENSITY_KEY, 'balanced');
+    render(
+      <FleetMatrix
+        repos={[repo('octo/hello')]}
+        getRowData={() => BROKEN}
+        onRepoActivate={onRepoActivate}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello/i }));
+    expect(onRepoActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ nameWithOwner: 'octo/hello' }),
+    );
+  });
+
+  it('applies density to skeleton rows during loading', () => {
+    localStorage.setItem(DENSITY_KEY, 'glanceable');
+    const { container } = render(<FleetMatrix repos={[]} getRowData={() => EMPTY} loading />);
+    const skeletonCells = container.querySelectorAll('.animate-pulse');
+    expect(skeletonCells.length).toBeGreaterThan(0);
+    // Parent td should have glanceable spacing
+    const firstSkeletonTd = skeletonCells[0].closest('td');
+    expect(firstSkeletonTd?.className).toMatch(/py-1\.5(?:\s|$)/);
+  });
+
+  it('preserves signal cell content visibility at both densities', () => {
+    const data: RepoSignalData = {
+      ci: { status: 'ready', conclusion: 'failure' },
+    };
+
+    // Glanceable
+    localStorage.setItem(DENSITY_KEY, 'glanceable');
+    const { unmount: unmount1 } = render(
+      <FleetMatrix repos={[repo('octo/hello')]} getRowData={() => data} />,
+    );
+    expect(screen.getByText('Failing')).toBeInTheDocument();
+    unmount1();
+
+    // Balanced
+    localStorage.setItem(DENSITY_KEY, 'balanced');
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => data} />);
+    expect(screen.getByText('Failing')).toBeInTheDocument();
+  });
+});
