@@ -3,14 +3,12 @@ import type { ReactElement } from 'react';
 
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
-import { DefaultViewToggle } from './components/DefaultViewToggle';
-import { DensityToggle } from './components/DensityToggle';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FacetedRepoFilter } from './components/FacetedRepoFilter';
 import { FleetGrid } from './components/FleetGrid';
 import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
-import { ThemeToggle } from './components/ThemeToggle';
+import { SettingsOverlay } from './components/SettingsOverlay';
 import { TokenInput } from './components/TokenInput';
 import { TriageView } from './components/TriageView';
 import { AuthProvider } from './hooks/AuthProvider';
@@ -24,7 +22,6 @@ import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
 import type { FleetView } from './lib/view-preference';
-import type { AuthUser } from './types/auth';
 import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
 export function App(): ReactElement {
@@ -38,6 +35,35 @@ export function App(): ReactElement {
 function Shell(): ReactElement {
   const { status, user, token, forget } = useAuth();
   const authenticated = status === 'authenticated' && user !== null;
+
+  // Lifted here so the single header Settings overlay (Defaults section) and the
+  // authenticated FleetPanel (ViewToggle + rendered surface) share ONE source of
+  // truth for the live and persisted views. Changing the default also switches
+  // the live view, preserving the prior DefaultViewToggle behaviour.
+  const [view, setView] = useState<FleetView>(loadDefaultView);
+  const [defaultView, setDefaultView] = useState<FleetView>(loadDefaultView);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const handleViewChange = useCallback((next: FleetView) => setView(next), []);
+  const handleDefaultViewChange = useCallback((next: FleetView) => {
+    saveDefaultView(next);
+    setDefaultView(next);
+    setView(next);
+  }, []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
+  // Shell never unmounts across auth transitions, so its lazy `view` initializer
+  // runs only once. Mirror the pre-refactor FleetPanel remount: whenever the app
+  // returns to unauthenticated, reset the live view to the persisted default so a
+  // fresh in-session sign-in always opens to the configured default (not the
+  // previously-selected live view). `defaultView` stays in sync via
+  // handleDefaultViewChange.
+  useEffect(() => {
+    if (!authenticated) {
+      setView(loadDefaultView());
+    }
+  }, [authenticated]);
 
   return (
     <div className="min-h-screen bg-bg text-text">
@@ -56,9 +82,16 @@ function Shell(): ReactElement {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <ThemeToggle />
-            <DensityToggle />
-            {authenticated ? <AccountBar user={user} onForget={forget} /> : null}
+            <button
+              type="button"
+              onClick={openSettings}
+              aria-haspopup="dialog"
+              aria-expanded={settingsOpen}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              <GearIcon />
+              <span>Settings</span>
+            </button>
           </div>
         </div>
       </header>
@@ -71,9 +104,43 @@ function Shell(): ReactElement {
         <h2 id="overview-heading" className="sr-only">
           Fleet overview
         </h2>
-        {authenticated ? <FleetPanel token={token} /> : <TokenInput />}
+        {authenticated ? (
+          <FleetPanel token={token} view={view} onViewChange={handleViewChange} />
+        ) : (
+          <TokenInput />
+        )}
       </main>
+      {settingsOpen ? (
+        <SettingsOverlay
+          defaultView={defaultView}
+          onDefaultViewChange={handleDefaultViewChange}
+          user={authenticated ? user : null}
+          onForget={forget}
+          onClose={closeSettings}
+        />
+      ) : null}
     </div>
+  );
+}
+
+const GEAR_ICON_PROPS = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+};
+
+function GearIcon(): ReactElement {
+  return (
+    <svg {...GEAR_ICON_PROPS}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 
@@ -99,7 +166,15 @@ function repoSignalsResolved(data: RepoSignalData): boolean {
   });
 }
 
-function FleetPanel({ token }: { token: string | null }): ReactElement {
+interface FleetPanelProps {
+  token: string | null;
+  /** The live view, owned by {@link Shell} so the Settings overlay can drive it. */
+  view: FleetView;
+  /** Switches the live view (e.g. from the in-panel ViewToggle). */
+  onViewChange: (view: FleetView) => void;
+}
+
+function FleetPanel({ token, view, onViewChange }: FleetPanelProps): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
   const { getRowData } = useRepoSignals(repos, token);
   // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
@@ -111,9 +186,16 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   const inbox = useInbox(repos, getRowData);
   const { markAllSeen } = inbox;
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-  const [view, setView] = useState<FleetView>(loadDefaultView);
-  const [defaultView, setDefaultView] = useState<FleetView>(loadDefaultView);
   const [editing, setEditing] = useState(false);
+
+  // Edit affordances only make sense on the dashboard; leaving it (whether via
+  // the in-panel ViewToggle or the Settings overlay's default-view change, both
+  // of which flow through the lifted `view`) drops edit mode.
+  useEffect(() => {
+    if (view !== 'dashboard') {
+      setEditing(false);
+    }
+  }, [view]);
 
   // The per-repo signals load asynchronously after the repo list resolves, so a
   // `status === 'success'` render can still have an incomplete derived inbox.
@@ -159,21 +241,6 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
   // not all re-render when the drawer opens or closes.
   const handleRepoActivate = useCallback((repo: Repo) => setSelectedRepo(repo), []);
   const handleCloseDrawer = useCallback(() => setSelectedRepo(null), []);
-  const handleViewChange = useCallback((next: FleetView) => {
-    setView(next);
-    // Edit affordances only make sense on the dashboard; leave them when we go.
-    if (next !== 'dashboard') {
-      setEditing(false);
-    }
-  }, []);
-  const handleDefaultViewChange = useCallback((next: FleetView) => {
-    saveDefaultView(next);
-    setDefaultView(next);
-    setView(next);
-    if (next !== 'dashboard') {
-      setEditing(false);
-    }
-  }, []);
   const handleToggleEditing = useCallback(() => setEditing((current) => !current), []);
   // Closing the CustomizePanel (Esc, backdrop, ✕) leaves edit mode, which also
   // unmounts the panel via the `editing` coupling and returns focus to the opener.
@@ -183,8 +250,7 @@ function FleetPanel({ token }: { token: string | null }): ReactElement {
     <FleetUiStateProvider>
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <ViewToggle view={view} onChange={handleViewChange} unreadCount={inbox.unreadCount} />
-          <DefaultViewToggle value={defaultView} onChange={handleDefaultViewChange} />
+          <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
           {view === 'dashboard' ? (
             <>
               <FacetedRepoFilter repos={repos} filter={filter} />
@@ -338,36 +404,6 @@ function ViewToggle({ view, onChange, unreadCount }: ViewToggleProps): ReactElem
           </button>
         );
       })}
-    </div>
-  );
-}
-
-interface AccountBarProps {
-  user: AuthUser;
-  onForget: () => void;
-}
-
-function AccountBar({ user, onForget }: AccountBarProps): ReactElement {
-  return (
-    <div className="flex items-center gap-3">
-      {user.avatarUrl !== undefined ? (
-        <img src={user.avatarUrl} alt="" width={32} height={32} className="h-8 w-8 rounded-full" />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised text-sm font-semibold text-text-muted"
-        >
-          {user.login.slice(0, 1).toUpperCase()}
-        </span>
-      )}
-      <p className="text-sm text-text-muted">{`Authenticated as ${user.login}`}</p>
-      <button
-        type="button"
-        onClick={onForget}
-        className="rounded border border-border-strong px-3 py-1 text-sm font-medium hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      >
-        Forget token
-      </button>
     </div>
   );
 }

@@ -52,7 +52,7 @@ async function signIn(): Promise<void> {
   render(<App />);
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
   await user.click(screen.getByRole('button', { name: /connect/i }));
-  await screen.findByText(/authenticated as octocat/i);
+  await screen.findByRole('group', { name: /view mode/i });
 }
 
 describe('App fleet signal wiring', () => {
