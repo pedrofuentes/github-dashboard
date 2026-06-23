@@ -49,21 +49,11 @@ const HEALTHY: RepoSignalData = {
   ci: { status: 'ready', conclusion: 'success' },
 };
 
-/** A "warning" repo (has a stale item). */
-const WARNING: RepoSignalData = {
-  ci: { status: 'ready', conclusion: 'success' },
-  stale: { status: 'ready', staleCount: 1 },
-};
-
 function rowDataFor(map: Record<string, RepoSignalData>): GetRowData {
   return (r) => map[r.nameWithOwner] ?? EMPTY;
 }
 
 const REPOS = [repo('octo/zebra'), repo('octo/apple')];
-
-function rowHeaderNames(): string[] {
-  return screen.getAllByRole('rowheader').map((el) => el.textContent ?? '');
-}
 
 describe('FleetMatrix structure & accessibility', () => {
   it('renders an accessible table named for the fleet matrix', () => {
@@ -91,12 +81,15 @@ describe('FleetMatrix structure & accessibility', () => {
   });
 
   it('renders one body row per repo, anchored by an owner/repo row header', () => {
-    render(<FleetMatrix repos={REPOS} getRowData={() => EMPTY} />);
+    // Use broken repos so they appear in an expanded group
+    const getRowData = rowDataFor({ 'octo/zebra': BROKEN, 'octo/apple': BROKEN });
+    render(<FleetMatrix repos={REPOS} getRowData={getRowData} />);
     expect(screen.getAllByRole('rowheader')).toHaveLength(2);
   });
 
   it('marks the repo cell as a <th scope="row">', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const rowHeader = screen.getByRole('rowheader');
     expect(rowHeader.tagName).toBe('TH');
     expect(rowHeader).toHaveAttribute('scope', 'row');
@@ -113,11 +106,16 @@ describe('FleetMatrix structure & accessibility', () => {
 });
 
 describe('FleetMatrix ordering & cells', () => {
-  it('orders rows worst-first (broken before healthy)', () => {
+  it('orders groups worst-first (broken before healthy)', () => {
     const getRowData = rowDataFor({ 'octo/apple': HEALTHY, 'octo/zebra': BROKEN });
     render(<FleetMatrix repos={REPOS} getRowData={getRowData} />);
-    // zebra is broken, apple healthy → zebra must come first despite name order.
-    expect(rowHeaderNames()).toEqual(['octo/zebra', 'octo/apple']);
+    // Broken group appears first (expanded), healthy second (collapsed)
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]).toHaveTextContent(/broken/i);
+    expect(buttons[1]).toHaveTextContent(/healthy/i);
+    // Broken repo visible, healthy collapsed
+    expect(screen.getByRole('rowheader')).toHaveTextContent('octo/zebra');
+    expect(screen.queryByText('octo/apple')).toBeNull();
   });
 
   it('renders each signal cell with its existing status vocabulary', () => {
@@ -145,7 +143,8 @@ describe('FleetMatrix ordering & cells', () => {
   });
 
   it('renders the activity signal by reusing the dashboard activity body', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     // The reused ActivityTileBody self-fetches and announces commits-this-week.
     expect(mockActivity).toHaveBeenCalled();
     const row = screen.getByRole('row', { name: /octo\/hello/i });
@@ -157,10 +156,11 @@ describe('FleetMatrix drill-down', () => {
   it('activates a row via an accessible button when onRepoActivate is provided', async () => {
     const user = userEvent.setup();
     const onRepoActivate = vi.fn();
+    // Use broken repo so it appears in an expanded group
     render(
       <FleetMatrix
         repos={[repo('octo/hello')]}
-        getRowData={() => EMPTY}
+        getRowData={() => BROKEN}
         onRepoActivate={onRepoActivate}
       />,
     );
@@ -175,10 +175,11 @@ describe('FleetMatrix drill-down', () => {
   it('activates a row via the keyboard (Enter) on the row control', async () => {
     const user = userEvent.setup();
     const onRepoActivate = vi.fn();
+    // Use broken repo so it appears in an expanded group
     render(
       <FleetMatrix
         repos={[repo('octo/hello')]}
-        getRowData={() => EMPTY}
+        getRowData={() => BROKEN}
         onRepoActivate={onRepoActivate}
       />,
     );
@@ -193,7 +194,8 @@ describe('FleetMatrix drill-down', () => {
   });
 
   it('renders a plain row header (no activation button) by default', () => {
-    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => EMPTY} />);
+    // Use broken repo so it appears in an expanded group
+    render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const rowHeader = screen.getByRole('rowheader');
     expect(within(rowHeader).queryByRole('button')).toBeNull();
   });
@@ -210,7 +212,9 @@ describe('FleetMatrix states', () => {
   });
 
   it('keeps showing live rows while a reload is in flight', () => {
-    render(<FleetMatrix repos={REPOS} getRowData={() => EMPTY} loading />);
+    // Use broken repos so they appear in an expanded group
+    const getRowData = rowDataFor({ 'octo/zebra': BROKEN, 'octo/apple': BROKEN });
+    render(<FleetMatrix repos={REPOS} getRowData={getRowData} loading />);
     expect(screen.getAllByRole('rowheader')).toHaveLength(2);
   });
 
@@ -310,7 +314,10 @@ describe('FleetMatrix health groups', () => {
   it('renders Broken and Warning groups expanded by default', () => {
     const getRowData = rowDataFor({
       'octo/broken1': BROKEN,
-      'octo/warning1': { ci: { status: 'ready', conclusion: 'success' }, stale: { status: 'ready', staleCount: 1 } },
+      'octo/warning1': {
+        ci: { status: 'ready', conclusion: 'success' },
+        stale: { status: 'ready', staleCount: 1 },
+      },
     });
     const repos = [repo('octo/broken1'), repo('octo/warning1')];
     render(<FleetMatrix repos={repos} getRowData={getRowData} />);
@@ -320,8 +327,14 @@ describe('FleetMatrix health groups', () => {
     expect(screen.getByRole('rowheader', { name: /octo\/warning1/i })).toBeInTheDocument();
 
     // Verify aria-expanded
-    expect(screen.getByRole('button', { name: /broken.*1/i })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /warning.*1/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /broken.*1/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /warning.*1/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   it('allows drill-down on visible rows within expanded groups', async () => {
