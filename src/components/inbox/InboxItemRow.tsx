@@ -88,6 +88,13 @@ export interface InboxItemRowProps {
   onDismiss: (id: string) => void;
   /** Restores a previously dismissed item. */
   onRestore: (id: string) => void;
+  /** Whether this row is currently selected (only meaningful with `onToggleSelect`). */
+  selected?: boolean;
+  /**
+   * Toggles this row's selection. When provided, a leading, labelled selection
+   * checkbox is rendered; when omitted the row's DOM and behaviour are unchanged.
+   */
+  onToggleSelect?: (id: string) => void;
 }
 
 export function InboxItemRow({
@@ -95,6 +102,8 @@ export function InboxItemRow({
   onMarkRead,
   onDismiss,
   onRestore,
+  selected = false,
+  onToggleSelect,
 }: InboxItemRowProps): ReactElement {
   const href = safeGitHubHref(item.url);
   const label = kindLabel(item);
@@ -131,6 +140,16 @@ export function InboxItemRow({
         data-tone={item.accent}
         className={cn('w-1 shrink-0 self-stretch rounded-full', toneBgClass(item.accent))}
       />
+
+      {onToggleSelect !== undefined ? (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(item.id)}
+          aria-label={`Select ${item.title}`}
+          className="mt-0.5 h-4 w-4 shrink-0 self-start rounded border-border-strong text-accent-info focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
