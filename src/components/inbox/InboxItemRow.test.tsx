@@ -239,3 +239,52 @@ describe('InboxItemRow accent + reduced motion', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('InboxItemRow selection (multi-select, optional)', () => {
+  it('renders no selection checkbox when onToggleSelect is omitted (DOM unchanged)', () => {
+    renderRow(makeItem());
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('renders a labelled checkbox reflecting `selected` and toggling by id when onToggleSelect is provided', async () => {
+    const user = userEvent.setup();
+    const onToggleSelect = vi.fn();
+    const item = makeItem();
+    render(
+      <ul>
+        <InboxItemRow
+          item={item}
+          selected={false}
+          onToggleSelect={onToggleSelect}
+          onMarkRead={vi.fn()}
+          onDismiss={vi.fn()}
+          onRestore={vi.fn()}
+        />
+      </ul>,
+    );
+
+    const checkbox = screen.getByRole('checkbox', { name: /select ci failing/i });
+    expect(checkbox).not.toBeChecked();
+
+    await user.click(checkbox);
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onToggleSelect).toHaveBeenCalledWith(item.id);
+  });
+
+  it('reflects selected=true as a checked checkbox', () => {
+    render(
+      <ul>
+        <InboxItemRow
+          item={makeItem()}
+          selected
+          onToggleSelect={vi.fn()}
+          onMarkRead={vi.fn()}
+          onDismiss={vi.fn()}
+          onRestore={vi.fn()}
+        />
+      </ul>,
+    );
+
+    expect(screen.getByRole('checkbox', { name: /select ci failing/i })).toBeChecked();
+  });
+});
