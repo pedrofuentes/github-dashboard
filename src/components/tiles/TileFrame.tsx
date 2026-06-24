@@ -13,8 +13,10 @@
  */
 import type { ReactElement, ReactNode, RefObject } from 'react';
 
+import { useRepoOwner } from '../../hooks/useRepoOwner';
 import { cn } from '../../lib/cn';
 import type { MoveDirection, ResizeDimension } from '../../lib/grid-keyboard';
+import { formatRepoLabel } from '../../lib/repo-owner-preference';
 import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo, SignalStatus } from '../../types/fleet';
 import { AccentBar } from './AccentBar';
@@ -131,8 +133,9 @@ export function TileFrame({
   hideRepoHeader = false,
   children,
 }: TileFrameProps): ReactElement {
+  const { display } = useRepoOwner();
   const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
-  const displayName = alias ?? repo.nameWithOwner;
+  const displayName = alias ?? formatRepoLabel(repo, display);
 
   // Roving tabindex: only the grid's active tile is in the tab order; the rest
   // are reachable via the arrow keys handled by the grid (WAI-ARIA grid pattern).

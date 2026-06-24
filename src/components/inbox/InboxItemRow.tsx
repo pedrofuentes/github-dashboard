@@ -24,6 +24,8 @@ import type { KeyboardEvent, ReactElement } from 'react';
 import { cn } from '../../lib/cn';
 import { formatRelativeTime } from '../../lib/format';
 import { safeGitHubHref } from '../../lib/github-url';
+import { formatRepoLabel } from '../../lib/repo-owner-preference';
+import { useRepoOwner } from '../../hooks/useRepoOwner';
 import type { InboxItemView } from '../../hooks/useInbox';
 import type { InboxKind } from '../../types/inbox';
 import { StatusGlyph } from '../tiles/StatusGlyph';
@@ -107,6 +109,7 @@ export function InboxItemRow({
 }: InboxItemRowProps): ReactElement {
   const href = safeGitHubHref(item.url);
   const label = kindLabel(item);
+  const { display } = useRepoOwner();
 
   function activate(): void {
     onMarkRead(item.id);
@@ -196,7 +199,9 @@ export function InboxItemRow({
             <span>{label}</span>
           </span>
           <span aria-hidden="true">·</span>
-          <span className="truncate">{item.repo.nameWithOwner}</span>
+          <span className="truncate" title={item.repo.nameWithOwner}>
+            {formatRepoLabel(item.repo, display)}
+          </span>
           <span aria-hidden="true">·</span>
           <time dateTime={item.timestamp}>{formatRelativeTime(item.timestamp)}</time>
         </div>
