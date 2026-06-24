@@ -1,10 +1,13 @@
 import { createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import type { InboxItemView } from '../../hooks/useInbox';
 import type { Repo } from '../../types/fleet';
 import { InboxItemRow } from './InboxItemRow';
+
+const REPO_OWNER_KEY = 'fleet:repo-owner';
 
 function repo(nameWithOwner = 'octo/app'): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -51,6 +54,11 @@ function renderRow(item: InboxItemView) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
 });
 
 describe('InboxItemRow content', () => {
@@ -286,5 +294,21 @@ describe('InboxItemRow selection (multi-select, optional)', () => {
     );
 
     expect(screen.getByRole('checkbox', { name: /select ci failing/i })).toBeChecked();
+  });
+});
+
+describe('InboxItemRow repo-owner display preference', () => {
+  it('hides the owner in the visible repo label when "hide", keeping the full name in the title', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderRow(makeItem({ repo: repo('octo/api-server') }));
+    const repoLabel = screen.getByText('api-server');
+    expect(repoLabel).toHaveAttribute('title', 'octo/api-server');
+  });
+
+  it('shows the full owner/repo (with a full-name title) in the visible label when "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
+    renderRow(makeItem({ repo: repo('octo/api-server') }));
+    const repoLabel = screen.getByText('octo/api-server');
+    expect(repoLabel).toHaveAttribute('title', 'octo/api-server');
   });
 });
