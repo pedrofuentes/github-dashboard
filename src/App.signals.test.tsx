@@ -56,10 +56,12 @@ async function signIn(): Promise<void> {
 }
 
 describe('App fleet signal wiring', () => {
-  it('feeds the authenticated repos and token into the signal aggregator', async () => {
+  it('feeds the authenticated repos, token, and viewer login into the signal aggregator', async () => {
     await signIn();
 
-    expect(mockUseRepoSignals).toHaveBeenCalledWith(REPOS, 'ghp_valid');
+    // The viewer login (from the validated token) is threaded through so the
+    // issues signal can split open issues into "mine" vs "community".
+    expect(mockUseRepoSignals).toHaveBeenCalledWith(REPOS, 'ghp_valid', 'octocat');
   });
 
   it('passes the aggregator getRowData down to the fleet grid', async () => {
