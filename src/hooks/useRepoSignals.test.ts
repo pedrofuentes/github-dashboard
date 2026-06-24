@@ -46,12 +46,13 @@ const pullRequests: PullRequestsSignalSlice = {
 const issues: IssuesSignalSlice = { status: 'ready', score: 4, openCount: 9, overThreshold: true };
 const stale: StaleSignalSlice = { status: 'ready', score: 7, staleCount: 7 };
 
-const signalHooks = [
+// Signal hooks that receive only (repos, token). The issues hook additionally
+// receives the viewer login and is asserted separately.
+const tokenOnlySignalHooks = [
   useCiSignal,
   useSecuritySignal,
   useReviewsSignal,
   usePullRequestsSignal,
-  useIssuesSignal,
   useStaleSignal,
 ];
 
@@ -103,10 +104,27 @@ describe('useRepoSignals', () => {
   });
 
   it('passes the repos and token through to each signal hook', () => {
-    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token', 'octocat'));
 
-    for (const hook of signalHooks) {
+    for (const hook of tokenOnlySignalHooks) {
       expect(vi.mocked(hook)).toHaveBeenCalledWith(REPOS, 'ghp_token');
+    }
+    // The issues hook also receives the viewer login so it can split "mine" vs
+    // "community" open issues.
+    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
+  });
+
+  it('forwards a null viewer login to the issues hook when unauthenticated', () => {
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token', null));
+
+    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', null);
+  });
+
+  it('threads the viewer login to the issues hook only — never the other signal hooks', () => {
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token', 'octocat'));
+
+    for (const hook of tokenOnlySignalHooks) {
+      expect(vi.mocked(hook)).not.toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
     }
   });
 
