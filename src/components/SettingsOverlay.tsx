@@ -8,16 +8,17 @@
  * Accessibility mirrors {@link CustomizePanel} / {@link DrillDownDrawer}: focus
  * moves inside on open, Tab is trapped, `Esc` or a backdrop click closes, and
  * focus returns to the opener on unmount. It REUSES the existing
- * {@link ThemeToggle} / {@link DensityToggle} / {@link DefaultViewToggle}
- * components unchanged. The Defaults + Account sections only render when a user
- * is authenticated (`user !== null`); Appearance is always available. Tokens
- * only and reduced-motion safe (no transitions).
+ * {@link ThemeToggle} / {@link DensityToggle} / {@link RepoOwnerToggle} /
+ * {@link DefaultViewToggle} components unchanged. The Defaults + Account sections
+ * only render when a user is authenticated (`user !== null`); Appearance is
+ * always available. Tokens only and reduced-motion safe (no transitions).
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 
 import { DefaultViewToggle } from './DefaultViewToggle';
 import { DensityToggle } from './DensityToggle';
+import { RepoOwnerToggle } from './RepoOwnerToggle';
 import { ThemeToggle } from './ThemeToggle';
 import type { FleetView } from '../lib/view-preference';
 import type { AuthUser } from '../types/auth';
@@ -58,6 +59,7 @@ export function SettingsOverlay({
   const appearanceLabelId = useId();
   const themeLabelId = useId();
   const densityLabelId = useId();
+  const repoOwnerLabelId = useId();
   const accountLabelId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -146,6 +148,12 @@ export function SettingsOverlay({
                 Density
               </span>
               <DensityToggle />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span id={repoOwnerLabelId} className="text-sm font-medium text-text">
+                Repository names
+              </span>
+              <RepoOwnerToggle />
             </div>
           </section>
 
