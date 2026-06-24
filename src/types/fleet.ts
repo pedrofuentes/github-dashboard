@@ -149,14 +149,16 @@ export interface IssuesSignalSlice extends SignalSlice {
   /** `true` when {@link openCount} is at or above the triage threshold. */
   overThreshold?: boolean;
   /**
-   * Open issues authored by the authenticated viewer. Present only when a
-   * viewer login was supplied; omitted otherwise so a viewer-less slice stays
-   * unchanged. `mineCount + communityCount === openCount`.
+   * Open issues authored by the authenticated viewer (GitHub Search
+   * `author:<login>`). Present only when a viewer login was supplied; omitted
+   * otherwise so a viewer-less slice stays unchanged.
    */
   mineCount?: number;
   /**
    * Open issues NOT authored by the viewer (the community remainder), derived
-   * as `max(openCount - mineCount, 0)`. Present only alongside {@link mineCount}.
+   * as `max(openCount - mineCount, 0)` — the clamp guards the rare case where
+   * the viewer and total counts (separate GitHub endpoints) momentarily
+   * disagree. Present only alongside {@link mineCount}.
    */
   communityCount?: number;
 }
