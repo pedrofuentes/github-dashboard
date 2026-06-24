@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Deck view** — a Stream Deck–style board showing one key per repository ×
+  signal (CI, security, reviews, pull requests, issues, stale). Reachable from
+  the view switcher, the `g d` keyboard shortcut, and selectable as the default
+  view (#500).
+- **Show/hide repo owner** — a Settings → Appearance toggle (and a ⌘K "Toggle
+  repo owner" command) that hides the `owner/` prefix in repository labels
+  across the matrix, tiles, inbox, and drill-down, while keeping the full
+  `owner/name` in tooltips and links (#488).
 - **Community-vs-mine open issues**: when you're signed in, the Issues cell (in
   the Matrix and Triage) and the Issues tile now break the open-issue total down
   into how many were opened by the community versus by you — shown as a compact
