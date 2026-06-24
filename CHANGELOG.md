@@ -198,6 +198,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Triage rows now surface every pending action for a repo**: a repository is
+  grouped into its single highest-priority band (e.g. **Needs attention** for an
+  over-threshold issue backlog), but its row now renders **all** of its active
+  signal indicators — failing CI, security, issues, pending reviews, new
+  external PRs, and stale items — in a consistent order, instead of only the
+  band's own signal. Previously a repo in "Needs attention" (for example one
+  with 727 open issues) hid its pending-review / external-PR / stale badges, so
+  those actions were invisible until you drilled in (T-c1).
 - **Density toggle now updates the dashboard live**: switching density to
   **Glanceable** (or back to Balanced) in Settings — or via the ⌘K "Toggle
   density" command — immediately re-renders the Fleet Matrix and dashboard tiles
