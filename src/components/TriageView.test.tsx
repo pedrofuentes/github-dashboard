@@ -21,6 +21,9 @@ const EXTERNAL_PR: RepoSignalData = {
   pullRequests: { status: 'ready', openCount: 3, externalCount: 1 },
 };
 const STALE: RepoSignalData = { stale: { status: 'ready', staleCount: 4 } };
+const ISSUES_OVER_THRESHOLD: RepoSignalData = {
+  issues: { status: 'ready', openCount: 727, overThreshold: true },
+};
 const HEALTHY: RepoSignalData = {
   ci: { status: 'ready', conclusion: 'success' },
   security: { status: 'ready', grade: 'A' },
@@ -100,6 +103,24 @@ describe('TriageView structure', () => {
   it('shows the relevant signal indicator for the band', () => {
     render(<TriageView repos={[repo('octo/review')]} getRowData={() => REVIEW_REQUESTED} />);
     expect(screen.getByRole('img', { name: /awaiting your review/i })).toBeInTheDocument();
+  });
+
+  it('surfaces ALL active signals for a repo, not just its band’s (regression)', () => {
+    // A repo banded "Needs attention" via issues-over-threshold (e.g. 727 issues)
+    // that ALSO has pending review requests must surface BOTH indicators — the
+    // band-only renderer hid the review badge.
+    render(
+      <TriageView
+        repos={[repo('octo/busy')]}
+        getRowData={() => ({ ...ISSUES_OVER_THRESHOLD, ...REVIEW_REQUESTED })}
+      />,
+    );
+
+    const region = screen.getByRole('region', { name: /needs attention/i });
+    // The issues (over-threshold) indicator — why it's in this band…
+    expect(within(region).getByLabelText(/over the triage threshold/i)).toBeInTheDocument();
+    // …and the pending-review indicator, which the band-only renderer hid.
+    expect(within(region).getByRole('img', { name: /awaiting your review/i })).toBeInTheDocument();
   });
 });
 

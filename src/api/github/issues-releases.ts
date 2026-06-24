@@ -156,6 +156,41 @@ export async function fetchLatestRelease(
 }
 
 /**
+ * Fetches the count of open issues authored by the authenticated viewer in a repository.
+ * Uses the GitHub Search API with `author:<login>` qualifier to isolate the viewer's
+ * own issues from community issues.
+ *
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param login - GitHub username of the authenticated viewer
+ * @param token - GitHub personal access token
+ * @param signal - Optional signal to cancel the in-flight request
+ * @returns Number of open issues authored by the viewer
+ * @throws {GitHubApiError} on API errors
+ */
+export async function fetchViewerIssueCount(
+  owner: string,
+  repo: string,
+  login: string,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const query = `repo:${owner}/${repo} type:issue is:open author:${login}`;
+  const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
+  const headers = buildHeaders(token);
+
+  const response = await fetchWithRetry(url, { headers, signal }, 'fetchViewerIssueCount');
+  const rateLimitInfo = parseRateLimitHeaders(response.headers);
+
+  if (!response.ok) {
+    handleApiError(response.status, rateLimitInfo, owner, repo, parseRetryAfter(response.headers));
+  }
+
+  const data = SearchCountResponseSchema.parse(await response.json());
+  return data.total_count;
+}
+
+/**
  * Formats a relative time string from an ISO date (e.g. "2d ago", "3h ago").
  *
  * @param isoDate - ISO 8601 date string
