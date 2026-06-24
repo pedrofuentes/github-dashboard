@@ -120,6 +120,13 @@ describe('BoardView — loading / error / empty states', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the error alert without a Retry button when no onRetry is given', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} error="Boom" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Boom');
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
+
   it('shows the no-repos empty state when there are no repositories', () => {
     render(<BoardView repos={[]} getRowData={getRowData} />);
 
