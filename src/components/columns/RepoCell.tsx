@@ -1,3 +1,5 @@
+import { useRepoOwner } from '../../hooks/useRepoOwner';
+import { formatRepoLabel } from '../../lib/repo-owner-preference';
 import type { Repo } from '../../types/fleet';
 
 interface RepoCellProps {
@@ -25,6 +27,7 @@ function LockIcon() {
  * indicator (icon + screen-reader text — never colour alone).
  */
 export function RepoCell({ repo }: RepoCellProps) {
+  const { display } = useRepoOwner();
   return (
     <span className="flex items-center gap-1.5">
       {repo.isPrivate ? (
@@ -38,7 +41,7 @@ export function RepoCell({ repo }: RepoCellProps) {
         style={{ maxWidth: '24ch' }}
         title={repo.nameWithOwner}
       >
-        {repo.nameWithOwner}
+        {formatRepoLabel(repo, display)}
       </span>
     </span>
   );
