@@ -2,15 +2,17 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
-import { fetchIssueCount } from '../../api/github';
+import { fetchIssueCount, fetchViewerIssueCount } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import { ISSUE_TRIAGE_THRESHOLD, useIssuesSignal } from './useIssuesSignal';
 
 vi.mock('../../api/github', () => ({
   fetchIssueCount: vi.fn(),
+  fetchViewerIssueCount: vi.fn(),
 }));
 
 const mockFetchIssueCount = vi.mocked(fetchIssueCount);
+const mockFetchViewerIssueCount = vi.mocked(fetchViewerIssueCount);
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -45,6 +47,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   mockFetchIssueCount.mockReset();
+  mockFetchViewerIssueCount.mockReset();
 });
 
 afterEach(() => {
@@ -387,5 +390,117 @@ describe('useIssuesSignal', () => {
     expect(result.current.get('octo/a')?.status).not.toBe('error');
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  describe('viewer issue split (mine vs community)', () => {
+    it('splits the open count into mine and community when a viewer login is supplied', async () => {
+      mockFetchIssueCount.mockResolvedValue(5);
+      mockFetchViewerIssueCount.mockResolvedValue(2);
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', 'octocat'));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('ready');
+      });
+
+      // The viewer count is fetched alongside the total, sharing the same
+      // AbortSignal as the open-count request.
+      expect(mockFetchViewerIssueCount).toHaveBeenCalledWith(
+        'octo',
+        'a',
+        'octocat',
+        'ghp_token',
+        expect.any(AbortSignal),
+      );
+      expect(result.current.get('octo/a')).toMatchObject({
+        status: 'ready',
+        openCount: 5,
+        mineCount: 2,
+        communityCount: 3,
+      });
+    });
+
+    it('clamps community to zero when the viewer count meets or exceeds the total', async () => {
+      mockFetchIssueCount.mockResolvedValue(2);
+      mockFetchViewerIssueCount.mockResolvedValue(5);
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', 'octocat'));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('ready');
+      });
+
+      expect(result.current.get('octo/a')).toMatchObject({
+        openCount: 2,
+        mineCount: 5,
+        communityCount: 0,
+      });
+    });
+
+    it('keeps overThreshold and score keyed to the TOTAL open count, not the community remainder', async () => {
+      // Every open issue is the viewer's own (community === 0), yet the triage
+      // banding must still escalate on the full open count.
+      mockFetchIssueCount.mockResolvedValue(ISSUE_TRIAGE_THRESHOLD);
+      mockFetchViewerIssueCount.mockResolvedValue(ISSUE_TRIAGE_THRESHOLD);
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', 'octocat'));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('ready');
+      });
+
+      expect(result.current.get('octo/a')).toMatchObject({
+        openCount: ISSUE_TRIAGE_THRESHOLD,
+        overThreshold: true,
+        score: ISSUE_TRIAGE_THRESHOLD,
+        mineCount: ISSUE_TRIAGE_THRESHOLD,
+        communityCount: 0,
+      });
+    });
+
+    it('leaves mine/community undefined and never fetches the viewer count without a login', async () => {
+      mockFetchIssueCount.mockResolvedValue(5);
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', null));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('ready');
+      });
+
+      expect(mockFetchViewerIssueCount).not.toHaveBeenCalled();
+      const slice = result.current.get('octo/a');
+      expect(slice).toMatchObject({ openCount: 5, overThreshold: false });
+      expect(slice?.mineCount).toBeUndefined();
+      expect(slice?.communityCount).toBeUndefined();
+    });
+
+    it('treats an empty-string login as absent (no viewer fetch, no split)', async () => {
+      mockFetchIssueCount.mockResolvedValue(5);
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', ''));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('ready');
+      });
+
+      expect(mockFetchViewerIssueCount).not.toHaveBeenCalled();
+      expect(result.current.get('octo/a')?.mineCount).toBeUndefined();
+      expect(result.current.get('octo/a')?.communityCount).toBeUndefined();
+    });
+
+    it('marks the repo as error when only the viewer-count fetch rejects', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockFetchIssueCount.mockResolvedValue(5);
+      mockFetchViewerIssueCount.mockRejectedValue(new Error('viewer boom'));
+
+      const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', 'octocat'));
+
+      await waitFor(() => {
+        expect(result.current.get('octo/a')?.status).toBe('error');
+      });
+
+      expect(result.current.get('octo/a')?.mineCount).toBeUndefined();
+      errorSpy.mockRestore();
+    });
   });
 });
