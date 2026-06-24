@@ -96,7 +96,29 @@ describe('SettingsOverlay', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
     expect(within(dialog).getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('radiogroup', { name: /repository names/i }),
+    ).toBeInTheDocument();
     expect(within(dialog).getByRole('radiogroup', { name: /default view/i })).toBeInTheDocument();
+  });
+
+  it('surfaces a labelled repository-names control in the Appearance section', () => {
+    render(
+      <SettingsOverlay
+        user={USER}
+        onForget={vi.fn()}
+        defaultView="triage"
+        onDefaultViewChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    // The visible label sits alongside the control's own aria-label.
+    expect(within(dialog).getByText('Repository names')).toBeInTheDocument();
+    const group = within(dialog).getByRole('radiogroup', { name: /repository names/i });
+    expect(within(group).getByRole('radio', { name: /show owner/i })).toBeInTheDocument();
+    expect(within(group).getByRole('radio', { name: /name only/i })).toBeInTheDocument();
   });
 
   it('shows the authenticated identity and a Forget token action', async () => {
@@ -130,6 +152,9 @@ describe('SettingsOverlay', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('radiogroup', { name: /repository names/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /forget token/i })).toBeNull();
     expect(within(dialog).queryByRole('radiogroup', { name: /default view/i })).toBeNull();
   });
