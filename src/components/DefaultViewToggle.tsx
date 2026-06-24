@@ -23,6 +23,7 @@ const DEFAULT_VIEW_OPTIONS: ReadonlyArray<DefaultViewOption> = [
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Boards' },
   { value: 'inbox', label: 'Inbox' },
+  { value: 'deck', label: 'Deck' },
 ];
 
 const BASE_BUTTON =

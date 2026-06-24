@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 
 import { CommandPalette } from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
+import { BoardView } from './components/board/BoardView';
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -461,6 +462,15 @@ function FleetPanel({
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
+        ) : view === 'deck' ? (
+          <BoardView
+            repos={filteredRepos}
+            getRowData={getRowData}
+            onRepoActivate={handleRepoActivate}
+            loading={status === 'loading'}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+          />
         ) : (
           <FleetGrid
             repos={filteredRepos}
@@ -524,6 +534,7 @@ const VIEW_OPTIONS: ReadonlyArray<{ value: FleetView; label: string }> = [
   { value: 'grid', label: 'Grid' },
   { value: 'dashboard', label: 'Boards' },
   { value: 'inbox', label: 'Inbox' },
+  { value: 'deck', label: 'Deck' },
 ];
 
 function ViewToggle({ view, onChange, unreadCount }: ViewToggleProps): ReactElement {

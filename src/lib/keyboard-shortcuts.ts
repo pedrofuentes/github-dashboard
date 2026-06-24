@@ -24,6 +24,7 @@ export type ShortcutActionId =
   | 'navigate-grid'
   | 'navigate-dashboard'
   | 'navigate-inbox'
+  | 'navigate-deck'
   | 'open-help'
   | 'open-settings';
 
@@ -57,6 +58,7 @@ export const NAVIGATION_TARGETS: Record<
   'navigate-grid': 'grid',
   'navigate-dashboard': 'dashboard',
   'navigate-inbox': 'inbox',
+  'navigate-deck': 'deck',
 };
 
 /** The full catalogue, in the order it is presented in the help overlay. */
@@ -66,6 +68,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   { id: 'navigate-grid', keys: 'g g', description: 'Go to Grid', group: 'Navigation' },
   { id: 'navigate-dashboard', keys: 'g b', description: 'Go to Boards', group: 'Navigation' },
   { id: 'navigate-inbox', keys: 'g i', description: 'Go to Inbox', group: 'Navigation' },
+  { id: 'navigate-deck', keys: 'g d', description: 'Go to Deck', group: 'Navigation' },
   { id: 'open-help', keys: '?', description: 'Show keyboard shortcuts', group: 'General' },
   {
     id: 'command-palette',
@@ -83,6 +86,7 @@ const G_SEQUENCE: Record<string, ShortcutActionId> = {
   g: 'navigate-grid',
   b: 'navigate-dashboard',
   i: 'navigate-inbox',
+  d: 'navigate-deck',
 };
 
 // Single-key shortcuts that fire directly from the idle state.
