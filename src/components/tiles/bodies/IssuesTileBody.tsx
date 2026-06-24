@@ -8,9 +8,12 @@
  * threshold, at which point a triage {@link StatusGlyph} (warning triangle) plus
  * the words "over triage threshold" *and* the warning accent all flag it — never
  * colour alone. At standard/expanded a cross-slice meta line tallies stale *open
- * issues* (derived from `data.stale`, no extra fetch). All colour comes from
- * semantic tokens (no hard-coded hex, AA in both themes), and any missing/garbage
- * field degrades to a safe neutral state rather than throwing or rendering blank.
+ * issues* (derived from `data.stale`, no extra fetch), and — when the slice
+ * carries the viewer's author split (b2) — a neutral `N community · N mine` meta
+ * breaks the open total down (the split always rides the accessible summary, even
+ * where the visible meta is gated out). All colour comes from semantic tokens (no
+ * hard-coded hex, AA in both themes), and any missing/garbage field degrades to a
+ * safe neutral state rather than throwing or rendering blank.
  */
 import type { ReactElement } from 'react';
 
@@ -88,12 +91,26 @@ export function IssuesTileBody({
     staleIssueCount !== undefined &&
     staleIssueCount > 0;
 
+  // Community-vs-mine split (b2): present only when a viewer is authenticated,
+  // so both counts arrive together. Guard on presence so a viewer-less slice is
+  // byte-identical to before. The *visible* meta follows the stale gating
+  // (hidden at compact / glanceable-standard), but the accessible summary always
+  // carries the split when the data is present.
+  const hasAuthorSplit =
+    typeof issues.communityCount === 'number' && typeof issues.mineCount === 'number';
+  const communityCount = safeCount(issues.communityCount);
+  const mineCount = safeCount(issues.mineCount);
+  const showSplitMeta = size !== 'compact' && showStandardExtras && hasAuthorSplit;
+
   const srLabel =
     openCount === 0
       ? 'No open issues'
       : overThreshold
         ? `${openCount} open ${noun}, over the triage threshold`
         : `${openCount} open ${noun}`;
+  const splitSrLabel = hasAuthorSplit
+    ? `, ${communityCount} from the community, ${mineCount} yours`
+    : '';
   const staleSrLabel = showStaleMeta ? `, ${staleIssueCount} stale` : '';
 
   if (openCount === 0) {
@@ -125,6 +142,18 @@ export function IssuesTileBody({
           <span aria-hidden="true">Over triage threshold</span>
         </span>
       ) : null}
+      {showSplitMeta ? (
+        <span
+          data-part="author-split-meta"
+          aria-hidden="true"
+          className="inline-flex items-center gap-1 text-xs text-text-muted"
+        >
+          <StatusGlyph status="info" size={12} title="Issue authors" />
+          <span>{communityCount} community</span>
+          <span aria-hidden="true">·</span>
+          <span className="font-medium text-text">{mineCount} mine</span>
+        </span>
+      ) : null}
       {showStaleMeta ? (
         <span
           data-part="stale-meta"
@@ -143,6 +172,7 @@ export function IssuesTileBody({
       ) : null}
       <span className="sr-only">
         {srLabel}
+        {splitSrLabel}
         {staleSrLabel}
       </span>
     </div>
