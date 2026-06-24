@@ -1,10 +1,18 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo } from '../../types/fleet';
 import { TileFrame } from './TileFrame';
+
+const REPO_OWNER_KEY = 'fleet:repo-owner';
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
+});
 
 function makeRepo(nameWithOwner = 'octo/a'): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -353,5 +361,33 @@ describe('TileFrame — hideRepoHeader (filtered-to-one header drop, AC-10)', ()
     const heading = screen.getByRole('heading', { level: 3 });
     expect(heading).not.toHaveClass('sr-only');
     expect(heading).toHaveTextContent('octo/a');
+  });
+});
+
+describe('TileFrame — repo-owner display preference', () => {
+  it('hides the owner in the visible header when the preference is "hide", keeping the full name in the title', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderFrame({ repo: makeRepo('octo/api-server') });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('api-server');
+    expect(heading).not.toHaveTextContent('octo/api-server');
+    expect(heading).toHaveAttribute('title', 'octo/api-server');
+  });
+
+  it('shows the full owner/repo in the visible header when the preference is "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
+    renderFrame({ repo: makeRepo('octo/api-server') });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('octo/api-server');
+  });
+
+  it('lets an explicit alias still override the label even when the owner is hidden', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderFrame({ repo: makeRepo('octo/api-server'), alias: 'gateway' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('gateway');
+    expect(heading).toHaveAttribute('title', 'octo/api-server');
+    // The real repo stays announced to screen readers via the sr-only alias note.
+    expect(within(heading).getByText('(alias for octo/api-server)')).toHaveClass('sr-only');
   });
 });

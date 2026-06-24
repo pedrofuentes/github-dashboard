@@ -12,7 +12,9 @@
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
+import { useRepoOwner } from '../hooks/useRepoOwner';
 import { safeGitHubHref } from '../lib/github-url';
+import { formatRepoLabel } from '../lib/repo-owner-preference';
 import type { CiSignalSlice, Repo, RepoSignalData, SignalStatus } from '../types/fleet';
 
 interface DrillDownDrawerProps {
@@ -84,6 +86,7 @@ export function DrillDownDrawer({ repo, data, onClose }: DrillDownDrawerProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { display } = useRepoOwner();
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -169,9 +172,10 @@ export function DrillDownDrawer({ repo, data, onClose }: DrillDownDrawerProps) {
                 href={repoHref}
                 target="_blank"
                 rel="noreferrer noopener"
+                title={repo.nameWithOwner}
                 className="rounded text-sky-300 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
               >
-                {repo.nameWithOwner}
+                {formatRepoLabel(repo, display)}
               </a>
             </h2>
             {repo.isPrivate ? (
