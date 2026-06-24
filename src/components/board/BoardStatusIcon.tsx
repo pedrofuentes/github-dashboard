@@ -233,7 +233,7 @@ export function BoardStatusIcon({
   status: string;
   size?: number;
 }): ReactElement {
-  const icon = ICONS[status] ?? DEFAULT_ICON;
+  const icon = Object.hasOwn(ICONS, status) ? ICONS[status] : DEFAULT_ICON;
   return (
     <svg viewBox="0 0 36 36" width={size} height={size} aria-hidden="true" data-status={status}>
       {icon}
