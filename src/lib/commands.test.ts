@@ -16,6 +16,7 @@ function makeHandlers(overrides: Partial<CommandRegistryHandlers> = {}): Command
     clearFilters: vi.fn(),
     toggleTheme: vi.fn(),
     toggleDensity: vi.fn(),
+    toggleRepoOwner: vi.fn(),
     ...overrides,
   };
 }
@@ -100,5 +101,24 @@ describe('buildCommandRegistry', () => {
 
     expect(handlers.toggleTheme).toHaveBeenCalledTimes(1);
     expect(handlers.toggleDensity).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Toggle repo owner" command exists with correct id, label, and group', () => {
+    const commands = buildCommandRegistry(makeHandlers());
+    const cmd = byId(commands, 'toggle-repo-owner');
+
+    expect(cmd.label).toBe('Toggle repo owner');
+    expect(cmd.group).toBe('Appearance');
+    expect(Array.isArray(cmd.keywords ?? [])).toBe(true);
+    expect((cmd.keywords ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('"Toggle repo owner" run() invokes the toggleRepoOwner handler', () => {
+    const toggleRepoOwner = vi.fn();
+    const commands = buildCommandRegistry(makeHandlers({ toggleRepoOwner }));
+
+    byId(commands, 'toggle-repo-owner').run();
+
+    expect(toggleRepoOwner).toHaveBeenCalledTimes(1);
   });
 });

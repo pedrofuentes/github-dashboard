@@ -32,6 +32,8 @@ export interface CommandRegistryHandlers {
   toggleTheme: () => void;
   /** Toggle between balanced and glanceable density. */
   toggleDensity: () => void;
+  /** Toggle whether repo labels show or hide the owner segment. */
+  toggleRepoOwner: () => void;
 }
 
 /** Builds the full, grouped command registry from the supplied handlers. */
@@ -134,6 +136,13 @@ export function buildCommandRegistry(handlers: CommandRegistryHandlers): Command
       group: 'Appearance',
       keywords: ['density', 'compact', 'balanced', 'glanceable', 'appearance', 'spacing'],
       run: () => handlers.toggleDensity(),
+    },
+    {
+      id: 'toggle-repo-owner',
+      label: 'Toggle repo owner',
+      group: 'Appearance',
+      keywords: ['owner', 'repo', 'name', 'organization', 'prefix', 'appearance', 'label'],
+      run: () => handlers.toggleRepoOwner(),
     },
   ];
 }
