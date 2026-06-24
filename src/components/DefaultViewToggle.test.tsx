@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DefaultViewToggle } from './DefaultViewToggle';
 
 describe('DefaultViewToggle', () => {
-  it('exposes an accessible "Default view" radiogroup with the five choices', () => {
+  it('exposes an accessible "Default view" radiogroup with the six choices', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
     const group = screen.getByRole('radiogroup', { name: /default view/i });
     expect(group).toBeInTheDocument();
@@ -14,6 +14,7 @@ describe('DefaultViewToggle', () => {
     expect(screen.getByRole('radio', { name: /grid/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /boards/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /inbox/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /deck/i })).toBeInTheDocument();
   });
 
   it('marks the passed value as the checked default', () => {
@@ -30,6 +31,7 @@ describe('DefaultViewToggle', () => {
     expect(screen.getByText('Grid')).toBeInTheDocument();
     expect(screen.getByText('Boards')).toBeInTheDocument();
     expect(screen.getByText('Inbox')).toBeInTheDocument();
+    expect(screen.getByText('Deck')).toBeInTheDocument();
   });
 
   it('lists Triage first as the home default', () => {
@@ -38,7 +40,7 @@ describe('DefaultViewToggle', () => {
     expect(radios[0]).toHaveAccessibleName(/triage/i);
   });
 
-  it.each([/triage/i, /matrix/i, /grid/i, /boards/i, /inbox/i])(
+  it.each([/triage/i, /matrix/i, /grid/i, /boards/i, /inbox/i, /deck/i])(
     'exposes a visible focus ring on the %s option for keyboard users',
     (name) => {
       render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
@@ -52,6 +54,7 @@ describe('DefaultViewToggle', () => {
     { name: /grid/i, expected: 'grid' as const },
     { name: /boards/i, expected: 'dashboard' as const },
     { name: /inbox/i, expected: 'inbox' as const },
+    { name: /deck/i, expected: 'deck' as const },
   ])('calls onChange with $expected when that radio is clicked', async ({ name, expected }) => {
     const user = userEvent.setup();
     const onChange = vi.fn();

@@ -55,6 +55,18 @@ describe('useKeyboardShortcuts', () => {
     expect(handlers.navigate).toHaveBeenCalledWith('matrix');
   });
 
+  it('navigates to the deck view on a "g d" sequence', () => {
+    const handlers = makeSpies();
+    render(<Harness handlers={handlers} />);
+
+    press('g');
+    expect(handlers.navigate).not.toHaveBeenCalled();
+    press('d');
+
+    expect(handlers.navigate).toHaveBeenCalledTimes(1);
+    expect(handlers.navigate).toHaveBeenCalledWith('deck');
+  });
+
   it('opens the help overlay on "?"', () => {
     const handlers = makeSpies();
     render(<Harness handlers={handlers} />);

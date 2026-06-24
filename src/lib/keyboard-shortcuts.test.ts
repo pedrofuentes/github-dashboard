@@ -17,6 +17,7 @@ describe('matchShortcut', () => {
     ['g', 'navigate-grid'],
     ['b', 'navigate-dashboard'],
     ['i', 'navigate-inbox'],
+    ['d', 'navigate-deck'],
   ])('maps the "g %s" sequence to %s', (key, action) => {
     expect(matchShortcut('g', key)).toEqual({ action, pending: null });
   });
@@ -51,12 +52,19 @@ describe('SHORTCUTS definition list', () => {
     expect(byId.get('navigate-grid')).toMatchObject({ keys: 'g g', group: 'Navigation' });
     expect(byId.get('navigate-dashboard')).toMatchObject({ keys: 'g b', group: 'Navigation' });
     expect(byId.get('navigate-inbox')).toMatchObject({ keys: 'g i', group: 'Navigation' });
+    expect(byId.get('navigate-deck')).toMatchObject({ keys: 'g d', group: 'Navigation' });
   });
 
   it('documents the help shortcut in the General group', () => {
     const help = SHORTCUTS.find((shortcut) => shortcut.id === 'open-help');
     expect(help).toMatchObject({ keys: '?', group: 'General' });
     expect(help?.description).toMatch(/keyboard shortcuts/i);
+  });
+
+  it('documents the deck navigation shortcut with its "Go to Deck" description', () => {
+    const deck = SHORTCUTS.find((shortcut) => shortcut.id === 'navigate-deck');
+    expect(deck).toMatchObject({ keys: 'g d', group: 'Navigation' });
+    expect(deck?.description).toBe('Go to Deck');
   });
 
   it('documents the ⌘K command palette without it being a bound action', () => {
@@ -76,5 +84,6 @@ describe('NAVIGATION_TARGETS', () => {
     expect(NAVIGATION_TARGETS['navigate-grid']).toBe('grid');
     expect(NAVIGATION_TARGETS['navigate-dashboard']).toBe('dashboard');
     expect(NAVIGATION_TARGETS['navigate-inbox']).toBe('inbox');
+    expect(NAVIGATION_TARGETS['navigate-deck']).toBe('deck');
   });
 });
