@@ -22,6 +22,7 @@ import { useAuth } from './hooks/useAuth';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
 import { useDensity } from './hooks/useDensity';
+import { useRepoOwner } from './hooks/useRepoOwner';
 import { useInbox } from './hooks/useInbox';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useRepoFilterQuery } from './hooks/useRepoFilterQuery';
@@ -300,6 +301,7 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
 
   const { resolved, setChoice } = useTheme();
   const { density, setDensity } = useDensity();
+  const { display, setDisplay } = useRepoOwner();
   const toggleTheme = useCallback(
     () => setChoice(resolved === 'dark' ? 'light' : 'dark'),
     [resolved, setChoice],
@@ -307,6 +309,10 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
   const toggleDensity = useCallback(
     () => setDensity(density === 'balanced' ? 'glanceable' : 'balanced'),
     [density, setDensity],
+  );
+  const toggleRepoOwner = useCallback(
+    () => setDisplay(display === 'show' ? 'hide' : 'show'),
+    [display, setDisplay],
   );
 
   // A tiny localStorage-backed list of recently-run command ids, surfaced as the
@@ -344,6 +350,7 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
       clearFilters: () => clearAllFilters(),
       toggleTheme,
       toggleDensity,
+      toggleRepoOwner,
     });
     // Record each command as recent when it runs (before delegating), so the
     // recents list reflects usage even from keyboard activation.
@@ -365,6 +372,7 @@ function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelPro
     clearAllFilters,
     toggleTheme,
     toggleDensity,
+    toggleRepoOwner,
     recordCommandRecent,
   ]);
 
