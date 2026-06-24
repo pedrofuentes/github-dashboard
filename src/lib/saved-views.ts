@@ -36,7 +36,7 @@ export const MAX_SAVED_VIEWS = 50;
 /** Cap on the length of a saved view's name. */
 export const MAX_VIEW_NAME_LENGTH = 128;
 
-const FleetViewSchema = z.enum(['triage', 'matrix', 'grid', 'dashboard', 'inbox']);
+const FleetViewSchema = z.enum(['triage', 'matrix', 'grid', 'dashboard', 'inbox', 'deck']);
 
 const SortSchema = z.object({
   columnId: z.string().min(1).max(MAX_STRING_LENGTH),
