@@ -167,3 +167,26 @@ describe('BoardStatusIcon — distinguishing SVG primitives', () => {
     expect(container.querySelector('text')?.textContent).toBe('?');
   });
 });
+
+describe('BoardStatusIcon — prototype-chain key safety (regression)', () => {
+  // Keys that live on Object.prototype. A naive `ICONS[status]` lookup walks the
+  // prototype chain and returns an inherited member instead of `undefined`, so the
+  // `?? DEFAULT_ICON` fallback never fires: function-valued keys (toString,
+  // constructor, hasOwnProperty) render an empty <svg>, and `__proto__` (an object)
+  // makes React throw "Objects are not valid as a React child".
+  const PROTOTYPE_KEYS = ['toString', 'constructor', '__proto__', 'hasOwnProperty'] as const;
+
+  it.each(PROTOTYPE_KEYS)('falls back to the default "?" icon for key "%s"', (status) => {
+    const { container } = render(<BoardStatusIcon status={status} />);
+    expect(container.querySelector('text')?.textContent).toBe('?');
+  });
+
+  it.each(PROTOTYPE_KEYS)('does not throw when rendering key "%s"', (status) => {
+    expect(() => render(<BoardStatusIcon status={status} />)).not.toThrow();
+  });
+
+  it.each(PROTOTYPE_KEYS)('preserves the data-status seam for key "%s"', (status) => {
+    const { container } = render(<BoardStatusIcon status={status} />);
+    expect(container.querySelector('svg')).toHaveAttribute('data-status', status);
+  });
+});
