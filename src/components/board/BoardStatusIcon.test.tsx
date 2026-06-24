@@ -54,14 +54,14 @@ describe('BoardStatusIcon — viewBox', () => {
 describe('BoardStatusIcon — size prop', () => {
   it('defaults size to 40', () => {
     const { container } = render(<BoardStatusIcon status="success" />);
-    const svg = container.querySelector('svg')!;
+    const svg = container.querySelector('svg');
     expect(svg).toHaveAttribute('width', '40');
     expect(svg).toHaveAttribute('height', '40');
   });
 
   it('accepts a custom size', () => {
     const { container } = render(<BoardStatusIcon status="success" size={24} />);
-    const svg = container.querySelector('svg')!;
+    const svg = container.querySelector('svg');
     expect(svg).toHaveAttribute('width', '24');
     expect(svg).toHaveAttribute('height', '24');
   });
@@ -70,12 +70,12 @@ describe('BoardStatusIcon — size prop', () => {
 describe('BoardStatusIcon — no hex colors (currentColor only)', () => {
   it.each(ALL_STATUSES)('uses only currentColor, no hex colors, for "%s"', (status) => {
     const { container } = render(<BoardStatusIcon status={status} />);
-    expect(container.querySelector('svg')!.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+    expect(container.querySelector('svg')?.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 
   it('unknown status uses no hex colors', () => {
     const { container } = render(<BoardStatusIcon status="nope" />);
-    expect(container.querySelector('svg')!.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+    expect(container.querySelector('svg')?.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 });
 
@@ -93,9 +93,7 @@ describe('BoardStatusIcon — distinguishing SVG primitives', () => {
 
   it('in_progress renders a polygon arrowhead on the circular arrow', () => {
     const { container } = render(<BoardStatusIcon status="in_progress" />);
-    expect(
-      container.querySelector('polygon[points="6,12 6,20 11,16"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('polygon[points="6,12 6,20 11,16"]')).toBeInTheDocument();
   });
 
   it('cancelled renders a circle with a diagonal slash', () => {
@@ -124,9 +122,7 @@ describe('BoardStatusIcon — distinguishing SVG primitives', () => {
 
   it('skipped renders a forward-arrow polyline', () => {
     const { container } = render(<BoardStatusIcon status="skipped" />);
-    expect(
-      container.querySelector('polyline[points="20,10 28,18 20,26"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('polyline[points="20,10 28,18 20,26"]')).toBeInTheDocument();
   });
 
   it('timed_out renders a circle with an X inside', () => {
@@ -137,23 +133,17 @@ describe('BoardStatusIcon — distinguishing SVG primitives', () => {
 
   it('action_required renders a triangle warning sign', () => {
     const { container } = render(<BoardStatusIcon status="action_required" />);
-    expect(
-      container.querySelector('polygon[points="18,6 32,30 4,30"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('polygon[points="18,6 32,30 4,30"]')).toBeInTheDocument();
   });
 
   it('neutral renders a horizontal dash line', () => {
     const { container } = render(<BoardStatusIcon status="neutral" />);
-    expect(
-      container.querySelector('line[x1="8"][y1="18"][x2="28"][y2="18"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('line[x1="8"][y1="18"][x2="28"][y2="18"]')).toBeInTheDocument();
   });
 
   it('stale renders a horizontal dash line (same shape as neutral)', () => {
     const { container } = render(<BoardStatusIcon status="stale" />);
-    expect(
-      container.querySelector('line[x1="8"][y1="18"][x2="28"][y2="18"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('line[x1="8"][y1="18"][x2="28"][y2="18"]')).toBeInTheDocument();
   });
 
   it('requested renders a bullseye (outer circle + inner filled circle)', () => {
@@ -164,9 +154,7 @@ describe('BoardStatusIcon — distinguishing SVG primitives', () => {
 
   it('deploying renders a rocket/upward-arrow polygon', () => {
     const { container } = render(<BoardStatusIcon status="deploying" />);
-    expect(
-      container.querySelector('polygon[points="18,6 28,28 18,22 8,28"]'),
-    ).toBeInTheDocument();
+    expect(container.querySelector('polygon[points="18,6 28,28 18,22 8,28"]')).toBeInTheDocument();
   });
 
   it('unknown status renders a question mark text element', () => {
