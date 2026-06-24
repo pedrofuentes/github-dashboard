@@ -823,6 +823,48 @@ describe('App', () => {
     expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
   });
 
+  function deckToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /deck/i });
+  }
+
+  it('offers a Deck option in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(deckToggleButton()).toBeInTheDocument();
+  });
+
+  it('renders the Stream Deck board and hides the matrix when Deck is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(deckToggleButton());
+
+    const board = screen.getByRole('region', { name: /repository board/i });
+    expect(board).toBeInTheDocument();
+    // One repo contributes its six fixed signal keys (CI · Security · Reviews ·
+    // Pull requests · Issues · Stale), each an activation button carrying the repo.
+    const keys = within(board).getAllByRole('button');
+    expect(keys).toHaveLength(6);
+    keys.forEach((key) => expect(key).toHaveAccessibleName(/octo\/hello-world/i));
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('renders the deck board when configured as the default view', async () => {
+    localStorage.setItem('fleet:default-view', 'deck');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /repository board/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
   it('narrows the matrix rows via the faceted repo filter', async () => {
     localStorage.setItem('fleet:default-view', 'matrix');
     mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });

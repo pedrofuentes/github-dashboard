@@ -45,6 +45,11 @@ describe('loadDefaultView', () => {
     expect(loadDefaultView()).toBe('matrix');
   });
 
+  it('reads a stored "deck" default', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'deck');
+    expect(loadDefaultView()).toBe('deck');
+  });
+
   it('falls back to "triage" for an unrecognised value', () => {
     localStorage.setItem(DEFAULT_VIEW_KEY, 'cards');
     expect(loadDefaultView()).toBe('triage');
@@ -85,12 +90,13 @@ describe('saveDefaultView', () => {
 
 // Folded guard coverage (view-preference.test.ts is deleted in a later PR).
 describe('isFleetView', () => {
-  it('accepts the five valid views', () => {
+  it('accepts the six valid views', () => {
     expect(isFleetView('triage')).toBe(true);
     expect(isFleetView('grid')).toBe(true);
     expect(isFleetView('dashboard')).toBe(true);
     expect(isFleetView('inbox')).toBe(true);
     expect(isFleetView('matrix')).toBe(true);
+    expect(isFleetView('deck')).toBe(true);
   });
 
   it('rejects unknown values and null', () => {

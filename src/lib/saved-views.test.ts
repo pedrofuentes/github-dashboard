@@ -53,6 +53,17 @@ describe('SavedView schema validation', () => {
     expect(SavedViewSchema.safeParse(withDensity).success).toBe(true);
   });
 
+  it('accepts a SavedView targeting the deck view', () => {
+    const deckView = {
+      id: 'test-id-deck',
+      name: 'Deck Board',
+      view: 'deck' as const,
+      filter: EMPTY_QUERY,
+      createdAt: '2026-06-22T00:00:00.000Z',
+    };
+    expect(SavedViewSchema.safeParse(deckView).success).toBe(true);
+  });
+
   it('rejects SavedView with invalid view', () => {
     const invalid = {
       id: 'test-id-4',
