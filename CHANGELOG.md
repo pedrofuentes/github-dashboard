@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Community-vs-mine open issues**: when you're signed in, the Issues cell (in
+  the Matrix and Triage) and the Issues tile now break the open-issue total down
+  into how many were opened by the community versus by you — shown as a compact
+  `· N community · N mine` annotation on the cell and an `N community · N mine`
+  meta line on the tile, with the full split spelled out for screen readers. The
+  total count and the over-triage-threshold warning are unchanged, and signed-out
+  views render exactly as before.
 - **Inbox multi-select + bulk-action bar**: triage many notifications at once
   instead of clicking one by one. Each Inbox row now has a selection checkbox;
   selecting one or more reveals an accessible bulk-action toolbar that shows the
