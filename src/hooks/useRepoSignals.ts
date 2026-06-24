@@ -36,8 +36,15 @@ export interface UseRepoSignalsResult {
  *
  * @param repos - Repositories to resolve signals for (passed to each hook).
  * @param token - Auth token forwarded to each signal hook (may be `null`).
+ * @param viewerLogin - Authenticated viewer's login, forwarded only to the
+ *   issues signal so it can split open issues into "mine" vs "community"
+ *   (`null` when unauthenticated).
  */
-export function useRepoSignals(repos: Repo[], token: string | null): UseRepoSignalsResult {
+export function useRepoSignals(
+  repos: Repo[],
+  token: string | null,
+  viewerLogin?: string | null,
+): UseRepoSignalsResult {
   // Bumping this nonce on foreground hands the signal hooks a new `repos`
   // identity, re-running their conditional fetches without touching their logic.
   const [revalidateNonce, setRevalidateNonce] = useState(0);
@@ -57,7 +64,7 @@ export function useRepoSignals(repos: Repo[], token: string | null): UseRepoSign
   const security = useSecuritySignal(revalidatedRepos, token);
   const reviews = useReviewsSignal(revalidatedRepos, token);
   const pullRequests = usePullRequestsSignal(revalidatedRepos, token);
-  const issues = useIssuesSignal(revalidatedRepos, token);
+  const issues = useIssuesSignal(revalidatedRepos, token, viewerLogin);
   const stale = useStaleSignal(revalidatedRepos, token);
 
   const getRowData = useMemo<GetRowData>(
