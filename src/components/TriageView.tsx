@@ -22,8 +22,10 @@ import type { ReactNode } from 'react';
 import {
   TRIAGE_BAND_LABELS,
   buildTriageModel,
+  hasExternalPr,
   hasFailingCi,
   hasIssuesOverThreshold,
+  hasReviewRequest,
   hasSecurityRisk,
   hasSecurityWarning,
   hasStaleItems,
@@ -56,49 +58,41 @@ interface TriageViewProps {
 }
 
 /**
- * Renders the compact signal indicator(s) relevant to a repo's band, reusing the
- * existing per-signal cell atoms. Only the signals that put the repo in the band
- * are shown, so the row stays focused on why it needs attention.
+ * Renders EVERY active signal indicator for a repo, in a fixed order (CI,
+ * Security, Issues, Reviews, PullRequests, Stale), reusing the existing
+ * per-signal cell atoms. This is independent of the repo's grouping band, so a
+ * repo surfaced in its highest band (e.g. "Needs attention" for an over-
+ * threshold backlog) still shows every other pending action it has — its
+ * pending-review, external-PR, and stale badges are no longer hidden. A repo
+ * with no active signals (the Healthy band) renders nothing.
  */
-function BandIndicators({ band, data }: { band: TriageBand; data: RepoSignalData }): ReactNode {
-  switch (band) {
-    case 'needs-attention':
-      return (
-        <>
-          {hasFailingCi(data) ? <CiCell slice={data.ci} /> : null}
-          {hasSecurityRisk(data) ? <SecurityCell slice={data.security} /> : null}
-          {hasIssuesOverThreshold(data) ? <IssuesCell slice={data.issues} /> : null}
-        </>
-      );
-    case 'waiting-on-me':
-      return <ReviewsCell slice={data.reviews} />;
-    case 'community':
-      return <PullRequestsCell slice={data.pullRequests} />;
-    case 'watch':
-      return (
-        <>
-          {hasStaleItems(data) ? <StaleCell slice={data.stale} /> : null}
-          {hasSecurityWarning(data) ? <SecurityCell slice={data.security} /> : null}
-        </>
-      );
-    case 'healthy':
-      return null;
-  }
+function ActiveSignalIndicators({ data }: { data: RepoSignalData }): ReactNode {
+  return (
+    <>
+      {hasFailingCi(data) ? <CiCell slice={data.ci} /> : null}
+      {hasSecurityRisk(data) || hasSecurityWarning(data) ? (
+        <SecurityCell slice={data.security} />
+      ) : null}
+      {hasIssuesOverThreshold(data) ? <IssuesCell slice={data.issues} /> : null}
+      {hasReviewRequest(data) ? <ReviewsCell slice={data.reviews} /> : null}
+      {hasExternalPr(data) ? <PullRequestsCell slice={data.pullRequests} /> : null}
+      {hasStaleItems(data) ? <StaleCell slice={data.stale} /> : null}
+    </>
+  );
 }
 
 interface RepoRowProps {
   repo: Repo;
-  band: TriageBand;
   getRowData: GetRowData;
   onRepoActivate?: (repo: Repo) => void;
 }
 
-/** A single repo row: its name, the band's signal indicators, and drill-down. */
-function RepoRow({ repo, band, getRowData, onRepoActivate }: RepoRowProps) {
+/** A single repo row: its name, its active signal indicators, and drill-down. */
+function RepoRow({ repo, getRowData, onRepoActivate }: RepoRowProps) {
   const data = getRowData(repo);
   const indicators = (
     <span className="flex flex-wrap items-center gap-2">
-      <BandIndicators band={band} data={data} />
+      <ActiveSignalIndicators data={data} />
     </span>
   );
 
@@ -148,7 +142,6 @@ function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionPro
           <RepoRow
             key={repo.nameWithOwner}
             repo={repo}
-            band={band}
             getRowData={getRowData}
             onRepoActivate={onRepoActivate}
           />
@@ -200,7 +193,6 @@ function HealthyBand({ repos, getRowData, onRepoActivate }: HealthyBandProps) {
             <RepoRow
               key={repo.nameWithOwner}
               repo={repo}
-              band="healthy"
               getRowData={getRowData}
               onRepoActivate={onRepoActivate}
             />
