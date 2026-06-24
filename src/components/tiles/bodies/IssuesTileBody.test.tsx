@@ -222,6 +222,88 @@ describe('IssuesTileBody — defensive & a11y', () => {
   });
 });
 
+describe('IssuesTileBody — community vs mine split (T-b3)', () => {
+  const split: IssuesSignalSlice = {
+    status: 'ready',
+    openCount: 7,
+    communityCount: 4,
+    mineCount: 3,
+  };
+
+  it('balanced standard: shows the community/mine meta with both values', () => {
+    const { container } = renderBody(split, 'standard');
+    const meta = container.querySelector('[data-part="author-split-meta"]');
+    expect(meta).not.toBeNull();
+    expect(meta?.textContent).toMatch(/4 community/);
+    expect(meta?.textContent).toMatch(/3 mine/);
+  });
+
+  it('expanded: shows the community/mine meta', () => {
+    const { container } = renderBody(split, 'expanded');
+    expect(container.querySelector('[data-part="author-split-meta"]')).not.toBeNull();
+  });
+
+  it('spells out the split in the sr-only summary', () => {
+    const { container } = renderBody(split, 'standard');
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /4 from the community, 3 yours/i,
+    );
+  });
+
+  it('keeps the over-threshold clause and the split together', () => {
+    const { container } = renderBody(
+      { status: 'ready', openCount: 9, communityCount: 2, mineCount: 7, overThreshold: true },
+      'expanded',
+    );
+    expect(container.querySelector('[data-tone="warning"]')).not.toBeNull();
+    expect(container.querySelector('[data-part="author-split-meta"]')?.textContent).toMatch(
+      /2 community/,
+    );
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /9 open issues, over the triage threshold, 2 from the community, 7 yours/i,
+    );
+  });
+
+  it('absent split: renders exactly as today (no meta, sr-only unchanged)', () => {
+    const { container } = renderBody({ status: 'ready', openCount: 7 }, 'standard');
+    expect(container.querySelector('[data-part="author-split-meta"]')).toBeNull();
+    const sr = container.querySelector('.sr-only')?.textContent ?? '';
+    expect(sr).toMatch(/7 open issues/i);
+    expect(sr).not.toMatch(/community|yours/i);
+  });
+
+  it('glanceable standard: drops the visible meta but keeps it in the sr-only', () => {
+    const { container } = render(
+      <IssuesTileBody repo={repo} data={{ issues: split }} size="standard" density="glanceable" />,
+    );
+    expect(container.querySelector('[data-part="author-split-meta"]')).toBeNull();
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /4 from the community, 3 yours/i,
+    );
+  });
+
+  it('compact: drops the visible meta but keeps it in the sr-only', () => {
+    const { container } = renderBody(split, 'compact');
+    expect(container.querySelector('[data-part="author-split-meta"]')).toBeNull();
+    expect(container.querySelector('.sr-only')?.textContent).toMatch(
+      /4 from the community, 3 yours/i,
+    );
+  });
+
+  it('does not render the split when there are no open issues (all-clear)', () => {
+    const { container } = renderBody(
+      { status: 'ready', openCount: 0, communityCount: 0, mineCount: 0 },
+      'standard',
+    );
+    expect(container.querySelector('[data-part="author-split-meta"]')).toBeNull();
+  });
+
+  it('contains no hard-coded hex colours with the split present', () => {
+    const { container } = renderBody(split, 'expanded');
+    expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+  });
+});
+
 describe('IssuesTileBody — density-aware standard tier (T15)', () => {
   const ready: IssuesSignalSlice = { status: 'ready', openCount: 7 };
   const stale: StaleSignalSlice = {

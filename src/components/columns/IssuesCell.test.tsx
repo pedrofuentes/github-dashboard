@@ -11,6 +11,17 @@ const ready = (openCount: number, overThreshold: boolean): IssuesSignalSlice => 
   score: overThreshold ? openCount : Math.floor(openCount / 4),
 });
 
+const readyWithSplit = (
+  openCount: number,
+  communityCount: number,
+  mineCount: number,
+  overThreshold = false,
+): IssuesSignalSlice => ({
+  ...ready(openCount, overThreshold),
+  communityCount,
+  mineCount,
+});
+
 describe('IssuesCell', () => {
   it('shows the open count with an accessible label when under the threshold', () => {
     render(<IssuesCell slice={ready(5, false)} />);
@@ -70,5 +81,58 @@ describe('IssuesCell', () => {
     render(<IssuesCell slice={{ status: 'unknown' }} />);
 
     expect(screen.getByText('—')).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('IssuesCell — community vs mine split', () => {
+  it('renders the community and mine breakdown alongside the unchanged total', () => {
+    render(<IssuesCell slice={readyWithSplit(5, 4, 1)} />);
+
+    // The primary total stays as-is…
+    expect(screen.getByText(/5 open/)).toBeInTheDocument();
+    // …with a compact community/mine annotation beside it.
+    expect(screen.getByText(/4 community/)).toBeInTheDocument();
+    expect(screen.getByText(/1 mine/)).toBeInTheDocument();
+  });
+
+  it('spells out the full split in the accessible label', () => {
+    render(<IssuesCell slice={readyWithSplit(5, 4, 1)} />);
+
+    expect(
+      screen.getByLabelText('5 open issues — 4 from the community, 1 yours'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the over-threshold clause after the split in the accessible label', () => {
+    render(<IssuesCell slice={readyWithSplit(37, 30, 7, true)} />);
+
+    expect(
+      screen.getByLabelText(
+        '37 open issues — 30 from the community, 7 yours, over the triage threshold',
+      ),
+    ).toBeInTheDocument();
+    // The triage indicator still renders alongside the split.
+    const indicator = screen.getByTitle('over the triage threshold');
+    expect(indicator.querySelector('svg')).not.toBeNull();
+    expect(screen.getByText(/30 community/)).toBeInTheDocument();
+    expect(screen.getByText(/7 mine/)).toBeInTheDocument();
+  });
+
+  it('renders the split when the viewer authored none (all community)', () => {
+    render(<IssuesCell slice={readyWithSplit(3, 3, 0)} />);
+
+    expect(
+      screen.getByLabelText('3 open issues — 3 from the community, 0 yours'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/3 community/)).toBeInTheDocument();
+    expect(screen.getByText(/0 mine/)).toBeInTheDocument();
+  });
+
+  it('omits the split entirely when the counts are absent (unchanged)', () => {
+    render(<IssuesCell slice={ready(5, false)} />);
+
+    expect(screen.getByLabelText('5 open issues')).toBeInTheDocument();
+    expect(screen.queryByText(/community/i)).toBeNull();
+    expect(screen.queryByText(/\bmine\b/i)).toBeNull();
   });
 });
