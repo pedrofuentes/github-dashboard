@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
-import { fetchIssueCount } from '../../api/github';
+import { fetchIssueCount, fetchViewerIssueCount } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
 import type { IssuesSignalSlice, Repo } from '../../types/fleet';
 
@@ -20,15 +20,25 @@ const EMPTY: Map<string, IssuesSignalSlice> = new Map();
  * Issues are lower urgency than CI or security, so a healthy backlog only
  * contributes a quarter of its size to the composite "most broken" sort; a repo
  * at or over the triage threshold escalates to its full open count.
+ *
+ * When `mineCount` is supplied (a viewer login was present), the open count is
+ * split into viewer-authored (`mineCount`) and community (`communityCount`)
+ * issues. Triage banding (`overThreshold`/`score`) stays keyed to the TOTAL
+ * `openCount`, never the community remainder.
  */
-function readySlice(openCount: number): IssuesSignalSlice {
+function readySlice(openCount: number, mineCount?: number): IssuesSignalSlice {
   const overThreshold = openCount >= ISSUE_TRIAGE_THRESHOLD;
-  return {
+  const slice: IssuesSignalSlice = {
     status: 'ready',
     openCount,
     overThreshold,
     score: overThreshold ? openCount : Math.floor(openCount / 4),
   };
+  if (mineCount !== undefined) {
+    slice.mineCount = mineCount;
+    slice.communityCount = Math.max(openCount - mineCount, 0);
+  }
+  return slice;
 }
 
 /**
@@ -42,12 +52,21 @@ function readySlice(openCount: number): IssuesSignalSlice {
  * changes mid-flight, and a missing token (or empty fleet) yields a stable
  * empty map.
  *
+ * When `token` and a non-empty `viewerLogin` are both present, each repo also
+ * fetches the viewer's own open-issue count in parallel (sharing the repo's
+ * AbortController and generation guard), splitting the ready slice into
+ * `mineCount` / `communityCount`. With no viewer login those fields stay
+ * undefined and the slice is otherwise unchanged.
+ *
  * @param repos - Repositories to resolve issue counts for.
  * @param token - Auth token; `null` short-circuits to an empty map.
+ * @param viewerLogin - Authenticated viewer's login; when absent (null/empty)
+ *   the mine/community split is skipped.
  */
 export function useIssuesSignal(
   repos: Repo[],
   token: string | null,
+  viewerLogin?: string | null,
 ): Map<string, IssuesSignalSlice> {
   const [slices, setSlices] = useState<Map<string, IssuesSignalSlice>>(EMPTY);
   const generationRef = useRef(0);
@@ -69,6 +88,9 @@ export function useIssuesSignal(
       return;
     }
 
+    // An empty (or absent) login means "no split": fetch only the total count.
+    const login = viewerLogin ? viewerLogin : null;
+
     // One controller per run: cleanup (or a repos/token change) aborts every
     // in-flight request so superseded work stops instead of racing to set state.
     const controller = new AbortController();
@@ -87,15 +109,20 @@ export function useIssuesSignal(
       SIGNAL_FETCH_CONCURRENCY,
       async (repo, signal) => {
         // `fetchIssueCount(..., 'open')` returns open_issues_count minus open PRs,
-        // so the value we surface excludes pull requests by construction.
+        // so the value we surface excludes pull requests by construction. When a
+        // viewer login is present, the viewer's own count is fetched alongside it
+        // (same signal) so the two requests share this repo's concurrency slot.
         try {
-          const openCount = await fetchIssueCount(repo.owner, repo.name, token, 'open', signal);
+          const [openCount, mineCount] = await Promise.all([
+            fetchIssueCount(repo.owner, repo.name, token, 'open', signal),
+            login ? fetchViewerIssueCount(repo.owner, repo.name, login, token, signal) : undefined,
+          ]);
           if (generation !== generationRef.current) {
             return;
           }
           setSlices((prev) => {
             const next = new Map(prev);
-            next.set(repo.nameWithOwner, readySlice(openCount));
+            next.set(repo.nameWithOwner, readySlice(openCount, mineCount));
             return next;
           });
         } catch (err) {
@@ -119,7 +146,7 @@ export function useIssuesSignal(
     );
 
     return () => controller.abort();
-  }, [repoSignature, token]);
+  }, [repoSignature, token, viewerLogin]);
 
   return slices;
 }

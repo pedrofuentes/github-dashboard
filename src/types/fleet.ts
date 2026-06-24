@@ -144,8 +144,21 @@ export interface PullRequestsSignalSlice extends SignalSlice {
 
 /** Issues slice — owned by issue #16 (open issue counts / triage threshold). */
 export interface IssuesSignalSlice extends SignalSlice {
+  /** Total open issues (pull requests excluded); the triage threshold's basis. */
   openCount?: number;
+  /** `true` when {@link openCount} is at or above the triage threshold. */
   overThreshold?: boolean;
+  /**
+   * Open issues authored by the authenticated viewer. Present only when a
+   * viewer login was supplied; omitted otherwise so a viewer-less slice stays
+   * unchanged. `mineCount + communityCount === openCount`.
+   */
+  mineCount?: number;
+  /**
+   * Open issues NOT authored by the viewer (the community remainder), derived
+   * as `max(openCount - mineCount, 0)`. Present only alongside {@link mineCount}.
+   */
+  communityCount?: number;
 }
 
 /**

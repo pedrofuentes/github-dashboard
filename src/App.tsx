@@ -122,6 +122,7 @@ function Shell(): ReactElement {
         {authenticated ? (
           <FleetPanel
             token={token}
+            viewerLogin={user?.login ?? null}
             view={view}
             onViewChange={handleViewChange}
             onOpenSettings={openSettings}
@@ -188,6 +189,9 @@ function repoSignalsResolved(data: RepoSignalData): boolean {
 
 interface FleetPanelProps {
   token: string | null;
+  /** Authenticated viewer's GitHub login, threaded to the issues signal so it
+   *  can split open issues into "mine" vs "community"; `null` when unavailable. */
+  viewerLogin: string | null;
   /** The live view, owned by {@link Shell} so the Settings overlay can drive it. */
   view: FleetView;
   /** Switches the live view (e.g. from the in-panel ViewToggle). */
@@ -196,9 +200,15 @@ interface FleetPanelProps {
   onOpenSettings: () => void;
 }
 
-function FleetPanel({ token, view, onViewChange, onOpenSettings }: FleetPanelProps): ReactElement {
+function FleetPanel({
+  token,
+  viewerLogin,
+  view,
+  onViewChange,
+  onOpenSettings,
+}: FleetPanelProps): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
-  const { getRowData } = useRepoSignals(repos, token);
+  const { getRowData } = useRepoSignals(repos, token, viewerLogin);
   // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
   // DashboardView grid and the sibling CustomizePanel, so the tile picker and
   // the grid never desync. Aliases + repo filter are owned alongside it.
