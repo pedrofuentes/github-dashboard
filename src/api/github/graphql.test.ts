@@ -34,7 +34,11 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function mockJsonResponse(status: number, body: unknown, extraHeaders: Record<string, string> = {}): Response {
+function mockJsonResponse(
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Response {
   const headers = new Headers({ 'content-type': 'application/json', ...extraHeaders });
   return {
     ok: status >= 200 && status < 300,
@@ -91,7 +95,10 @@ describe('fetchGraphQL', () => {
     const headers = init.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer ghs_token');
     expect(headers['Content-Type']).toBe('application/json');
-    expect(JSON.parse(init.body as string)).toEqual({ query: '{ viewer { login } }', variables: undefined });
+    expect(JSON.parse(init.body as string)).toEqual({
+      query: '{ viewer { login } }',
+      variables: undefined,
+    });
   });
 
   it('returns validated data and empty errors on a clean 200 response', async () => {
@@ -160,10 +167,10 @@ describe('fetchGraphQL', () => {
     // Advance past all retry delays (1s + 2s + 4s = 7s total)
     await vi.advanceTimersByTimeAsync(8000);
 
-    await expect(promise).rejects.toBeInstanceOf(GitHubApiError);
-    const err = await promise.catch((e: unknown) => e as GitHubApiError);
-    expect(err.code).toBe(GitHubErrorCode.SERVER_ERROR);
-    expect(err.status).toBe(503);
+    await expect(promise).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof GitHubApiError && e.code === GitHubErrorCode.SERVER_ERROR && e.status === 503,
+    );
   });
 
   it('throws RATE_LIMITED on 403 with Retry-After header', async () => {
@@ -194,7 +201,9 @@ describe('fetchGraphQL', () => {
   });
 
   it('throws AUTH_ERROR on 401', async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockJsonResponse(401, { message: 'Bad credentials' }));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(401, { message: 'Bad credentials' }),
+    );
 
     await expect(
       fetchGraphQL({ query: '{ viewer { login } }', token: 'ghs_token', dataSchema: TestSchema }),
@@ -381,7 +390,11 @@ describe('recordGraphQLCost', () => {
   });
 
   it('uses the provided limit when present', () => {
-    recordGraphQLCost({ remaining: 3000, resetAt: new Date(Date.now() + 3_600_000).toISOString(), limit: 5000 });
+    recordGraphQLCost({
+      remaining: 3000,
+      resetAt: new Date(Date.now() + 3_600_000).toISOString(),
+      limit: 5000,
+    });
 
     const state = graphqlRateLimitStore.getState();
     expect(state.info?.limit).toBe(5000);
@@ -404,14 +417,22 @@ describe('recordGraphQLCost', () => {
   });
 
   it('computes used = limit - remaining', () => {
-    recordGraphQLCost({ remaining: 4750, resetAt: new Date(Date.now() + 3_600_000).toISOString(), limit: 5000 });
+    recordGraphQLCost({
+      remaining: 4750,
+      resetAt: new Date(Date.now() + 3_600_000).toISOString(),
+      limit: 5000,
+    });
 
     const state = graphqlRateLimitStore.getState();
     expect(state.info?.used).toBe(250);
   });
 
   it('marks status as low when remaining is critically low', () => {
-    recordGraphQLCost({ remaining: 50, resetAt: new Date(Date.now() + 3_600_000).toISOString(), limit: 5000 });
+    recordGraphQLCost({
+      remaining: 50,
+      resetAt: new Date(Date.now() + 3_600_000).toISOString(),
+      limit: 5000,
+    });
 
     const state = graphqlRateLimitStore.getState();
     expect(state.status?.low).toBe(true);
