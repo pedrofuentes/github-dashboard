@@ -278,6 +278,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Fleet signals (CI, Pull Requests, Issues, Stale, Reviews) now fetched via one batched GraphQL query** (chunked at ~10–15 repos per request) instead of per-repo REST calls — dramatically fewer API requests and no more GitHub Search secondary-rate-limit (30 req/min) bursts on large fleets. **CI now reflects the default-branch HEAD check rollup** (`statusCheckRollup`) rather than "the latest workflow run on any branch", giving a more accurate and consistent fleet-health signal. **Security (code-scanning) and commit-activity remain on REST** — no GraphQL equivalent is available for those signals.
+
 - **Dashboard view renamed to "Boards" and demoted**: the free-form,
   drag-and-drop react-grid-layout view is now labelled **Boards** in the view
   switcher and the **Default view** control, and sits **after Matrix and Grid**
