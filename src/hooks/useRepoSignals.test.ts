@@ -16,6 +16,7 @@ import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
+import { useFleetBatchLoader } from './useFleetBatchLoader';
 import { useRepoSignals } from './useRepoSignals';
 
 vi.mock('./signals/useCiSignal', () => ({ useCiSignal: vi.fn() }));
@@ -24,6 +25,7 @@ vi.mock('./signals/useReviewsSignal', () => ({ useReviewsSignal: vi.fn() }));
 vi.mock('./signals/usePullRequestsSignal', () => ({ usePullRequestsSignal: vi.fn() }));
 vi.mock('./signals/useIssuesSignal', () => ({ useIssuesSignal: vi.fn() }));
 vi.mock('./signals/useStaleSignal', () => ({ useStaleSignal: vi.fn() }));
+vi.mock('./useFleetBatchLoader', () => ({ useFleetBatchLoader: vi.fn() }));
 
 const REPO: Repo = { nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false };
 const ABSENT: Repo = { nameWithOwner: 'octo/z', owner: 'octo', name: 'z', isPrivate: false };
@@ -46,10 +48,9 @@ const pullRequests: PullRequestsSignalSlice = {
 const issues: IssuesSignalSlice = { status: 'ready', score: 4, openCount: 9, overThreshold: true };
 const stale: StaleSignalSlice = { status: 'ready', score: 7, staleCount: 7 };
 
-// Signal hooks that receive only (repos, token). The issues hook additionally
-// receives the viewer login and is asserted separately.
+// Signal hooks that receive only (repos, token). useCiSignal now accepts an
+// optional 3rd override arg and is asserted separately where needed.
 const tokenOnlySignalHooks = [
-  useCiSignal,
   useSecuritySignal,
   useReviewsSignal,
   usePullRequestsSignal,
@@ -82,6 +83,11 @@ beforeEach(() => {
   vi.mocked(usePullRequestsSignal).mockReturnValue(new Map([[REPO.nameWithOwner, pullRequests]]));
   vi.mocked(useIssuesSignal).mockReturnValue(new Map([[REPO.nameWithOwner, issues]]));
   vi.mocked(useStaleSignal).mockReturnValue(new Map([[REPO.nameWithOwner, stale]]));
+  // Batch loader default: empty result (no CI override), not loading.
+  vi.mocked(useFleetBatchLoader).mockReturnValue({
+    result: new Map(),
+    loading: false,
+  });
 });
 
 afterEach(() => {
@@ -109,6 +115,8 @@ describe('useRepoSignals', () => {
     for (const hook of tokenOnlySignalHooks) {
       expect(vi.mocked(hook)).toHaveBeenCalledWith(REPOS, 'ghp_token');
     }
+    // useCiSignal now accepts an optional 3rd override arg.
+    expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', undefined);
     // The issues hook also receives the viewer login so it can split "mine" vs
     // "community" open issues.
     expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
@@ -162,7 +170,7 @@ describe('useRepoSignals', () => {
     // that re-invokes every signal hook with the same repos.
     setHidden(false);
     expect(vi.mocked(useCiSignal).mock.calls.length).toBeGreaterThan(before);
-    expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(REPOS, 'ghp_token');
+    expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(REPOS, 'ghp_token', undefined);
   });
 
   it('hands the signal hooks a fresh repos array (not the caller reference) on revalidation', () => {
@@ -180,5 +188,53 @@ describe('useRepoSignals', () => {
     const lastRepos = vi.mocked(useCiSignal).mock.calls.at(-1)?.[0];
     expect(lastRepos).not.toBe(REPOS);
     expect(lastRepos).toEqual(REPOS);
+  });
+
+  // ── CI batch-loader override seam ──────────────────────────────────────────
+
+  it('passes the batch CI map as override to useCiSignal when CI flag is enabled', () => {
+    const batchCiMap = new Map([[REPO.nameWithOwner, ci]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', batchCiMap]]),
+      loading: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(expect.anything(), 'ghp_token', batchCiMap);
+  });
+
+  it('passes undefined as CI override while the batch loader is still loading', () => {
+    const batchCiMap = new Map([[REPO.nameWithOwner, ci]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', batchCiMap]]),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
+    expect(lastCiCall?.[2]).toBeUndefined();
+  });
+
+  it('CI slices in getRowData come from the batch loader via the useCiSignal override', () => {
+    const batchCi: CiSignalSlice = {
+      status: 'ready',
+      score: 77,
+      conclusion: 'failure',
+      failingCount: 3,
+    };
+    const batchCiMap = new Map([[REPO.nameWithOwner, batchCi]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', batchCiMap]]),
+      loading: false,
+    });
+    // Simulate real override-aware behavior: return the override when supplied.
+    vi.mocked(useCiSignal).mockImplementation(
+      (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, ci]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    expect(result.current.getRowData(REPO).ci).toEqual(batchCi);
   });
 });
