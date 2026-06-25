@@ -18,7 +18,13 @@ import { useMemo, useState } from 'react';
 
 import type { FleetBatchResult } from '../api/github/fleet-query';
 import type { TileSignalType } from '../types/dashboard';
-import type { CiSignalSlice, GetRowData, Repo, SignalSlice } from '../types/fleet';
+import type {
+  CiSignalSlice,
+  GetRowData,
+  PullRequestsSignalSlice,
+  Repo,
+  SignalSlice,
+} from '../types/fleet';
 import { graphqlSignalEnabled } from '../lib/graphql-flags';
 import { useCiSignal } from './signals/useCiSignal';
 import { useIssuesSignal } from './signals/useIssuesSignal';
@@ -102,10 +108,17 @@ export function useRepoSignals(
     revalidatedRepos,
   );
 
+  const pullRequestsOverride = buildSignalOverride<PullRequestsSignalSlice>(
+    'pullRequests',
+    batch.loading,
+    batch.result,
+    revalidatedRepos,
+  );
+
   const ci = useCiSignal(revalidatedRepos, token, ciOverride);
   const security = useSecuritySignal(revalidatedRepos, token);
   const reviews = useReviewsSignal(revalidatedRepos, token);
-  const pullRequests = usePullRequestsSignal(revalidatedRepos, token);
+  const pullRequests = usePullRequestsSignal(revalidatedRepos, token, pullRequestsOverride);
   const issues = useIssuesSignal(revalidatedRepos, token, viewerLogin);
   const stale = useStaleSignal(revalidatedRepos, token);
 

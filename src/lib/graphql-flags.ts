@@ -6,7 +6,7 @@
  * GraphQL deriver; set it back to `false` to roll back to REST without any
  * other code change.
  *
- * Currently enabled: `ci` (wired in the gql-3 increment).
+ * Currently enabled: `ci` (gql-3) and `pullRequests` (gql-4).
  * All other signals remain `false` until their own GraphQL derivers land.
  */
 import type { TileSignalType } from '../types/dashboard';
@@ -15,7 +15,7 @@ const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
   ci: true,
   security: false,
   reviews: false,
-  pullRequests: false,
+  pullRequests: true,
   issues: false,
   stale: false,
   activity: false,

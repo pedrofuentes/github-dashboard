@@ -86,15 +86,26 @@ function summarize(pulls: OpenPullRequest[]): PullRequestsSignalSlice {
  * `loading` → `ready` | `error` per repo. A generation ref discards responses
  * from a superseded token or repo set (mirrors {@link useRepos}); `token === null`
  * yields an empty map without any network calls.
+ *
+ * @param repos     - Repositories to resolve pull-request status for.
+ * @param token     - Auth token; `null` yields a stable empty map (no requests).
+ * @param override  - When provided, the hook returns it immediately and makes
+ *   zero network calls (used by {@link useRepoSignals} to inject slices from the
+ *   batched GraphQL loader when the `pullRequests` flag is enabled). `undefined`
+ *   restores normal REST behaviour.
  */
 export function usePullRequestsSignal(
   repos: Repo[],
   token: string | null,
+  override?: Map<string, PullRequestsSignalSlice>,
 ): Map<string, PullRequestsSignalSlice> {
   const [slices, setSlices] = useState<Map<string, PullRequestsSignalSlice>>(() => new Map());
   const generationRef = useRef(0);
 
   useEffect(() => {
+    // When an override is supplied the caller owns the data; skip all REST work.
+    if (override) return;
+
     const generation = (generationRef.current += 1);
 
     if (!token) {
@@ -139,7 +150,7 @@ export function usePullRequestsSignal(
     );
 
     return () => controller.abort();
-  }, [repos, token]);
+  }, [repos, token, override]);
 
-  return slices;
+  return override ?? slices;
 }

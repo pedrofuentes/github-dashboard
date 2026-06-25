@@ -465,11 +465,11 @@ describe('usePullRequestsSignal', () => {
     const override = new Map([
       ['octo/a', { status: 'ready' as const, openCount: 99, externalCount: 0, score: 99 }],
     ]);
+    type Props = { ov: typeof override | undefined };
 
     const { result, rerender } = renderHook(
-      ({ ov }: { ov: typeof override | undefined }) =>
-        usePullRequestsSignal(REPOS, 'ghp_token', ov),
-      { initialProps: { ov: undefined } },
+      ({ ov }: Props) => usePullRequestsSignal(REPOS, 'ghp_token', ov),
+      { initialProps: { ov: undefined } as Props },
     );
 
     // Without override: normal REST behaviour.
