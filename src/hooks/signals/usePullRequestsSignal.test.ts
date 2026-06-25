@@ -442,4 +442,43 @@ describe('usePullRequestsSignal', () => {
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  // ── override (GraphQL batch seam) ──────────────────────────────────────────
+
+  it('returns the override map immediately and makes no REST requests when an override is supplied', async () => {
+    const overrideSlice: import('../../types/fleet').PullRequestsSignalSlice = {
+      status: 'ready',
+      openCount: 5,
+      externalCount: 1,
+      score: 10,
+    };
+    const override = new Map([['octo/a', overrideSlice]]);
+
+    const { result } = renderHook(() => usePullRequestsSignal(REPOS, 'ghp_token', override));
+
+    expect(result.current).toBe(override);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
+  });
+
+  it('switches to the override without REST calls when override becomes defined', async () => {
+    mockFetchWithETag.mockResolvedValue([pull(1, 'MEMBER')]);
+    const override = new Map([
+      ['octo/a', { status: 'ready' as const, openCount: 99, externalCount: 0, score: 99 }],
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ ov }: { ov: typeof override | undefined }) =>
+        usePullRequestsSignal(REPOS, 'ghp_token', ov),
+      { initialProps: { ov: undefined } },
+    );
+
+    // Without override: normal REST behaviour.
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    const callsBefore = mockFetchWithETag.mock.calls.length;
+
+    // Inject override — hook must return it and must NOT trigger another REST fetch.
+    rerender({ ov: override });
+    expect(result.current).toBe(override);
+    expect(mockFetchWithETag.mock.calls.length).toBe(callsBefore);
+  });
 });

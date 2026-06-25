@@ -48,14 +48,10 @@ const pullRequests: PullRequestsSignalSlice = {
 const issues: IssuesSignalSlice = { status: 'ready', score: 4, openCount: 9, overThreshold: true };
 const stale: StaleSignalSlice = { status: 'ready', score: 7, staleCount: 7 };
 
-// Signal hooks that receive only (repos, token). useCiSignal now accepts an
-// optional 3rd override arg and is asserted separately where needed.
-const tokenOnlySignalHooks = [
-  useSecuritySignal,
-  useReviewsSignal,
-  usePullRequestsSignal,
-  useStaleSignal,
-];
+// Signal hooks that receive only (repos, token). useCiSignal and
+// usePullRequestsSignal now accept an optional 3rd override arg and are
+// asserted separately where needed.
+const tokenOnlySignalHooks = [useSecuritySignal, useReviewsSignal, useStaleSignal];
 
 let hiddenValue = false;
 
@@ -118,6 +114,12 @@ describe('useRepoSignals', () => {
     // useCiSignal now accepts an optional 3rd override arg; with CI flag on and
     // an empty batch result (not loading), it receives an empty Map override.
     expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(expect.anything(), 'ghp_token', new Map());
+    // usePullRequestsSignal also accepts an override; same pattern as CI.
+    expect(vi.mocked(usePullRequestsSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      new Map(),
+    );
     // The issues hook also receives the viewer login so it can split "mine" vs
     // "community" open issues.
     expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
@@ -270,5 +272,58 @@ describe('useRepoSignals', () => {
     const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
     const ciOverride = lastCiCall?.[2];
     expect(ciOverride?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  // ── PR batch-loader override seam ──────────────────────────────────────────
+
+  it('passes the batch PR map as override to usePullRequestsSignal when PR flag is enabled', () => {
+    const batchPrMap = new Map([[REPO.nameWithOwner, pullRequests]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['pullRequests', batchPrMap]]),
+      loading: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(usePullRequestsSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      batchPrMap,
+    );
+  });
+
+  it('passes a loading-map override to usePullRequestsSignal while the batch is loading (never undefined)', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['pullRequests', new Map([[REPO.nameWithOwner, pullRequests]])]]),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastPrCall = vi.mocked(usePullRequestsSignal).mock.calls.at(-1);
+    expect(lastPrCall?.[2]).toBeDefined();
+    expect(lastPrCall?.[2]).toBeInstanceOf(Map);
+    expect(lastPrCall?.[2]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  it('PR slices in getRowData come from the batch loader via the usePullRequestsSignal override', () => {
+    const batchPr: PullRequestsSignalSlice = {
+      status: 'ready',
+      score: 42,
+      openCount: 10,
+      externalCount: 2,
+    };
+    const batchPrMap = new Map([[REPO.nameWithOwner, batchPr]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['pullRequests', batchPrMap]]),
+      loading: false,
+    });
+    // Simulate real override-aware behavior: return the override when supplied.
+    vi.mocked(usePullRequestsSignal).mockImplementation(
+      (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, pullRequests]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    expect(result.current.getRowData(REPO).pullRequests).toEqual(batchPr);
   });
 });

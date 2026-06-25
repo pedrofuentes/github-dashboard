@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CiSignalSlice, Repo, SignalSlice } from '../../types/fleet';
+import type { CiSignalSlice, PullRequestsSignalSlice, Repo, SignalSlice } from '../../types/fleet';
 import {
   FLEET_QUERY_CHUNK_SIZE,
   SIGNAL_DERIVERS,
@@ -75,6 +75,45 @@ function ciMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
   const map = result.get('ci');
   if (!map) throw new Error('expected a ci slice map');
   return map;
+}
+
+function pr(result: Map<string, SignalSlice>, key: string): PullRequestsSignalSlice {
+  return result.get(key) as PullRequestsSignalSlice;
+}
+
+function prMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
+  const map = result.get('pullRequests');
+  if (!map) throw new Error('expected a pullRequests slice map');
+  return map;
+}
+
+/**
+ * Builds a mock GraphQL PR node (inside the pullRequests connection).
+ * `authorAssociation` mirrors the GraphQL enum casing (SCREAMING_SNAKE_CASE).
+ */
+function prItem(idx: number, authorAssociation: string, isDraft = false): unknown {
+  return {
+    number: idx,
+    title: `PR ${idx}`,
+    url: `https://github.com/o/r/pull/${idx}`,
+    createdAt: `2024-01-${String(idx).padStart(2, '0')}T00:00:00Z`,
+    isDraft,
+    authorAssociation,
+    author: { login: `user-${idx}` },
+  };
+}
+
+/**
+ * Builds a mock repository node containing a pullRequests connection.
+ * Also includes the minimal CI fields so the CI deriver produces a none slice.
+ */
+function prNode(nameWithOwner: string, totalCount: number, nodes: unknown[]): unknown {
+  return {
+    nameWithOwner,
+    isArchived: false,
+    defaultBranchRef: null,
+    pullRequests: { totalCount, nodes },
+  };
 }
 
 const TOKEN = 'ghs_token';
@@ -441,9 +480,254 @@ describe('executeFleetBatch', () => {
 // ── registry ────────────────────────────────────────────────────────────────
 
 describe('SIGNAL_DERIVERS registry', () => {
-  it('starts with only the CI deriver registered', () => {
-    expect(SIGNAL_DERIVERS).toHaveLength(1);
+  it('contains the CI and PR derivers in the expected order', () => {
+    expect(SIGNAL_DERIVERS).toHaveLength(2);
     expect(SIGNAL_DERIVERS[0].signal).toBe('ci');
     expect(SIGNAL_DERIVERS[0].kind).toBe('per-repo');
+    expect(SIGNAL_DERIVERS[1].signal).toBe('pullRequests');
+    expect(SIGNAL_DERIVERS[1].kind).toBe('per-repo');
+  });
+});
+
+// ── prDeriver fragment ───────────────────────────────────────────────────────
+
+describe('buildFleetQuery (PR fragment)', () => {
+  const repos = [repo('octocat/hello-world')];
+
+  it('composes the PR per-repo fragment inside each repository alias', () => {
+    const query = buildFleetQuery(repos, null);
+    expect(query).toContain('pullRequests');
+    expect(query).toContain('totalCount');
+    expect(query).toContain('isDraft');
+    expect(query).toContain('authorAssociation');
+  });
+});
+
+// ── prDeriver via executeFleetBatch ─────────────────────────────────────────
+
+describe('executeFleetBatch (prDeriver)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('derives openCount from totalCount', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 7, [prItem(1, 'MEMBER'), prItem(2, 'NONE')]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    expect(pr(prMapOf(result), 'o/a')).toMatchObject({
+      status: 'ready',
+      openCount: 7,
+    });
+  });
+
+  it('counts only non-draft PRs from OUTSIDE_CONTRIBUTOR_ASSOCIATIONS as external', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 8, [
+            prItem(1, 'OWNER'),
+            prItem(2, 'MEMBER'),
+            prItem(3, 'COLLABORATOR'),
+            prItem(4, 'CONTRIBUTOR'),
+            prItem(5, 'FIRST_TIME_CONTRIBUTOR'),
+            prItem(6, 'FIRST_TIMER'),
+            prItem(7, 'NONE'),
+            prItem(8, 'MANNEQUIN'),
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.externalCount).toBe(4);
+  });
+
+  it('excludes draft PRs from the external count even for outside-contributor associations', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 3, [
+            prItem(1, 'MEMBER', false),
+            prItem(2, 'NONE', true), // draft — excluded from external
+            prItem(3, 'FIRST_TIMER', false),
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.externalCount).toBe(1);
+  });
+
+  it('scores external PRs five times heavier than the open total', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 3, [
+            prItem(1, 'MEMBER'),
+            prItem(2, 'NONE'),
+            prItem(3, 'FIRST_TIME_CONTRIBUTOR'),
+          ]),
+        },
+      }),
+    );
+
+    // openCount=3, externalCount=2 → 2*5 + 3 = 13
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    expect(pr(prMapOf(result), 'o/a').score).toBe(13);
+  });
+
+  it('includes externalPullRequests with identity fields only when externalCount > 0', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 4, [
+            prItem(1, 'MEMBER'),
+            prItem(2, 'NONE'),
+            prItem(3, 'FIRST_TIMER', true), // draft — excluded
+            prItem(4, 'FIRST_TIME_CONTRIBUTOR'),
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.externalCount).toBe(2);
+    expect(slice.externalPullRequests).toEqual([
+      {
+        number: 2,
+        title: 'PR 2',
+        html_url: 'https://github.com/o/r/pull/2',
+        created_at: '2024-01-02T00:00:00Z',
+        user_login: 'user-2',
+        author_association: 'NONE',
+      },
+      {
+        number: 4,
+        title: 'PR 4',
+        html_url: 'https://github.com/o/r/pull/4',
+        created_at: '2024-01-04T00:00:00Z',
+        user_login: 'user-4',
+        author_association: 'FIRST_TIME_CONTRIBUTOR',
+      },
+    ]);
+  });
+
+  it('omits externalPullRequests when there are no external PRs', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 2, [prItem(1, 'MEMBER'), prItem(2, 'OWNER')]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.externalCount).toBe(0);
+    expect(slice.externalPullRequests).toBeUndefined();
+  });
+
+  it('returns a ready zero slice when the pullRequests field is absent', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          // node has no pullRequests field
+          r0: { nameWithOwner: 'o/a', isArchived: false, defaultBranchRef: null },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    expect(pr(prMapOf(result), 'o/a')).toEqual({
+      status: 'ready',
+      openCount: 0,
+      externalCount: 0,
+      score: 0,
+    });
+  });
+
+  it('errors the PR slice when the pullRequests subtree errored; sibling CI slice is unaffected', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: rollupNode('o/a', 'SUCCESS'),
+        },
+        errors: [{ message: 'field error', path: ['r0', 'pullRequests'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    // PR slice is errored due to the pullRequests path error.
+    expect(pr(prMapOf(result), 'o/a')).toEqual({ status: 'error' });
+    // CI slice (defaultBranchRef) is unaffected — sibling isolation.
+    expect(ci(ciMapOf(result), 'o/a')).toEqual({
+      status: 'ready',
+      conclusion: 'success',
+      score: 0,
+      failingCount: 0,
+    });
+  });
+
+  it('tolerates a null author field on a PR node', async () => {
+    const prWithNullAuthor = {
+      number: 1,
+      title: 'PR 1',
+      url: 'https://github.com/o/a/pull/1',
+      createdAt: '2024-01-01T00:00:00Z',
+      isDraft: false,
+      authorAssociation: 'NONE',
+      author: null,
+    };
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', 1, [prWithNullAuthor]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.externalPullRequests?.[0].user_login).toBe('');
   });
 });
