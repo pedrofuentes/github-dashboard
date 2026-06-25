@@ -48,9 +48,9 @@ const pullRequests: PullRequestsSignalSlice = {
 const issues: IssuesSignalSlice = { status: 'ready', score: 4, openCount: 9, overThreshold: true };
 const stale: StaleSignalSlice = { status: 'ready', score: 7, staleCount: 7 };
 
-// Signal hooks that receive only (repos, token). useCiSignal and usePullRequestsSignal
-// now accept an optional override arg and are asserted separately where needed.
-const tokenOnlySignalHooks = [useSecuritySignal, useReviewsSignal, useStaleSignal];
+// Signal hooks that receive only (repos, token). useCiSignal, usePullRequestsSignal
+// and useStaleSignal now accept an optional override arg and are asserted separately.
+const tokenOnlySignalHooks = [useSecuritySignal, useReviewsSignal];
 
 let hiddenValue = false;
 
@@ -126,6 +126,13 @@ describe('useRepoSignals', () => {
       REPOS,
       'ghp_token',
       'octocat',
+      new Map(),
+    );
+    // useStaleSignal now accepts an optional 3rd override arg; with the stale flag
+    // on and an empty batch result (not loading), it receives an empty Map.
+    expect(vi.mocked(useStaleSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
       new Map(),
     );
   });
@@ -395,5 +402,52 @@ describe('useRepoSignals', () => {
 
     const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     expect(result.current.getRowData(REPO).pullRequests).toEqual(batchPr);
+  });
+
+  // ── Stale batch-loader override seam (first top-level deriver) ──────────────
+
+  it('passes the batch stale map as override to useStaleSignal when the stale flag is enabled', () => {
+    const batchStaleMap = new Map([[REPO.nameWithOwner, stale]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['stale', batchStaleMap]]),
+      loading: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(useStaleSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      batchStaleMap,
+    );
+  });
+
+  it('passes a loading-map override to useStaleSignal while the batch loader is loading', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastStaleCall = vi.mocked(useStaleSignal).mock.calls.at(-1);
+    expect(lastStaleCall?.[2]).toBeInstanceOf(Map);
+    expect(lastStaleCall?.[2]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  it('stale slices in getRowData come from the batch loader via the useStaleSignal override', () => {
+    const batchStale: StaleSignalSlice = { status: 'ready', score: 12, staleCount: 12 };
+    const batchStaleMap = new Map([[REPO.nameWithOwner, batchStale]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['stale', batchStaleMap]]),
+      loading: false,
+    });
+    // Simulate real override-aware behavior: return the override when supplied.
+    vi.mocked(useStaleSignal).mockImplementation(
+      (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, stale]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    expect(result.current.getRowData(REPO).stale).toEqual(batchStale);
   });
 });
