@@ -170,6 +170,16 @@ describe('setAllHidden', () => {
     expect(setAllHidden(input, repos, signals, true)).toBe(input);
   });
 
+  it('hide=true rebuilds when the input matches the grid size but not its contents', () => {
+    // Same cardinality as `full`, but one id is outside the grid: the stability
+    // check must detect the mismatch and return the rebuilt full grid.
+    const input = new Set(['octo/a:ci', 'octo/a:security', 'octo/b:ci', 'old/x:stale']);
+    const next = setAllHidden(input, repos, signals, true);
+    expect(next).toEqual(full);
+    expect(next).not.toBe(input);
+    expect(input.has('old/x:stale')).toBe(true);
+  });
+
   it('hide=false yields an empty set', () => {
     const next = setAllHidden(new Set(full), repos, signals, false);
     expect(next.size).toBe(0);
