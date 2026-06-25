@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchWithETag } from '../../api/github';
-import type { Repo } from '../../types/fleet';
+import type { CiSignalSlice, Repo } from '../../types/fleet';
 import { useCiSignal } from './useCiSignal';
 
 vi.mock('../../api/github', () => ({
@@ -401,17 +401,11 @@ describe('useCiSignal — override param', () => {
   });
 
   it('skips REST and stays on override when override changes to a new map', async () => {
-    const overrideA = new Map([
-      [
-        'octo/a',
-        { status: 'ready' as const, conclusion: 'failure' as const, score: 100, failingCount: 1 },
-      ],
+    const overrideA = new Map<string, CiSignalSlice>([
+      ['octo/a', { status: 'ready', conclusion: 'failure', score: 100, failingCount: 1 }],
     ]);
-    const overrideB = new Map([
-      [
-        'octo/a',
-        { status: 'ready' as const, conclusion: 'success' as const, score: 0, failingCount: 0 },
-      ],
+    const overrideB = new Map<string, CiSignalSlice>([
+      ['octo/a', { status: 'ready', conclusion: 'success', score: 0, failingCount: 0 }],
     ]);
 
     const { result, rerender } = renderHook(

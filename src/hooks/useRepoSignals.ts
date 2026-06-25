@@ -16,13 +16,15 @@
  */
 import { useMemo, useState } from 'react';
 
-import type { GetRowData, Repo } from '../types/fleet';
+import type { CiSignalSlice, GetRowData, Repo } from '../types/fleet';
+import { graphqlSignalEnabled } from '../lib/graphql-flags';
 import { useCiSignal } from './signals/useCiSignal';
 import { useIssuesSignal } from './signals/useIssuesSignal';
 import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
+import { useFleetBatchLoader } from './useFleetBatchLoader';
 import { useVisibilityRevalidate } from './useVisibilityRevalidate';
 
 /** Public shape returned by {@link useRepoSignals}. */
@@ -60,7 +62,18 @@ export function useRepoSignals(
     [repos, revalidateNonce],
   );
 
-  const ci = useCiSignal(revalidatedRepos, token);
+  // One batched GraphQL query covers every GraphQL-enabled signal. Each signal
+  // hook picks its own slice via an optional override param; hooks for signals
+  // whose flag is still off receive `undefined` and fall through to REST.
+  const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
+
+  // Generic seam: add `xOverride` + pass it to `useXSignal` for each new signal.
+  const ciOverride =
+    graphqlSignalEnabled('ci') && !batch.loading
+      ? (batch.result.get('ci') as Map<string, CiSignalSlice> | undefined)
+      : undefined;
+
+  const ci = useCiSignal(revalidatedRepos, token, ciOverride);
   const security = useSecuritySignal(revalidatedRepos, token);
   const reviews = useReviewsSignal(revalidatedRepos, token);
   const pullRequests = usePullRequestsSignal(revalidatedRepos, token);
