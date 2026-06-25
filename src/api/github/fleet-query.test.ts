@@ -21,7 +21,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CiSignalSlice, IssuesSignalSlice, Repo, SignalSlice } from '../../types/fleet';
+import type {
+  CiSignalSlice,
+  IssuesSignalSlice,
+  PullRequestsSignalSlice,
+  Repo,
+  SignalSlice,
+} from '../../types/fleet';
 import {
   FLEET_QUERY_CHUNK_SIZE,
   SIGNAL_DERIVERS,
@@ -87,6 +93,41 @@ function issues(result: Map<string, SignalSlice>, key: string): IssuesSignalSlic
   return result.get(key) as IssuesSignalSlice;
 }
 
+function prMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
+  const map = result.get('pullRequests');
+  if (!map) throw new Error('expected a pullRequests slice map');
+  return map;
+}
+
+function prSlice(result: Map<string, SignalSlice>, key: string): PullRequestsSignalSlice {
+  return result.get(key) as PullRequestsSignalSlice;
+}
+
+/**
+ * Builds a minimal GraphQL repo node with a pullRequests connection. Each entry
+ * in `prs` only needs `isDraft` and `authorAssociation`; other fields default to
+ * safe placeholders so tests that only care about counts stay concise.
+ */
+function prNode(
+  nameWithOwner: string,
+  prs: Array<{ isDraft: boolean; authorAssociation: string }>,
+): unknown {
+  return {
+    nameWithOwner,
+    pullRequests: {
+      nodes: prs.map((p, i) => ({
+        number: i + 1,
+        title: `PR ${i + 1}`,
+        url: `https://github.com/${nameWithOwner}/pull/${i + 1}`,
+        createdAt: '2024-01-01T00:00:00Z',
+        isDraft: p.isDraft,
+        authorAssociation: p.authorAssociation,
+        author: { login: `user${i + 1}` },
+      })),
+    },
+  };
+}
+
 const TOKEN = 'ghs_token';
 
 // ── buildFleetQuery / buildFleetVariables ──────────────────────────────────
@@ -108,6 +149,13 @@ describe('buildFleetQuery', () => {
     expect(query).toContain('nameWithOwner');
     expect(query).toContain('defaultBranchRef');
     expect(query).toContain('statusCheckRollup');
+  });
+
+  it('composes the PR per-repo fragment inside each repository alias', () => {
+    const query = buildFleetQuery(repos, null);
+    expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('isDraft');
+    expect(query).toContain('authorAssociation');
   });
 
   it('includes isArchived in the per-repo selection (guards the archived-repo no-CI path)', () => {
@@ -451,12 +499,14 @@ describe('executeFleetBatch', () => {
 // ── registry ────────────────────────────────────────────────────────────────
 
 describe('SIGNAL_DERIVERS registry', () => {
-  it('registers the CI deriver and the issues deriver (in that order)', () => {
-    expect(SIGNAL_DERIVERS).toHaveLength(2);
+  it('registers the CI deriver, issues deriver, and PR deriver (in that order)', () => {
+    expect(SIGNAL_DERIVERS).toHaveLength(3);
     expect(SIGNAL_DERIVERS[0].signal).toBe('ci');
     expect(SIGNAL_DERIVERS[0].kind).toBe('per-repo');
     expect(SIGNAL_DERIVERS[1].signal).toBe('issues');
     expect(SIGNAL_DERIVERS[1].kind).toBe('per-repo');
+    expect(SIGNAL_DERIVERS[2].signal).toBe('pullRequests');
+    expect(SIGNAL_DERIVERS[2].kind).toBe('per-repo');
   });
 });
 
@@ -709,6 +759,246 @@ describe('issuesDeriver – executeFleetBatch', () => {
     expect(issues(issuesMapOf(result), 'o/sibling')).toMatchObject({
       status: 'ready',
       openCount: 7,
+    });
+  });
+});
+
+// ── prDeriver ────────────────────────────────────────────────────────────────
+
+describe('prDeriver – executeFleetBatch', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('openCount counts ONLY non-draft PRs (3 non-draft + 2 draft → openCount: 3)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [
+            { isDraft: false, authorAssociation: 'MEMBER' },
+            { isDraft: false, authorAssociation: 'OWNER' },
+            { isDraft: false, authorAssociation: 'COLLABORATOR' },
+            { isDraft: true, authorAssociation: 'MEMBER' },
+            { isDraft: true, authorAssociation: 'NONE' }, // draft from outside assoc → excluded
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.status).toBe('ready');
+    expect(slice.openCount).toBe(3);
+    expect(slice.externalCount).toBe(0);
+  });
+
+  it('external = non-draft ∩ OUTSIDE_CONTRIBUTOR_ASSOCIATIONS; CONTRIBUTOR + drafts excluded', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [
+            { isDraft: false, authorAssociation: 'MEMBER' }, // not external
+            { isDraft: false, authorAssociation: 'CONTRIBUTOR' }, // returning → excluded
+            { isDraft: false, authorAssociation: 'FIRST_TIME_CONTRIBUTOR' }, // external
+            { isDraft: false, authorAssociation: 'FIRST_TIMER' }, // external
+            { isDraft: false, authorAssociation: 'NONE' }, // external
+            { isDraft: false, authorAssociation: 'MANNEQUIN' }, // external
+            { isDraft: true, authorAssociation: 'FIRST_TIME_CONTRIBUTOR' }, // draft → excluded
+            { isDraft: true, authorAssociation: 'NONE' }, // draft → excluded
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.openCount).toBe(6); // 8 total minus 2 drafts
+    expect(slice.externalCount).toBe(4); // FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE, MANNEQUIN
+  });
+
+  it('score = externalCount * 5 + openCount', async () => {
+    // 1 non-draft member + 2 non-draft external → openCount 3, externalCount 2 → score 13
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [
+            { isDraft: false, authorAssociation: 'MEMBER' },
+            { isDraft: false, authorAssociation: 'NONE' },
+            { isDraft: false, authorAssociation: 'FIRST_TIME_CONTRIBUTOR' },
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/r')).toMatchObject({
+      status: 'ready',
+      openCount: 3,
+      externalCount: 2,
+      score: 13,
+    });
+  });
+
+  it('externalPullRequests present with mapped fields when externalCount > 0', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: {
+            nameWithOwner: 'o/r',
+            pullRequests: {
+              nodes: [
+                {
+                  number: 7,
+                  title: 'Great PR',
+                  url: 'https://github.com/o/r/pull/7',
+                  createdAt: '2024-06-01T00:00:00Z',
+                  isDraft: false,
+                  authorAssociation: 'NONE',
+                  author: { login: 'newbie' },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.externalPullRequests).toEqual([
+      {
+        number: 7,
+        title: 'Great PR',
+        html_url: 'https://github.com/o/r/pull/7',
+        created_at: '2024-06-01T00:00:00Z',
+        user_login: 'newbie',
+        author_association: 'NONE',
+      },
+    ]);
+  });
+
+  it('externalPullRequests omitted when externalCount is 0', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [
+            { isDraft: false, authorAssociation: 'MEMBER' },
+            { isDraft: false, authorAssociation: 'OWNER' },
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.status).toBe('ready');
+    expect(slice.externalPullRequests).toBeUndefined();
+  });
+
+  it('null author (ghost PR) → user_login empty string without crashing', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: {
+            nameWithOwner: 'o/r',
+            pullRequests: {
+              nodes: [
+                {
+                  number: 3,
+                  title: 'Ghost PR',
+                  url: 'https://github.com/o/r/pull/3',
+                  createdAt: '2024-01-01T00:00:00Z',
+                  isDraft: false,
+                  authorAssociation: 'NONE',
+                  author: null,
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.externalCount).toBe(1);
+    expect(slice.externalPullRequests?.[0].user_login).toBe('');
+  });
+
+  it('pullRequests subtree error → error slice; sibling repo with clean data stays ready', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/broken', pullRequests: null },
+          r1: prNode('o/ok', [{ isDraft: false, authorAssociation: 'MEMBER' }]),
+        },
+        errors: [{ message: 'pullRequests field error', path: ['r0', 'pullRequests'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/broken'), repo('o/ok')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/broken')).toEqual({ status: 'error' });
+    expect(prSlice(prMapOf(result), 'o/ok')).toMatchObject({ status: 'ready', openCount: 1 });
+  });
+
+  it('whole-repo error (alias path) → PR error slice', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: null,
+        },
+        errors: [{ message: 'repo gone', path: ['r0'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/r')).toEqual({ status: 'error' });
+  });
+
+  it('absent pullRequests (null node, no error) → zero ready slice', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: null,
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/r')).toMatchObject({
+      status: 'ready',
+      openCount: 0,
+      externalCount: 0,
+      score: 0,
     });
   });
 });
