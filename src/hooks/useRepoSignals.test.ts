@@ -48,9 +48,10 @@ const pullRequests: PullRequestsSignalSlice = {
 const issues: IssuesSignalSlice = { status: 'ready', score: 4, openCount: 9, overThreshold: true };
 const stale: StaleSignalSlice = { status: 'ready', score: 7, staleCount: 7 };
 
-// Signal hooks that receive only (repos, token). useCiSignal, usePullRequestsSignal
-// and useStaleSignal now accept an optional override arg and are asserted separately.
-const tokenOnlySignalHooks = [useSecuritySignal, useReviewsSignal];
+// Signal hooks that receive only (repos, token). useCiSignal, usePullRequestsSignal,
+// useStaleSignal and useReviewsSignal now accept an optional override arg and are
+// asserted separately.
+const tokenOnlySignalHooks = [useSecuritySignal];
 
 let hiddenValue = false;
 
@@ -131,6 +132,13 @@ describe('useRepoSignals', () => {
     // useStaleSignal now accepts an optional 3rd override arg; with the stale flag
     // on and an empty batch result (not loading), it receives an empty Map.
     expect(vi.mocked(useStaleSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      new Map(),
+    );
+    // useReviewsSignal now accepts an optional 3rd override arg; with the reviews
+    // flag on and an empty batch result (not loading), it receives an empty Map.
+    expect(vi.mocked(useReviewsSignal)).toHaveBeenCalledWith(
       expect.anything(),
       'ghp_token',
       new Map(),
@@ -449,5 +457,52 @@ describe('useRepoSignals', () => {
 
     const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     expect(result.current.getRowData(REPO).stale).toEqual(batchStale);
+  });
+
+  // ── Reviews batch-loader override seam (top-level-global deriver) ───────────
+
+  it('passes the batch reviews map as override to useReviewsSignal when the reviews flag is enabled', () => {
+    const batchReviewsMap = new Map([[REPO.nameWithOwner, reviews]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['reviews', batchReviewsMap]]),
+      loading: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(useReviewsSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      batchReviewsMap,
+    );
+  });
+
+  it('passes a loading-map override to useReviewsSignal while the batch loader is loading', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastReviewsCall = vi.mocked(useReviewsSignal).mock.calls.at(-1);
+    expect(lastReviewsCall?.[2]).toBeInstanceOf(Map);
+    expect(lastReviewsCall?.[2]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  it('reviews slices in getRowData come from the batch loader via the useReviewsSignal override', () => {
+    const batchReviews: ReviewsSignalSlice = { status: 'ready', score: 30, requestedCount: 3 };
+    const batchReviewsMap = new Map([[REPO.nameWithOwner, batchReviews]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['reviews', batchReviewsMap]]),
+      loading: false,
+    });
+    // Simulate real override-aware behavior: return the override when supplied.
+    vi.mocked(useReviewsSignal).mockImplementation(
+      (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, reviews]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    expect(result.current.getRowData(REPO).reviews).toEqual(batchReviews);
   });
 });

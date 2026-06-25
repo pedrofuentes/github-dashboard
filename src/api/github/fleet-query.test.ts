@@ -26,9 +26,11 @@ import type {
   IssuesSignalSlice,
   PullRequestsSignalSlice,
   Repo,
+  ReviewsSignalSlice,
   SignalSlice,
   StaleSignalSlice,
 } from '../../types/fleet';
+import { REVIEW_SCORE_WEIGHT } from '../../lib/reviews-constants';
 import {
   FLEET_QUERY_CHUNK_SIZE,
   SIGNAL_DERIVERS,
@@ -112,6 +114,74 @@ function staleMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
 
 function staleSlice(result: Map<string, SignalSlice>, key: string): StaleSignalSlice {
   return result.get(key) as StaleSignalSlice;
+}
+
+function reviewsMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
+  const map = result.get('reviews');
+  if (!map) throw new Error('expected a reviews slice map');
+  return map;
+}
+
+function reviewsSlice(result: Map<string, SignalSlice>, key: string): ReviewsSignalSlice {
+  return result.get(key) as ReviewsSignalSlice;
+}
+
+/** Builds a GraphQL `reviews` search node targeting `fullName`. */
+function reviewNode(fullName: string, number: number): unknown {
+  return {
+    number,
+    title: `Review ${number} in ${fullName}`,
+    url: `https://github.com/${fullName}/pull/${number}`,
+    createdAt: '2024-03-01T00:00:00Z',
+    author: { login: `rev-${number}` },
+    repository: { nameWithOwner: fullName },
+  };
+}
+
+/** The per-PR identity a reviews node un-projects onto a repo's `requests` list. */
+function expectedReviewRequest(
+  fullName: string,
+  number: number,
+): {
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  user_login: string;
+} {
+  return {
+    number,
+    title: `Review ${number} in ${fullName}`,
+    html_url: `https://github.com/${fullName}/pull/${number}`,
+    created_at: '2024-03-01T00:00:00Z',
+    user_login: `rev-${number}`,
+  };
+}
+
+/** Whether a captured request body is the fleet-wide reviews global search. */
+function isReviewsRequest(init: RequestInit | undefined): boolean {
+  const body = JSON.parse((init?.body as string) ?? '{}') as {
+    variables?: Record<string, unknown>;
+  };
+  return typeof body.variables?.reviews_query === 'string';
+}
+
+/** Builds a chunk response of plain repo nodes from a request's owner/name vars. */
+function chunkRepoNodes(init: RequestInit | undefined): Response {
+  const body = JSON.parse((init?.body as string) ?? '{}') as {
+    variables: Record<string, string>;
+  };
+  const vars = body.variables;
+  const data: Record<string, unknown> = {
+    viewer: null,
+    rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+  };
+  let i = 0;
+  while (`owner${i}` in vars) {
+    data[`r${i}`] = { nameWithOwner: `${vars[`owner${i}`]}/${vars[`name${i}`]}` };
+    i += 1;
+  }
+  return mockJsonResponse(200, { data });
 }
 
 /**
@@ -382,7 +452,8 @@ describe('executeFleetBatch', () => {
     const result = await executeFleetBatch(repos, 'me', TOKEN);
     const ciMap = ciMapOf(result);
 
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    // 2 chunk queries + 1 fleet-wide reviews global search (run once, not per chunk).
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
     expect(ciMap.size).toBe(FLEET_QUERY_CHUNK_SIZE + 2);
     for (const r of repos) {
       expect(ci(ciMap, r.nameWithOwner).conclusion).toBe('success');
@@ -510,8 +581,8 @@ describe('executeFleetBatch', () => {
 // ── registry ────────────────────────────────────────────────────────────────
 
 describe('SIGNAL_DERIVERS registry', () => {
-  it('registers CI, issues, PR (per-repo) then stale (top-level), in that order', () => {
-    expect(SIGNAL_DERIVERS).toHaveLength(4);
+  it('registers CI, issues, PR (per-repo), stale (top-level), then reviews (top-level-global)', () => {
+    expect(SIGNAL_DERIVERS).toHaveLength(5);
     expect(SIGNAL_DERIVERS[0].signal).toBe('ci');
     expect(SIGNAL_DERIVERS[0].kind).toBe('per-repo');
     expect(SIGNAL_DERIVERS[1].signal).toBe('issues');
@@ -520,6 +591,8 @@ describe('SIGNAL_DERIVERS registry', () => {
     expect(SIGNAL_DERIVERS[2].kind).toBe('per-repo');
     expect(SIGNAL_DERIVERS[3].signal).toBe('stale');
     expect(SIGNAL_DERIVERS[3].kind).toBe('top-level');
+    expect(SIGNAL_DERIVERS[4].signal).toBe('reviews');
+    expect(SIGNAL_DERIVERS[4].kind).toBe('top-level-global');
   });
 });
 
@@ -1180,5 +1253,185 @@ describe('staleDeriver – executeFleetBatch', () => {
       staleCount: 0,
       score: 0,
     });
+  });
+});
+
+// ── reviewsDeriver (top-level-global: ONE fleet-wide search) ─────────────────
+
+describe('reviewsDeriver – buildFleetQuery (per-chunk exclusion)', () => {
+  it('does not emit the reviews global search inside the per-chunk repository query', () => {
+    const query = buildFleetQuery([repo('o/a')], 'me');
+    expect(query).not.toContain('reviews: search');
+    expect(query).not.toContain('$reviews_query');
+  });
+});
+
+describe('reviewsDeriver – executeFleetBatch (top-level-global search)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('runs the reviews search ONCE for the whole fleet (not per chunk), distributing nodes by repository', async () => {
+    const repos = Array.from({ length: FLEET_QUERY_CHUNK_SIZE + 1 }, (_, i) => repo(`o${i}/n${i}`));
+    let reviewsRequests = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        reviewsRequests += 1;
+        return Promise.resolve(
+          mockJsonResponse(200, {
+            data: {
+              viewer: null,
+              rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+              reviews: {
+                issueCount: 4,
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  reviewNode('o0/n0', 1),
+                  reviewNode('o0/n0', 2),
+                  reviewNode('o5/n5', 3),
+                  reviewNode('outside/repo', 4),
+                ],
+              },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch(repos, null, TOKEN);
+    const reviewsMap = reviewsMapOf(result);
+
+    // Built exactly once for the full fleet, regardless of chunk count.
+    expect(reviewsRequests).toBe(1);
+
+    // A repo with two requested reviews → count 2, weighted score, requests listed.
+    expect(reviewsSlice(reviewsMap, 'o0/n0')).toEqual({
+      status: 'ready',
+      requestedCount: 2,
+      score: 2 * REVIEW_SCORE_WEIGHT,
+      requests: [expectedReviewRequest('o0/n0', 1), expectedReviewRequest('o0/n0', 2)],
+    });
+    // A repo with one requested review.
+    expect(reviewsSlice(reviewsMap, 'o5/n5')).toEqual({
+      status: 'ready',
+      requestedCount: 1,
+      score: REVIEW_SCORE_WEIGHT,
+      requests: [expectedReviewRequest('o5/n5', 3)],
+    });
+    // A repo with none → ready-zero (no requests key), value-identical to distributeReviewCounts.
+    expect(reviewsSlice(reviewsMap, 'o1/n1')).toEqual({
+      status: 'ready',
+      requestedCount: 0,
+      score: 0,
+    });
+    // A node whose repo is outside the fleet is ignored (not added to the map).
+    expect(reviewsMap.has('outside/repo')).toBe(false);
+  });
+
+  it('accumulates a 2nd page of reviews via pageInfo/endCursor (count and requests include both)', async () => {
+    const afters: Array<string | null> = [];
+    let reviewsCalls = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        const body = JSON.parse(((init as RequestInit).body as string) ?? '{}') as {
+          variables: Record<string, unknown>;
+        };
+        afters.push((body.variables.after as string | null) ?? null);
+        reviewsCalls += 1;
+        if (reviewsCalls === 1) {
+          return Promise.resolve(
+            mockJsonResponse(200, {
+              data: {
+                viewer: null,
+                rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+                reviews: {
+                  issueCount: 2,
+                  pageInfo: { hasNextPage: true, endCursor: 'CURSOR_1' },
+                  nodes: [reviewNode('o/a', 1)],
+                },
+              },
+            }),
+          );
+        }
+        return Promise.resolve(
+          mockJsonResponse(200, {
+            data: {
+              viewer: null,
+              rateLimit: { cost: 1, remaining: 4989, resetAt: futureIso() },
+              reviews: {
+                issueCount: 2,
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [reviewNode('o/a', 2)],
+              },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch([repo('o/a')], null, TOKEN);
+    const slice = reviewsSlice(reviewsMapOf(result), 'o/a');
+
+    expect(reviewsCalls).toBe(2);
+    expect(afters).toEqual([null, 'CURSOR_1']);
+    expect(slice).toEqual({
+      status: 'ready',
+      requestedCount: 2,
+      score: 2 * REVIEW_SCORE_WEIGHT,
+      requests: [expectedReviewRequest('o/a', 1), expectedReviewRequest('o/a', 2)],
+    });
+  });
+
+  it('errors every repo when the reviews payload is malformed (never a false ready-zero)', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        return Promise.resolve(
+          mockJsonResponse(200, {
+            data: {
+              viewer: null,
+              rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+              reviews: { unexpected: 'shape' },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch([repo('o/a'), repo('o/b')], null, TOKEN);
+    const reviewsMap = reviewsMapOf(result);
+    expect(reviewsSlice(reviewsMap, 'o/a')).toEqual({ status: 'error' });
+    expect(reviewsSlice(reviewsMap, 'o/b')).toEqual({ status: 'error' });
+  });
+
+  it('errors every repo when the reviews global search hard-fails (and leaves CI untainted)', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        return Promise.resolve(mockJsonResponse(500, { message: 'server error' }));
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch([repo('o/a'), repo('o/b')], null, TOKEN);
+    const reviewsMap = reviewsMapOf(result);
+    expect(reviewsSlice(reviewsMap, 'o/a')).toEqual({ status: 'error' });
+    expect(reviewsSlice(reviewsMap, 'o/b')).toEqual({ status: 'error' });
+    // A reviews hard error does not taint a per-repo signal (CI still derives).
+    expect(ci(ciMapOf(result), 'o/a').status).toBe('ready');
   });
 });
