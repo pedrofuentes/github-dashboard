@@ -58,7 +58,11 @@ export interface BoardViewProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the board. */
   error?: string | null;
-  /** Retry handler for the error state. */
+  /**
+   * Retry handler. Powers both the board-level error alert's Retry control and
+   * each key's in-place retry: an errored key becomes a retry button that calls
+   * this to re-fetch (instead of drilling down).
+   */
   onRetry?: () => void;
   /**
    * Active repo-scope selection (`undefined` ⇒ whole fleet). A narrowing filter:
@@ -149,6 +153,7 @@ export function BoardView({
                 signal={signal}
                 data={data}
                 onActivate={onRepoActivate}
+                onRetry={onRetry}
               />
             ));
           })}
