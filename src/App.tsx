@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { CommandPalette } from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
 import { BoardView } from './components/board/BoardView';
+import { DeckCustomizePanel } from './components/board/DeckCustomizePanel';
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -22,6 +23,7 @@ import { useAliases } from './hooks/useAliases';
 import { useAuth } from './hooks/useAuth';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
+import { useDeckVisibility } from './hooks/useDeckVisibility';
 import { useDensity } from './hooks/useDensity';
 import { useRepoOwner } from './hooks/useRepoOwner';
 import { useInbox } from './hooks/useInbox';
@@ -33,11 +35,13 @@ import { useSavedViews } from './hooks/useSavedViews';
 import { useTheme } from './hooks/useTheme';
 import { addCommandRecent, createCommandRecentsStore } from './lib/command-recents';
 import { buildCommandRegistry } from './lib/commands';
+import { DECK_SIGNALS } from './lib/deck-visibility';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
 import type { SavedView } from './lib/saved-views';
 import type { VersionedStore } from './lib/versioned-storage';
 import { buildViewPresets } from './lib/view-presets';
 import type { FleetView } from './lib/view-preference';
+import type { TileSignalType } from './types/dashboard';
 import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
 export function App(): ReactElement {
@@ -223,6 +227,8 @@ function FleetPanel({
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [editing, setEditing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const deck = useDeckVisibility();
+  const [deckEditing, setDeckEditing] = useState(false);
 
   // Power-user keyboard navigation: the `g …` sequences switch views, `?` opens
   // the shortcuts help overlay, and `,` opens Settings. The hook installs ONE
@@ -291,6 +297,42 @@ function FleetPanel({
   // Closing the CustomizePanel (Esc, backdrop, ✕) leaves edit mode, which also
   // unmounts the panel via the `editing` coupling and returns focus to the opener.
   const handleCloseCustomize = useCallback(() => setEditing(false), []);
+
+  // Deck customize: mirrors the dashboard editing/CustomizePanel pattern.
+  const handleToggleDeckEditing = useCallback(() => setDeckEditing((c) => !c), []);
+  const handleCloseDeckCustomize = useCallback(() => setDeckEditing(false), []);
+  // Full repos (not filteredRepos) so fleet-wide bulk ops cover every repo.
+  const repoNames = useMemo(() => repos.map((r) => r.nameWithOwner), [repos]);
+  // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
+  const {
+    toggleKey: deckToggleKey,
+    setSignal: deckSetSignal,
+    setRepo: deckSetRepo,
+    setAll: deckSetAll,
+    showOnly: deckShowOnly,
+  } = deck;
+  // Stable BoardView toggle adapter (feeds memoised grid rows).
+  const handleDeckToggleKey = useCallback(
+    (repo: Repo, signal: TileSignalType) => deckToggleKey(repo.nameWithOwner, signal),
+    [deckToggleKey],
+  );
+  // Stable panel adapters bridging the hook's array-taking mutators to the panel.
+  const handleDeckSetSignal = useCallback(
+    (signal: TileSignalType, hide: boolean) => deckSetSignal(repoNames, signal, hide),
+    [deckSetSignal, repoNames],
+  );
+  const handleDeckSetRepo = useCallback(
+    (repo: string, hide: boolean) => deckSetRepo(repo, DECK_SIGNALS, hide),
+    [deckSetRepo],
+  );
+  const handleDeckSetAll = useCallback(
+    (hide: boolean) => deckSetAll(repoNames, DECK_SIGNALS, hide),
+    [deckSetAll, repoNames],
+  );
+  const handleDeckShowOnly = useCallback(
+    (keep: Set<TileSignalType>) => deckShowOnly(repoNames, DECK_SIGNALS, keep),
+    [deckShowOnly, repoNames],
+  );
 
   // Applying a saved view (or built-in preset) atomically restores its repo
   // filter and switches to its target view — the visible payoff of Saved Views.
@@ -396,6 +438,13 @@ function FleetPanel({
           {view === 'dashboard' ? (
             <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
           ) : null}
+          {view === 'deck' ? (
+            <CustomizeLayoutToggle
+              editing={deckEditing}
+              onToggle={handleToggleDeckEditing}
+              idleLabel="Customize tiles"
+            />
+          ) : null}
           <SavedViewsMenu
             views={saved.views}
             presets={presets}
@@ -463,14 +512,32 @@ function FleetPanel({
             onRetry={reload}
           />
         ) : view === 'deck' ? (
-          <BoardView
-            repos={filteredRepos}
-            getRowData={getRowData}
-            onRepoActivate={handleRepoActivate}
-            loading={status === 'loading'}
-            error={status === 'error' ? error : null}
-            onRetry={reload}
-          />
+          <>
+            <BoardView
+              repos={filteredRepos}
+              getRowData={getRowData}
+              onRepoActivate={handleRepoActivate}
+              loading={status === 'loading'}
+              error={status === 'error' ? error : null}
+              onRetry={reload}
+              hiddenKeys={deck.hidden}
+              editing={deckEditing}
+              onToggleKey={handleDeckToggleKey}
+            />
+            {deckEditing ? (
+              <DeckCustomizePanel
+                repos={repos}
+                hidden={deck.hidden}
+                onToggleKey={deck.toggleKey}
+                onSetSignal={handleDeckSetSignal}
+                onSetRepo={handleDeckSetRepo}
+                onSetAll={handleDeckSetAll}
+                onShowOnly={handleDeckShowOnly}
+                onReset={deck.reset}
+                onClose={handleCloseDeckCustomize}
+              />
+            ) : null}
+          </>
         ) : (
           <FleetGrid
             repos={filteredRepos}
@@ -503,9 +570,16 @@ function FleetPanel({
 interface CustomizeLayoutToggleProps {
   editing: boolean;
   onToggle: () => void;
+  idleLabel?: string;
+  activeLabel?: string;
 }
 
-function CustomizeLayoutToggle({ editing, onToggle }: CustomizeLayoutToggleProps): ReactElement {
+function CustomizeLayoutToggle({
+  editing,
+  onToggle,
+  idleLabel = 'Customize layout',
+  activeLabel = 'Done customizing',
+}: CustomizeLayoutToggleProps): ReactElement {
   return (
     <button
       type="button"
@@ -517,7 +591,7 @@ function CustomizeLayoutToggle({ editing, onToggle }: CustomizeLayoutToggleProps
           : 'rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
       }
     >
-      {editing ? 'Done customizing' : 'Customize layout'}
+      {editing ? activeLabel : idleLabel}
     </button>
   );
 }
