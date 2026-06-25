@@ -1,0 +1,144 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { validateToken } from './lib/validate-token';
+import { forgetToken } from './lib/token-storage';
+import { useRepos } from './hooks/useRepos';
+import { useRepoSignals } from './hooks/useRepoSignals';
+import type { GetRowData, Repo } from './types/fleet';
+import { App } from './App';
+
+vi.mock('./lib/validate-token', () => ({
+  validateToken: vi.fn(),
+}));
+
+vi.mock('./hooks/useRepos', () => ({
+  useRepos: vi.fn(),
+}));
+
+vi.mock('./hooks/useRepoSignals', () => ({
+  useRepoSignals: vi.fn(),
+}));
+
+vi.mock('./hooks/useCommitActivity', () => ({
+  useCommitActivity: vi.fn(() => ({ state: 'empty' })),
+}));
+
+const mockValidate = vi.mocked(validateToken);
+const mockUseRepos = vi.mocked(useRepos);
+const mockUseRepoSignals = vi.mocked(useRepoSignals);
+const getRowData: GetRowData = () => ({});
+
+function repo(nameWithOwner: string): Repo {
+  const slash = nameWithOwner.indexOf('/');
+  return {
+    nameWithOwner,
+    owner: nameWithOwner.slice(0, slash),
+    name: nameWithOwner.slice(slash + 1),
+    isPrivate: false,
+  };
+}
+
+beforeEach(() => {
+  forgetToken();
+  sessionStorage.clear();
+  localStorage.clear();
+  mockValidate.mockReset();
+  mockUseRepos.mockReset();
+  mockUseRepos.mockReturnValue({ status: 'success', repos: [], error: null, reload: vi.fn() });
+  mockUseRepoSignals.mockReset();
+  mockUseRepoSignals.mockReturnValue({ getRowData });
+});
+
+afterEach(() => {
+  forgetToken();
+  sessionStorage.clear();
+  localStorage.clear();
+});
+
+/** Authenticates and navigates to the Deck view. */
+async function authenticateOnDeck(
+  user: ReturnType<typeof userEvent.setup>,
+  repos: Repo[],
+): Promise<void> {
+  mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
+  mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
+  await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
+  await user.click(screen.getByRole('button', { name: /connect/i }));
+  await screen.findByRole('group', { name: /view mode/i });
+  await user.click(screen.getByRole('button', { name: /deck/i }));
+  await screen.findByRole('region', { name: /repository board/i });
+}
+
+describe('App — Deck per-tile customize wiring', () => {
+  it('shows the "Customize tiles" toggle only in the Deck view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    // Toggle is present in Deck view.
+    expect(screen.getByRole('button', { name: /customize tiles/i })).toBeInTheDocument();
+
+    // Switch to Boards view — the deck toggle must disappear.
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    await screen.findByRole('region', { name: /dashboard/i });
+    expect(screen.queryByRole('button', { name: /customize tiles/i })).toBeNull();
+  });
+
+  it('opens the DeckCustomizePanel dialog when "Customize tiles" is clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    expect(screen.queryByRole('dialog', { name: /customize deck/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /customize tiles/i }));
+    expect(screen.getByRole('dialog', { name: /customize deck/i })).toBeInTheDocument();
+  });
+
+  it('removes a tile from the live Deck grid via the inline ✕ and persists it', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    // Enter edit mode.
+    await user.click(screen.getByRole('button', { name: /customize tiles/i }));
+
+    // The inline remove button for CI on octo/a must be present.
+    const removeBtn = screen.getByRole('button', { name: /remove ci tile for octo\/a/i });
+    expect(removeBtn).toBeInTheDocument();
+
+    // Click the remove button.
+    await user.click(removeBtn);
+
+    // The remove button is gone from the grid.
+    expect(screen.queryByRole('button', { name: /remove ci tile for octo\/a/i })).toBeNull();
+
+    // The key is persisted to localStorage.
+    const stored = JSON.parse(localStorage.getItem('fleet:deck-hidden') ?? '[]') as string[];
+    expect(stored).toContain('octo/a:ci');
+  });
+
+  it('hides a signal across all repos from the panel', async () => {
+    const repos = [repo('octo/a'), repo('octo/b')];
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, repos);
+
+    // Open the customize panel.
+    await user.click(screen.getByRole('button', { name: /customize tiles/i }));
+    expect(screen.getByRole('dialog', { name: /customize deck/i })).toBeInTheDocument();
+
+    // Click the per-signal "Hide all CI keys" button in the panel.
+    await user.click(screen.getByRole('button', { name: /hide all ci keys/i }));
+
+    // Both repos' CI remove buttons are gone from the board (CI keys hidden).
+    expect(screen.queryByRole('button', { name: /remove ci tile for octo\/a/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /remove ci tile for octo\/b/i })).toBeNull();
+
+    // Persistence reflects both keys hidden.
+    const stored = JSON.parse(localStorage.getItem('fleet:deck-hidden') ?? '[]') as string[];
+    expect(stored).toContain('octo/a:ci');
+    expect(stored).toContain('octo/b:ci');
+  });
+});
