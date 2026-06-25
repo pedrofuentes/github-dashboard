@@ -135,7 +135,7 @@ describe('useFleetBatchLoader', () => {
 
   it('error is false in the idle state (no token)', () => {
     const { result } = renderHook(() => useFleetBatchLoader(REPOS, null));
-    expect((result.current as unknown as { error: boolean }).error).toBe(false);
+    expect(result.current.error).toBe(false);
   });
 
   it('error is true after a hard non-abort rejection', async () => {
@@ -144,7 +144,7 @@ describe('useFleetBatchLoader', () => {
 
     const { result } = renderHook(() => useFleetBatchLoader(REPOS, 'ghp_token'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect((result.current as unknown as { error: boolean }).error).toBe(true);
+    expect(result.current.error).toBe(true);
     errorSpy.mockRestore();
   });
 
@@ -154,6 +154,6 @@ describe('useFleetBatchLoader', () => {
 
     const { result } = renderHook(() => useFleetBatchLoader(REPOS, 'ghp_token'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect((result.current as unknown as { error: boolean }).error).toBe(false);
+    expect(result.current.error).toBe(false);
   });
 });

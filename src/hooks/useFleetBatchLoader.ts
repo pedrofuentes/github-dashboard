@@ -24,9 +24,11 @@ export interface UseFleetBatchLoaderResult {
   result: FleetBatchResult;
   /** `true` while a batch request is in-flight. */
   loading: boolean;
+  /** `true` when the most recent batch attempt threw a hard (non-abort) error. */
+  error: boolean;
 }
 
-const IDLE: UseFleetBatchLoaderResult = { result: EMPTY_RESULT, loading: false };
+const IDLE: UseFleetBatchLoaderResult = { result: EMPTY_RESULT, loading: false, error: false };
 
 /**
  * Executes a registry-driven batched GraphQL fleet query and exposes the
@@ -54,18 +56,18 @@ export function useFleetBatchLoader(
     const generation = (generationRef.current += 1);
     const controller = new AbortController();
 
-    setState((prev) => ({ result: prev.result, loading: true }));
+    setState((prev) => ({ result: prev.result, loading: true, error: false }));
 
     void executeFleetBatch(repos, viewerLogin ?? null, token, controller.signal)
       .then((result) => {
         if (generation !== generationRef.current || controller.signal.aborted) return;
-        setState({ result, loading: false });
+        setState({ result, loading: false, error: false });
       })
       .catch((err: unknown) => {
         if (isAbortError(err) || controller.signal.aborted) return;
         if (generation !== generationRef.current) return;
         console.error('useFleetBatchLoader: batch fetch failed', err);
-        setState(IDLE);
+        setState({ result: EMPTY_RESULT, loading: false, error: true });
       });
 
     return () => controller.abort();
