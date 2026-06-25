@@ -10,7 +10,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { abortableSleep, fetchWithRetry, GitHubApiError } from './core';
+import {
+  abortableSleep,
+  fetchWithRetry,
+  GitHubApiError,
+  GitHubErrorCode,
+  handleApiError,
+  type RateLimitInfo,
+} from './core';
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -508,5 +515,50 @@ describe('fetchWithRetry — abort-aware backoff', () => {
     // A 30s internal timeout (no external abort) must remain retryable.
     expect(result).toBe(okResponse);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ──────────────────────────────────────────────
+// #495 — secondary rate-limit classification
+// ──────────────────────────────────────────────
+
+describe('handleApiError — secondary rate limit (#495)', () => {
+  function rateLimitInfo(overrides: Partial<RateLimitInfo> = {}): RateLimitInfo {
+    return {
+      limit: 5000,
+      remaining: 4999,
+      reset: new Date(Date.now() + 3600_000),
+      used: 1,
+      ...overrides,
+    };
+  }
+
+  it('classifies a 403 carrying a Retry-After as RATE_LIMITED, not ACCESS_DENIED', () => {
+    // GitHub signals a *secondary* rate limit with a 403 + Retry-After while the
+    // primary budget (x-ratelimit-remaining) still looks healthy. Misreading it
+    // as ACCESS_DENIED is the bug behind the Stale "error on every repo" and the
+    // Security "no grade" symptoms (T-bf2): it must be a recoverable rate limit.
+    let caught: unknown;
+    try {
+      handleApiError(403, rateLimitInfo({ remaining: 4999 }), 'octo', 'a', 42);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.RATE_LIMITED);
+    expect((caught as GitHubApiError).retryAfterSeconds).toBe(42);
+  });
+
+  it('still classifies a plain 403 (no Retry-After, budget remaining) as ACCESS_DENIED', () => {
+    // The reclassification must stay surgical: a permissions 403 with neither an
+    // exhausted budget nor a Retry-After is a genuine access problem.
+    let caught: unknown;
+    try {
+      handleApiError(403, rateLimitInfo({ remaining: 4999 }), 'octo', 'a', undefined);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.ACCESS_DENIED);
   });
 });
