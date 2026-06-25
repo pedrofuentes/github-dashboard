@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchIssueCount, fetchViewerIssueCount } from '../../api/github';
-import type { Repo } from '../../types/fleet';
+import type { IssuesSignalSlice, Repo } from '../../types/fleet';
 import { ISSUE_TRIAGE_THRESHOLD, useIssuesSignal } from './useIssuesSignal';
 
 vi.mock('../../api/github', () => ({

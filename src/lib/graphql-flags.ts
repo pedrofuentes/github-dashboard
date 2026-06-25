@@ -16,7 +16,7 @@ const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
   security: false,
   reviews: false,
   pullRequests: false,
-  issues: false,
+  issues: true,
   stale: false,
   activity: false,
 };
