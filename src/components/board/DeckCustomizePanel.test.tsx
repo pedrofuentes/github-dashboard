@@ -78,12 +78,13 @@ describe('DeckCustomizePanel', () => {
     expect(dialog).toHaveAccessibleName();
   });
 
-  it('renders one global toggle per Deck signal and one row per repo', () => {
+  it('renders one global toggle per Deck signal and one row per matching repo', async () => {
     setup();
     const rules = screen.getByRole('group', { name: /signal/i });
     const toggles = within(rules).getAllByRole('button', { name: /all .+ keys$/i });
     expect(toggles).toHaveLength(DECK_SIGNALS.length);
 
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/');
     const repoToggles = screen.getAllByRole('button', { name: /keys for /i });
     expect(repoToggles).toHaveLength(repos.length);
   });
@@ -151,6 +152,8 @@ describe('DeckCustomizePanel', () => {
     const allOfA = new Set(DECK_SIGNALS.map((signal) => key('octo/a', signal)));
     const props = setup({ hidden: allOfA });
 
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/');
+
     // octo/a is fully hidden → its row control shows it.
     await userEvent.click(screen.getByRole('button', { name: /show all keys for octo\/a/i }));
     expect(props.onSetRepo).toHaveBeenCalledWith('octo/a', false);
@@ -163,6 +166,8 @@ describe('DeckCustomizePanel', () => {
   it('toggles a single (repo, signal) key via onToggleKey and reflects checked state', async () => {
     const props = setup({ hidden: new Set([key('octo/a', 'ci')]) });
 
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/');
+
     const hiddenKey = screen.getByRole('checkbox', { name: /octo\/a, CI key, hidden/i });
     expect(hiddenKey).not.toBeChecked();
     await userEvent.click(hiddenKey);
@@ -172,13 +177,15 @@ describe('DeckCustomizePanel', () => {
     expect(shownKey).toBeChecked();
   });
 
-  it('filters the repo list by the search query', async () => {
+  it('renders no per-repo rows until a search query is entered', async () => {
     setup();
-    expect(screen.getByRole('button', { name: /keys for octo\/a/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /keys for octo\/b/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /keys for octo\/a/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /keys for octo\/b/i })).toBeNull();
 
-    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
-
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /search repositories/i }),
+      'octo/a',
+    );
     expect(screen.getByRole('button', { name: /keys for octo\/a/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /keys for octo\/b/i })).toBeNull();
   });
