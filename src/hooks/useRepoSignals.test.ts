@@ -237,4 +237,31 @@ describe('useRepoSignals', () => {
     const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     expect(result.current.getRowData(REPO).ci).toEqual(batchCi);
   });
+
+  it('passes a defined loading-map override to useCiSignal while the batch is loading (never undefined)', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', new Map([[REPO.nameWithOwner, ci]])]]),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
+    // A defined Map override forces useCiSignal to skip its REST fan-out entirely.
+    expect(lastCiCall?.[2]).toBeDefined();
+    expect(lastCiCall?.[2]).toBeInstanceOf(Map);
+  });
+
+  it('the CI loading-map override carries a loading slice for every repo so REST is always suppressed', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
+    const ciOverride = lastCiCall?.[2];
+    expect(ciOverride?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
 });
