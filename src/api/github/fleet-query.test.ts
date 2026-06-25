@@ -27,6 +27,7 @@ import type {
   PullRequestsSignalSlice,
   Repo,
   SignalSlice,
+  StaleSignalSlice,
 } from '../../types/fleet';
 import {
   FLEET_QUERY_CHUNK_SIZE,
@@ -101,6 +102,16 @@ function prMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
 
 function prSlice(result: Map<string, SignalSlice>, key: string): PullRequestsSignalSlice {
   return result.get(key) as PullRequestsSignalSlice;
+}
+
+function staleMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
+  const map = result.get('stale');
+  if (!map) throw new Error('expected a stale slice map');
+  return map;
+}
+
+function staleSlice(result: Map<string, SignalSlice>, key: string): StaleSignalSlice {
+  return result.get(key) as StaleSignalSlice;
 }
 
 /**
@@ -183,7 +194,7 @@ describe('buildFleetQuery', () => {
 describe('buildFleetVariables', () => {
   it('maps each repo to owner{i}/name{i} variables', () => {
     const vars = buildFleetVariables([repo('octocat/hello-world'), repo('github/docs')]);
-    expect(vars).toEqual({
+    expect(vars).toMatchObject({
       owner0: 'octocat',
       name0: 'hello-world',
       owner1: 'github',
@@ -499,14 +510,16 @@ describe('executeFleetBatch', () => {
 // ── registry ────────────────────────────────────────────────────────────────
 
 describe('SIGNAL_DERIVERS registry', () => {
-  it('registers the CI deriver, issues deriver, and PR deriver (in that order)', () => {
-    expect(SIGNAL_DERIVERS).toHaveLength(3);
+  it('registers CI, issues, PR (per-repo) then stale (top-level), in that order', () => {
+    expect(SIGNAL_DERIVERS).toHaveLength(4);
     expect(SIGNAL_DERIVERS[0].signal).toBe('ci');
     expect(SIGNAL_DERIVERS[0].kind).toBe('per-repo');
     expect(SIGNAL_DERIVERS[1].signal).toBe('issues');
     expect(SIGNAL_DERIVERS[1].kind).toBe('per-repo');
     expect(SIGNAL_DERIVERS[2].signal).toBe('pullRequests');
     expect(SIGNAL_DERIVERS[2].kind).toBe('per-repo');
+    expect(SIGNAL_DERIVERS[3].signal).toBe('stale');
+    expect(SIGNAL_DERIVERS[3].kind).toBe('top-level');
   });
 });
 
@@ -998,6 +1011,173 @@ describe('prDeriver – executeFleetBatch', () => {
       status: 'ready',
       openCount: 0,
       externalCount: 0,
+      score: 0,
+    });
+  });
+});
+
+// ── staleDeriver (first top-level deriver: GraphQL search) ───────────────────
+
+describe('staleDeriver – buildFleetQuery / buildFleetVariables (top-level seam)', () => {
+  it('declares a $stale_r{i}: String! variable per repo in the query header', () => {
+    const query = buildFleetQuery([repo('o/a'), repo('o/b')], null);
+    expect(query).toContain('$stale_r0: String!');
+    expect(query).toContain('$stale_r1: String!');
+  });
+
+  it('emits one aliased top-level search per repo bound to its $stale_r{i} variable', () => {
+    const query = buildFleetQuery([repo('o/a')], null);
+    expect(query).toContain('stale_r0: search(');
+    expect(query).toContain('type: ISSUE');
+    expect(query).toContain('first: 30');
+    expect(query).toContain('query: $stale_r0');
+    expect(query).toContain('issueCount');
+    expect(query).toContain('__typename');
+  });
+
+  it('passes the per-repo search query ONLY as a bound variable, never inline (injection-safe)', () => {
+    const query = buildFleetQuery([repo('o/a')], null);
+    // The raw search qualifier must reach the document solely via $stale_r0 —
+    // no inline `repo:`/`is:open` literal may appear in the query string.
+    expect(query).not.toContain('repo:o/a');
+    expect(query).not.toContain('is:open');
+    expect(query).toContain('query: $stale_r0');
+  });
+
+  it('binds each stale_r{i} variable to the repo search query shape', () => {
+    const vars = buildFleetVariables([repo('o/a'), repo('o/b')]);
+    // Date is omitted to avoid flakiness; the prefix is the stable contract.
+    expect(vars.stale_r0.startsWith('repo:o/a is:open updated:<')).toBe(true);
+    expect(vars.stale_r1.startsWith('repo:o/b is:open updated:<')).toBe(true);
+  });
+});
+
+describe('staleDeriver – executeFleetBatch', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('maps issueCount→staleCount and search nodes→staleItems (pr vs issue via __typename)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/a' },
+          stale_r0: {
+            issueCount: 2,
+            nodes: [
+              {
+                __typename: 'PullRequest',
+                number: 7,
+                title: 'Old PR',
+                url: 'https://github.com/o/a/pull/7',
+                updatedAt: '2023-01-01T00:00:00Z',
+              },
+              {
+                __typename: 'Issue',
+                number: 9,
+                title: 'Old issue',
+                url: 'https://github.com/o/a/issues/9',
+                updatedAt: '2023-02-01T00:00:00Z',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], null, TOKEN);
+    const slice = staleSlice(staleMapOf(result), 'o/a');
+    expect(slice).toEqual({
+      status: 'ready',
+      staleCount: 2,
+      score: 2,
+      staleItems: [
+        {
+          number: 7,
+          title: 'Old PR',
+          html_url: 'https://github.com/o/a/pull/7',
+          updated_at: '2023-01-01T00:00:00Z',
+          type: 'pr',
+        },
+        {
+          number: 9,
+          title: 'Old issue',
+          html_url: 'https://github.com/o/a/issues/9',
+          updated_at: '2023-02-01T00:00:00Z',
+          type: 'issue',
+        },
+      ],
+    });
+  });
+
+  it('omits staleItems when the search returned no nodes (score still equals staleCount)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/a' },
+          stale_r0: { issueCount: 5, nodes: [] },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], null, TOKEN);
+    const slice = staleSlice(staleMapOf(result), 'o/a');
+    expect(slice).toEqual({ status: 'ready', staleCount: 5, score: 5 });
+    expect(slice.staleItems).toBeUndefined();
+  });
+
+  it('isolates a per-repo search error: only that repo errors, siblings stay ready', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/a' },
+          r1: { nameWithOwner: 'o/b' },
+          stale_r0: { issueCount: 1, nodes: [] },
+          stale_r1: null,
+        },
+        errors: [{ message: 'search failed', path: ['stale_r1'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a'), repo('o/b')], null, TOKEN);
+    const staleMap = staleMapOf(result);
+    expect(staleSlice(staleMap, 'o/a')).toEqual({ status: 'ready', staleCount: 1, score: 1 });
+    expect(staleSlice(staleMap, 'o/b')).toEqual({ status: 'error' });
+  });
+
+  it('treats a missing search alias WITHOUT a matching error as ready-zero (no data), not error', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/a' },
+          // stale_r0 alias intentionally absent, no error references it.
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], null, TOKEN);
+    expect(staleSlice(staleMapOf(result), 'o/a')).toEqual({
+      status: 'ready',
+      staleCount: 0,
       score: 0,
     });
   });

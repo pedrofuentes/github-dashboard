@@ -11,6 +11,7 @@ import {
   staleSearchUrl,
   useStaleSignal,
 } from './useStaleSignal';
+import type { StaleSignalSlice } from '../../types/fleet';
 
 vi.mock('../../api/github', async (importActual) => {
   const actual = await importActual<typeof import('../../api/github')>();
@@ -518,5 +519,45 @@ describe('useStaleSignal', () => {
     expect(result.current.get('octo/a')?.status).not.toBe('error');
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+describe('useStaleSignal — override param', () => {
+  it('returns the override map directly and never calls fetchWithETag', () => {
+    const override = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 4, score: 4 }],
+    ]);
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token', override));
+
+    expect(result.current).toBe(override);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
+  });
+
+  it('falls back to REST behavior when override is undefined', async () => {
+    mockFetchWithETag.mockResolvedValue({ total_count: 3 });
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token', undefined));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    expect(result.current.get('octo/a')?.staleCount).toBe(3);
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips REST and stays on override when override changes to a new map', () => {
+    const overrideA = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 1, score: 1 }],
+    ]);
+    const overrideB = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 9, score: 9 }],
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ override }) => useStaleSignal(ONE_REPO, 'ghp_token', override),
+      { initialProps: { override: overrideA } },
+    );
+    expect(result.current).toBe(overrideA);
+
+    rerender({ override: overrideB });
+    expect(result.current).toBe(overrideB);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
   });
 });
