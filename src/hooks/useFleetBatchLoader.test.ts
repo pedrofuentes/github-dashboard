@@ -63,7 +63,13 @@ describe('useFleetBatchLoader', () => {
     });
     expect(result.current.loading).toBe(false);
     expect(result.current.result).toBe(batchResult);
-    expect(executeMock).toHaveBeenCalledWith(REPOS, null, 'ghp_token', expect.any(AbortSignal));
+    expect(executeMock).toHaveBeenCalledWith(
+      REPOS,
+      null,
+      'ghp_token',
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
   });
 
   it('forwards viewerLogin (non-null) through to executeFleetBatch', () => {
@@ -74,6 +80,7 @@ describe('useFleetBatchLoader', () => {
       'octocat',
       'ghp_token',
       expect.any(AbortSignal),
+      expect.any(Function),
     );
   });
 
@@ -171,7 +178,13 @@ describe('useFleetBatchLoader', () => {
     const { promise, resolve: resolveFetch } = deferred<FleetBatchResult>();
 
     executeMock.mockImplementation(
-      (_repos, _login, _token, _signal, onProgress: ((p: FleetBatchResult) => void) | undefined) => {
+      (
+        _repos,
+        _login,
+        _token,
+        _signal,
+        onProgress: ((p: FleetBatchResult) => void) | undefined,
+      ) => {
         capturedOnProgress = onProgress;
         return promise;
       },

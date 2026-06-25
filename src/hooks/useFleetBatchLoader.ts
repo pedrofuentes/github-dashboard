@@ -58,7 +58,10 @@ export function useFleetBatchLoader(
 
     setState((prev) => ({ result: prev.result, loading: true, error: false }));
 
-    void executeFleetBatch(repos, viewerLogin ?? null, token, controller.signal)
+    void executeFleetBatch(repos, viewerLogin ?? null, token, controller.signal, (partial) => {
+      if (generation !== generationRef.current || controller.signal.aborted) return;
+      setState({ result: partial, loading: true, error: false });
+    })
       .then((result) => {
         if (generation !== generationRef.current || controller.signal.aborted) return;
         setState({ result, loading: false, error: false });

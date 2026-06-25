@@ -1009,6 +1009,14 @@ function markChunk(
   for (const repo of repos) map.set(repo.nameWithOwner, { ...slice });
 }
 
+/**
+ * Shallow-clones a {@link FleetBatchResult} so React sees a fresh reference on
+ * each {@link onProgress} emission without a deep copy of every slice.
+ */
+function cloneResult(r: FleetBatchResult): FleetBatchResult {
+  return new Map([...r].map(([sig, m]) => [sig, new Map(m)]));
+}
+
 // ── Global (top-level-global) run ────────────────────────────────────────────
 
 /**
@@ -1266,6 +1274,7 @@ export async function executeFleetBatch(
   viewerLogin: string | null,
   token: string,
   signal?: AbortSignal,
+  onProgress?: (partial: FleetBatchResult) => void,
 ): Promise<FleetBatchResult> {
   const result: FleetBatchResult = new Map();
   for (const deriver of SIGNAL_DERIVERS) {
@@ -1302,6 +1311,7 @@ export async function executeFleetBatch(
             if (deriver.kind === 'top-level-global') continue;
             markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
           }
+          if (!signal?.aborted) onProgress?.(cloneResult(result));
           return;
         }
 
@@ -1316,6 +1326,7 @@ export async function executeFleetBatch(
           if (!target) continue;
           for (const [key, slice] of slices) target.set(key, slice);
         }
+        if (!signal?.aborted) onProgress?.(cloneResult(result));
       } catch (err) {
         // A caller-abort propagates; any other hard failure isolates to this chunk.
         if (isAbortError(err) || signal?.aborted) throw err;
@@ -1323,6 +1334,7 @@ export async function executeFleetBatch(
           if (deriver.kind === 'top-level-global') continue;
           markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
         }
+        onProgress?.(cloneResult(result));
       }
     }),
   );
@@ -1331,6 +1343,8 @@ export async function executeFleetBatch(
   // after the per-chunk queries, in a dedicated paginated query.
   const globalDerivers = SIGNAL_DERIVERS.filter((d) => d.kind === 'top-level-global');
   await runGlobalDerivers(globalDerivers, repos, viewerLogin, token, result, signal);
+
+  if (!signal?.aborted) onProgress?.(cloneResult(result));
 
   return result;
 }
