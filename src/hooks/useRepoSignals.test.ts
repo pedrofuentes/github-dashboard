@@ -16,7 +16,7 @@ import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
-import { type UseFleetBatchLoaderResult, useFleetBatchLoader } from './useFleetBatchLoader';
+import { useFleetBatchLoader } from './useFleetBatchLoader';
 import { useRepoSignals } from './useRepoSignals';
 
 vi.mock('./signals/useCiSignal', () => ({ useCiSignal: vi.fn() }));
@@ -83,6 +83,7 @@ beforeEach(() => {
   vi.mocked(useFleetBatchLoader).mockReturnValue({
     result: new Map(),
     loading: false,
+    error: false,
   });
 });
 
@@ -224,6 +225,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', batchCiMap]]),
       loading: false,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -236,6 +238,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', batchCiMap]]),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -257,6 +260,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', batchCiMap]]),
       loading: false,
+      error: false,
     });
     // Simulate real override-aware behavior: return the override when supplied.
     vi.mocked(useCiSignal).mockImplementation(
@@ -271,6 +275,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', new Map([[REPO.nameWithOwner, ci]])]]),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -285,6 +290,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -301,6 +307,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['issues', batchIssuesMap]]),
       loading: false,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -317,6 +324,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -337,6 +345,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['issues', batchIssuesMap]]),
       loading: false,
+      error: false,
     });
     // Simulate real override-aware behavior: return the override when supplied.
     vi.mocked(useIssuesSignal).mockImplementation(
@@ -351,6 +360,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -367,6 +377,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['pullRequests', batchPrMap]]),
       loading: false,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -382,6 +393,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -402,6 +414,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['pullRequests', batchPrMap]]),
       loading: false,
+      error: false,
     });
     // Simulate real override-aware behavior: return the override when supplied.
     vi.mocked(usePullRequestsSignal).mockImplementation(
@@ -419,6 +432,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['stale', batchStaleMap]]),
       loading: false,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -434,6 +448,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -449,6 +464,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['stale', batchStaleMap]]),
       loading: false,
+      error: false,
     });
     // Simulate real override-aware behavior: return the override when supplied.
     vi.mocked(useStaleSignal).mockImplementation(
@@ -466,6 +482,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['reviews', batchReviewsMap]]),
       loading: false,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -481,6 +498,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map(),
       loading: true,
+      error: false,
     });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
@@ -496,6 +514,7 @@ describe('useRepoSignals', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['reviews', batchReviewsMap]]),
       loading: false,
+      error: false,
     });
     // Simulate real override-aware behavior: return the override when supplied.
     vi.mocked(useReviewsSignal).mockImplementation(
@@ -509,7 +528,11 @@ describe('useRepoSignals', () => {
   // ── Override Map identity (#540) ─────────────────────────────────────────────
 
   it('loading override Map passed to signal hooks is the same reference across re-renders', () => {
-    vi.mocked(useFleetBatchLoader).mockReturnValue({ result: new Map(), loading: true });
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+      error: false,
+    });
 
     const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
@@ -523,7 +546,11 @@ describe('useRepoSignals', () => {
 
   it('settled-absent override is the shared EMPTY constant (same reference across re-renders)', () => {
     // Flag ON, not loading, result has no entry for 'ci' → settled-absent path
-    vi.mocked(useFleetBatchLoader).mockReturnValue({ result: new Map(), loading: false });
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: false,
+      error: false,
+    });
 
     const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
@@ -543,7 +570,7 @@ describe('useRepoSignals', () => {
       result: new Map(),
       loading: false,
       error: true,
-    } as unknown as UseFleetBatchLoaderResult);
+    });
 
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
 
@@ -569,7 +596,7 @@ describe('useRepoSignals', () => {
       result: new Map(),
       loading: false,
       error: true,
-    } as unknown as UseFleetBatchLoaderResult);
+    });
 
     const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
