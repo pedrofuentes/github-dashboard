@@ -113,16 +113,34 @@ export function useIssuesSignal(
         // viewer login is present, the viewer's own count is fetched alongside it
         // (same signal) so the two requests share this repo's concurrency slot.
         try {
-          const [openCount, mineCount] = await Promise.all([
+          // allSettled, not all: the open count is the slice's backbone, but the
+          // viewer count is an enrichment. A viewer-count failure (e.g. a Search
+          // rate limit) must degrade only the mine/community split, never blank
+          // the whole slice to error (#494).
+          const [openResult, mineResult] = await Promise.allSettled([
             fetchIssueCount(repo.owner, repo.name, token, 'open', signal),
-            login ? fetchViewerIssueCount(repo.owner, repo.name, login, token, signal) : undefined,
+            login
+              ? fetchViewerIssueCount(repo.owner, repo.name, login, token, signal)
+              : Promise.resolve(undefined),
           ]);
-          if (generation !== generationRef.current) {
+          if (signal?.aborted || generation !== generationRef.current) {
             return;
+          }
+          // A failed open count is a real per-repo failure: re-throw to the
+          // shared catch so the slice surfaces as error (or stays quiet on abort).
+          if (openResult.status === 'rejected') {
+            throw openResult.reason;
+          }
+          const mineCount = mineResult.status === 'fulfilled' ? mineResult.value : undefined;
+          if (mineResult.status === 'rejected' && !isAbortError(mineResult.reason)) {
+            console.warn(
+              `useIssuesSignal: viewer issue count unavailable for ${repo.nameWithOwner}`,
+              mineResult.reason,
+            );
           }
           setSlices((prev) => {
             const next = new Map(prev);
-            next.set(repo.nameWithOwner, readySlice(openCount, mineCount));
+            next.set(repo.nameWithOwner, readySlice(openResult.value, mineCount));
             return next;
           });
         } catch (err) {
