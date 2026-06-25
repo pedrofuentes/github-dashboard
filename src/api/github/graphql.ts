@@ -53,6 +53,10 @@ const GraphQLEnvelopeSchema = z
 
 const GRAPHQL_URL = 'https://api.github.com/graphql';
 
+// Floor wait (seconds) for a 429 that arrives without a Retry-After header, so
+// the limiter can still back off. Mirrors the REST core's handleApiError 429.
+const RATE_LIMIT_FALLBACK_SECONDS = 60;
+
 /** Parameters for a single {@link fetchGraphQL} call. */
 export interface FetchGraphQLParams<T> {
   /** GraphQL query or mutation document string. */
@@ -147,6 +151,21 @@ export async function fetchGraphQL<T>(
         undefined,
         undefined,
         GitHubErrorCode.ACCESS_DENIED,
+      );
+    }
+
+    // 429 → rate limited (recoverable). fetchWithRetry already retried the
+    // retryable 429 up to MAX_RETRIES; a persistent one lands here. Mirror the
+    // REST core (handleApiError 429): classify RATE_LIMITED and forward
+    // Retry-After (60s floor) so the limiter backs off instead of failing.
+    if (response.status === 429) {
+      const waitSeconds = retryAfterSeconds ?? RATE_LIMIT_FALLBACK_SECONDS;
+      throw new GitHubApiError(
+        `GitHub GraphQL API rate limit exceeded (429). Retry after ${waitSeconds}s`,
+        response.status,
+        undefined,
+        waitSeconds,
+        GitHubErrorCode.RATE_LIMITED,
       );
     }
 
