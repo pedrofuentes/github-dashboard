@@ -156,4 +156,44 @@ describe('useFleetBatchLoader', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(false);
   });
+
+  // ── Progressive loading (onProgress) ─────────────────────────────────────
+
+  it('updates result incrementally via onProgress while loading stays true, then settles', async () => {
+    const partialResult: FleetBatchResult = new Map([
+      ['ci', new Map([['octo/a', { status: 'ready', conclusion: 'success', failingCount: 0 }]])],
+    ]) as FleetBatchResult;
+    const finalResult: FleetBatchResult = new Map([
+      ['ci', new Map([['octo/a', { status: 'ready', conclusion: 'failure', failingCount: 1 }]])],
+    ]) as FleetBatchResult;
+
+    let capturedOnProgress: ((p: FleetBatchResult) => void) | undefined;
+    const { promise, resolve: resolveFetch } = deferred<FleetBatchResult>();
+
+    executeMock.mockImplementation(
+      (_repos, _login, _token, _signal, onProgress: ((p: FleetBatchResult) => void) | undefined) => {
+        capturedOnProgress = onProgress;
+        return promise;
+      },
+    );
+
+    const { result } = renderHook(() => useFleetBatchLoader(REPOS, 'ghp_token'));
+    expect(result.current.loading).toBe(true);
+
+    // Fire onProgress with a partial chunk result — result should update while loading stays true.
+    await act(async () => {
+      capturedOnProgress?.(partialResult);
+    });
+
+    expect(result.current.result).toBe(partialResult); // progressive fill
+    expect(result.current.loading).toBe(true); // still loading
+
+    // Resolve with the final result.
+    await act(async () => {
+      resolveFetch(finalResult);
+    });
+
+    expect(result.current.result).toBe(finalResult);
+    expect(result.current.loading).toBe(false);
+  });
 });
