@@ -19,3 +19,4 @@ export * from './etag-cache';
 export * from './rate-limit';
 export * from './rate-limit-store';
 export * from './search-limiter';
+export * from './graphql';
