@@ -349,17 +349,26 @@ function issuesRepoFragment(viewerLogin: string | null): string {
 /**
  * Folds one repo's node + the error index into an {@link IssuesSignalSlice}.
  *
- * Error guard: if the whole repo alias or its `openIssues` subtree errored →
- * `{ status: 'error' }`. Absent node (no error) → zero ready slice. Otherwise
- * derives from `openIssues.totalCount`; if `myIssues` is present, includes the
- * viewer's mine/community split.
+ * Error guard: if the whole repo alias, its `openIssues` subtree, OR its
+ * `myIssues` subtree errored → `{ status: 'error' }`. A `myIssues` error is
+ * included because `myIssues` is a non-null `issues` connection in GitHub's
+ * schema: if it errors at runtime, GraphQL's null-propagation nulls the entire
+ * repository node (nearest nullable ancestor), so `openIssues` data is lost
+ * too — returning a false `openCount: 0` would silently hide an unhealthy repo.
+ * Absent node (no covering error) → zero ready slice. Otherwise derives from
+ * `openIssues.totalCount`; if `myIssues` is present, includes the viewer's
+ * mine/community split.
  */
 function deriveIssuesSlice(
   node: FleetRepoNode | null,
   alias: string,
   errors: FleetErrorIndex,
 ): IssuesSignalSlice {
-  if (errors.has(alias) || errors.coversField(`${alias}.openIssues`)) {
+  if (
+    errors.has(alias) ||
+    errors.coversField(`${alias}.openIssues`) ||
+    errors.coversField(`${alias}.myIssues`)
+  ) {
     return { status: 'error' };
   }
   if (!node || !node.openIssues) return issuesReadySlice(0);
