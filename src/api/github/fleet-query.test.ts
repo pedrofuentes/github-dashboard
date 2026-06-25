@@ -100,6 +100,11 @@ describe('buildFleetQuery', () => {
     expect(query).toContain('statusCheckRollup');
   });
 
+  it('includes isArchived in the per-repo selection (guards the archived-repo no-CI path)', () => {
+    const query = buildFleetQuery(repos, null);
+    expect(query).toContain('isArchived');
+  });
+
   it('appends viewer and rateLimit at the top level', () => {
     const query = buildFleetQuery(repos, null);
     expect(query).toContain('viewer { login }');
@@ -384,6 +389,52 @@ describe('executeFleetBatch', () => {
     const result = await executeFleetBatch([], 'me', TOKEN);
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(ciMapOf(result).size).toBe(0);
+  });
+
+  it('maps EXPECTED rollup state to a queued CI slice (score 10)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: rollupNode('o/x', 'EXPECTED'),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/x')], 'me', TOKEN);
+    expect(ci(ciMapOf(result), 'o/x')).toEqual({
+      status: 'ready',
+      conclusion: 'queued',
+      score: 10,
+      failingCount: 0,
+    });
+  });
+
+  it('errors only the repo whose defaultBranchRef path errored; sibling with SUCCESS stays ok', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/x', isArchived: false, defaultBranchRef: null },
+          r1: rollupNode('o/y', 'SUCCESS'),
+        },
+        errors: [{ message: 'field error', path: ['r0', 'defaultBranchRef'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/x'), repo('o/y')], 'me', TOKEN);
+    const ciMap = ciMapOf(result);
+    // r0's defaultBranchRef path errored → CI slice is error.
+    expect(ci(ciMap, 'o/x')).toEqual({ status: 'error' });
+    // r1 has no error path and a SUCCESS rollup → remains ok.
+    expect(ci(ciMap, 'o/y')).toEqual({
+      status: 'ready',
+      conclusion: 'success',
+      score: 0,
+      failingCount: 0,
+    });
   });
 });
 
