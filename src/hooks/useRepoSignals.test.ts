@@ -607,4 +607,51 @@ describe('useRepoSignals', () => {
     expect(firstOverride).toBeInstanceOf(Map);
     expect(secondOverride).toBe(firstOverride);
   });
+
+  // ── Progressive fill during loading (#progressive) ───────────────────────
+
+  it('shows settled slice for a loaded repo and {status:loading} for an unloaded repo while batch is loading', () => {
+    const REPO_B: Repo = { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false };
+    const readyCi: CiSignalSlice = { status: 'ready', score: 1, conclusion: 'success', failingCount: 0 };
+    const partialCiMap = new Map([[REPO.nameWithOwner, readyCi]]);
+
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', partialCiMap]]),
+      loading: true,
+      error: false,
+    });
+
+    // useCiSignal passthrough: return whatever override is provided so getRowData reflects it.
+    vi.mocked(useCiSignal).mockImplementation(
+      (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, ci]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals([REPO, REPO_B], 'ghp_token'));
+
+    // octo/a: batch has a settled slice — must surface it progressively.
+    expect(result.current.getRowData(REPO).ci).toEqual(readyCi);
+    // octo/b: no batch data yet — must show loading.
+    expect(result.current.getRowData(REPO_B).ci).toEqual({ status: 'loading' });
+  });
+
+  it('progressive loading override Map is the same reference across re-renders when batch.result is stable', () => {
+    const REPO_B: Repo = { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false };
+    const readyCi: CiSignalSlice = { status: 'ready', score: 1, conclusion: 'success', failingCount: 0 };
+
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', new Map([[REPO.nameWithOwner, readyCi]])]]),
+      loading: true,
+      error: false,
+    });
+
+    const { rerender } = renderHook(() => useRepoSignals([REPO, REPO_B], 'ghp_token'));
+    const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    rerender();
+    const secondOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    // Same Map instance must be passed — no churn on unchanged inputs (#540).
+    expect(firstOverride).toBeInstanceOf(Map);
+    expect(secondOverride).toBe(firstOverride);
+  });
 });
