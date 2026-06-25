@@ -510,4 +510,51 @@ describe('useIssuesSignal', () => {
       warnSpy.mockRestore();
     });
   });
+
+  // ── override fast-path ───────────────────────────────────────────────────────
+
+  describe('override fast-path', () => {
+    it('returns the override map immediately and makes zero REST calls when an override is provided', () => {
+      // Keep the mock returning a never-resolving promise so any accidental
+      // fetch would leave the hook in loading — making the toBe check fail.
+      mockFetchIssueCount.mockReturnValue(new Promise(() => {}));
+
+      const overrideSlice: IssuesSignalSlice = {
+        status: 'ready',
+        openCount: 7,
+        overThreshold: false,
+        score: 1,
+      };
+      const overrideMap = new Map<string, IssuesSignalSlice>([['octo/a', overrideSlice]]);
+
+      const { result } = renderHook(() =>
+        useIssuesSignal(ONE_REPO, 'ghp_token', null, overrideMap),
+      );
+
+      // The hook must return the exact override reference, not a derived map.
+      expect(result.current).toBe(overrideMap);
+      // No REST fan-out must have been started.
+      expect(mockFetchIssueCount).not.toHaveBeenCalled();
+      expect(mockFetchViewerIssueCount).not.toHaveBeenCalled();
+    });
+
+    it('respects an override even when a valid token and repos are present (override wins)', () => {
+      mockFetchIssueCount.mockResolvedValue(999);
+
+      const overrideSlice: IssuesSignalSlice = {
+        status: 'ready',
+        openCount: 3,
+        overThreshold: false,
+        score: 0,
+      };
+      const overrideMap = new Map<string, IssuesSignalSlice>([['octo/a', overrideSlice]]);
+
+      const { result } = renderHook(() =>
+        useIssuesSignal(ONE_REPO, 'ghp_token', 'viewer', overrideMap),
+      );
+
+      expect(result.current).toBe(overrideMap);
+      expect(mockFetchIssueCount).not.toHaveBeenCalled();
+    });
+  });
 });
