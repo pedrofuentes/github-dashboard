@@ -25,6 +25,7 @@ import type {
   PullRequestsSignalSlice,
   Repo,
   SignalSlice,
+  StaleSignalSlice,
 } from '../types/fleet';
 import { graphqlSignalEnabled } from '../lib/graphql-flags';
 import { useCiSignal } from './signals/useCiSignal';
@@ -123,12 +124,19 @@ export function useRepoSignals(
     revalidatedRepos,
   );
 
+  const staleOverride = buildSignalOverride<StaleSignalSlice>(
+    'stale',
+    batch.loading,
+    batch.result,
+    revalidatedRepos,
+  );
+
   const ci = useCiSignal(revalidatedRepos, token, ciOverride);
   const security = useSecuritySignal(revalidatedRepos, token);
   const reviews = useReviewsSignal(revalidatedRepos, token);
   const pullRequests = usePullRequestsSignal(revalidatedRepos, token, pullRequestsOverride);
   const issues = useIssuesSignal(revalidatedRepos, token, viewerLogin, issuesOverride);
-  const stale = useStaleSignal(revalidatedRepos, token);
+  const stale = useStaleSignal(revalidatedRepos, token, staleOverride);
 
   const getRowData = useMemo<GetRowData>(
     () => (repo: Repo) => ({
