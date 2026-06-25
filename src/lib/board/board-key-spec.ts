@@ -126,10 +126,11 @@ const VALUE_ACCENT: Record<Exclude<TileSignalType, 'ci'>, AccentTone> = {
 
 type NonReadyState = Exclude<BoardKeyState, 'ready'>;
 
-/** Accent for a non-ready key: error → failure (§3.2 error), else neutral. */
+/** Accent for a non-ready key: error → warning (a distinct "couldn't load"
+ * tone, NOT the CI-failure red), else neutral. */
 const NON_READY_ACCENT: Record<NonReadyState, AccentTone> = {
   loading: 'neutral',
-  error: 'failure',
+  error: 'warning',
   empty: 'neutral',
 };
 
@@ -270,7 +271,9 @@ function readyValue(
       return { line2: formatCount(activity?.commitsThisWeek ?? 0), accent: VALUE_ACCENT.activity };
     case 'security': {
       const grade = data.security?.grade;
-      return { line2: grade ?? '—', accent: gradeAccent(grade) };
+      // No grade (e.g. no accessible alert feed) reads as an explicit "n/a"
+      // rather than a bare dash that could be mistaken for an "A+"/zero rating.
+      return { line2: grade ?? 'n/a', accent: gradeAccent(grade) };
     }
   }
 }

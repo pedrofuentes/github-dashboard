@@ -164,3 +164,56 @@ describe('BoardView — drill-down', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
+
+describe('BoardView — per-key retry threading', () => {
+  /** Every signal slice errored, so each key resolves to an error (retry) state. */
+  const ERRORED_DATA: RepoSignalData = {
+    ci: { status: 'error' },
+    security: { status: 'error' },
+    reviews: { status: 'error' },
+    pullRequests: { status: 'error' },
+    issues: { status: 'error' },
+    stale: { status: 'error' },
+  };
+
+  it('threads onRetry down so an errored key re-fetches (not drills down) on press', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRepoActivate = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={() => ERRORED_DATA}
+        onRepoActivate={onRepoActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    const retryButtons = screen.getAllByRole('button', { name: /retry/i });
+    expect(retryButtons).toHaveLength(SIGNAL_ORDER.length);
+
+    await user.click(retryButtons[0]);
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRepoActivate).not.toHaveBeenCalled();
+  });
+
+  it('still drills down on a ready key when onRetry is also provided', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRepoActivate = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        onRepoActivate={onRepoActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /CI:.*octo\/repo-a/ }));
+
+    expect(onRepoActivate).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+});
