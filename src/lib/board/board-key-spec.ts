@@ -36,8 +36,12 @@ export type BoardKeyLayout = 'value' | 'icon';
  * `line2` is the hero value for `value` layouts and is empty for `icon` layouts
  * (the icon fills that slot). `line3` is the caption. `status` is only present
  * for the CI key in its `ready` state — a Stream Deck workflow status string the
- * icon component maps to a glyph. (The repo-name line is supplied by the
- * component from its own context, so it is not part of this spec.)
+ * icon component maps to a glyph. `srLabel` is an optional accessible-status
+ * override that, when set, replaces the default `"${line2} ${line3}"` phrase in
+ * the key's accessible name and is also exposed as a `title` tooltip on the root
+ * element (e.g. the security no-access key uses it to carry the missing-scope
+ * explanation). (The repo-name line is supplied by the component from its own
+ * context, so it is not part of this spec.)
  */
 export interface BoardKeySpec {
   state: BoardKeyState;
@@ -46,6 +50,14 @@ export interface BoardKeySpec {
   line2: string;
   line3: string;
   status?: string;
+  /**
+   * Optional accessible-status override. When set, replaces the default
+   * `"${line2} ${line3}"` phrase in the key's accessible name and is rendered
+   * as a `title` tooltip on the root element for hover context. Intended for
+   * cases where the visible hero value alone does not convey the full reason
+   * (e.g. "n/a" with no explanation for a no-access security key).
+   */
+  srLabel?: string;
 }
 
 /**
@@ -251,7 +263,7 @@ function readyValue(
   signal: Exclude<TileSignalType, 'ci'>,
   data: RepoSignalData,
   activity: BoardActivityInput | undefined,
-): { line2: string; accent: AccentTone } {
+): { line2: string; accent: AccentTone; srLabel?: string } {
   switch (signal) {
     case 'issues':
       return { line2: formatCount(data.issues?.openCount ?? 0), accent: VALUE_ACCENT.issues };
@@ -271,9 +283,18 @@ function readyValue(
       return { line2: formatCount(activity?.commitsThisWeek ?? 0), accent: VALUE_ACCENT.activity };
     case 'security': {
       const grade = data.security?.grade;
-      // No grade (e.g. no accessible alert feed) reads as an explicit "n/a"
-      // rather than a bare dash that could be mistaken for an "A+"/zero rating.
-      return { line2: grade ?? 'n/a', accent: gradeAccent(grade) };
+      // No grade means the alert feeds were inaccessible (PAT lacks the
+      // security_events scope or the feature is disabled). Show "n/a" as the
+      // hero value AND attach srLabel so screen-reader/hover users get the same
+      // context the grid cell already provides via its title/sr-only.
+      if (!grade) {
+        return {
+          line2: 'n/a',
+          accent: gradeAccent(undefined),
+          srLabel: 'No security-alert access for this repository (token scope or feature disabled)',
+        };
+      }
+      return { line2: grade, accent: gradeAccent(grade) };
     }
   }
 }
@@ -307,6 +328,13 @@ export function boardKeySpec(
     };
   }
 
-  const { line2, accent } = readyValue(signal, data, activity);
-  return { state, layout: 'value', accent, line2, line3 };
+  const { line2, accent, srLabel } = readyValue(signal, data, activity);
+  return {
+    state,
+    layout: 'value',
+    accent,
+    line2,
+    line3,
+    ...(srLabel !== undefined && { srLabel }),
+  };
 }

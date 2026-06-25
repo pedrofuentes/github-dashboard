@@ -68,11 +68,16 @@ const ROOT_CLASS =
   'relative flex aspect-square w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm';
 
 /**
- * State/value phrase folded into the accessible name (never colour-only). Ready
- * value keys read "<value> <caption>" (e.g. "12 Open Issues"); ready icon keys
- * read the status label; lifecycle states read a plain state word.
+ * State/value phrase folded into the accessible name (never colour-only). When
+ * the spec carries a `srLabel` override (e.g. the security no-access key), that
+ * text replaces the default phrase so screen-reader users get the full reason.
+ * Ready value keys otherwise read "<value> <caption>" (e.g. "12 Open Issues");
+ * ready icon keys read the status label; lifecycle states read a plain state word.
  */
 function accessibleStatus(spec: BoardKeySpec): string {
+  if (spec.srLabel !== undefined) {
+    return spec.srLabel;
+  }
   if (spec.state === 'loading') {
     return 'Loading';
   }
@@ -230,6 +235,7 @@ export function BoardKey({
         data-state={spec.state}
         data-accent={spec.accent}
         aria-label={accessibleName}
+        title={spec.srLabel}
         onClick={handlePress}
         className={`${ROOT_CLASS} text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
       >
@@ -244,6 +250,7 @@ export function BoardKey({
       data-layout={spec.layout}
       data-state={spec.state}
       data-accent={spec.accent}
+      title={spec.srLabel}
       className={ROOT_CLASS}
     >
       {face}

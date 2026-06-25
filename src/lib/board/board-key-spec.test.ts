@@ -299,11 +299,10 @@ describe('boardKeySpec — security no-access key explains missing-scope reason'
 
   it('sets srLabel when ready with a grade but still no counts (no-access by counts check)', () => {
     const data: RepoSignalData = { security: { status: 'ready', grade: 'A' } };
-    // grade can exist without counts during partial init — counts is the authoritative no-access signal
+    // grade is the authoritative access signal: if grade is present the feeds
+    // were accessible, regardless of counts — no srLabel for a graded key.
     const spec = boardKeySpec('security', data);
-    expect(spec.srLabel).toBe(
-      'No security-alert access for this repository (token scope or feature disabled)',
-    );
+    expect(spec.srLabel).toBeUndefined();
   });
 
   it('does NOT set srLabel for a fully graded key with counts', () => {
