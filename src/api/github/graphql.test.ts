@@ -173,6 +173,54 @@ describe('fetchGraphQL', () => {
     );
   });
 
+  it('throws RATE_LIMITED on 429 with Retry-After after retries exhausted', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockJsonResponse(429, { message: 'rate limit exceeded' }, { 'retry-after': '2' }),
+    );
+
+    const promise = fetchGraphQL({
+      query: '{ viewer { login } }',
+      token: 'ghs_token',
+      dataSchema: TestSchema,
+    });
+    promise.catch(() => {});
+
+    // fetchWithRetry retries the 429 (3 × 2s Retry-After) then returns it.
+    await vi.advanceTimersByTimeAsync(8000);
+
+    await expect(promise).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof GitHubApiError &&
+        e.code === GitHubErrorCode.RATE_LIMITED &&
+        e.status === 429 &&
+        e.retryAfterSeconds === 2,
+    );
+  });
+
+  it('throws RATE_LIMITED on 429 without Retry-After, applying a 60s fallback wait', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockJsonResponse(429, { message: 'rate limited' }),
+    );
+
+    const promise = fetchGraphQL({
+      query: '{ viewer { login } }',
+      token: 'ghs_token',
+      dataSchema: TestSchema,
+    });
+    promise.catch(() => {});
+
+    // No Retry-After → exponential backoff (1s + 2s + 4s) before the 429 surfaces.
+    await vi.advanceTimersByTimeAsync(8000);
+
+    await expect(promise).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof GitHubApiError &&
+        e.code === GitHubErrorCode.RATE_LIMITED &&
+        e.status === 429 &&
+        e.retryAfterSeconds === 60,
+    );
+  });
+
   it('throws RATE_LIMITED on 403 with Retry-After header', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(403, { message: 'secondary rate limit' }, { 'retry-after': '30' }),
