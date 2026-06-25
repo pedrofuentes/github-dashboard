@@ -67,6 +67,7 @@ export function useIssuesSignal(
   repos: Repo[],
   token: string | null,
   viewerLogin?: string | null,
+  override?: Map<string, IssuesSignalSlice>,
 ): Map<string, IssuesSignalSlice> {
   const [slices, setSlices] = useState<Map<string, IssuesSignalSlice>>(EMPTY);
   const generationRef = useRef(0);
@@ -80,6 +81,8 @@ export function useIssuesSignal(
   const repoSignature = repos.map((repo) => repo.nameWithOwner).join('\n');
 
   useEffect(() => {
+    // When an override is supplied the caller owns the data; skip all REST work.
+    if (override) return;
     const generation = (generationRef.current += 1);
     const currentRepos = reposRef.current;
 
@@ -164,7 +167,7 @@ export function useIssuesSignal(
     );
 
     return () => controller.abort();
-  }, [repoSignature, token, viewerLogin]);
+  }, [repoSignature, token, viewerLogin, override]);
 
-  return slices;
+  return override ?? slices;
 }

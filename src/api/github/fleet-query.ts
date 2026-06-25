@@ -30,7 +30,7 @@ import { z, type ZodType } from 'zod';
 
 import { isAbortError } from '../../lib/abort';
 import type { TileSignalType } from '../../types/dashboard';
-import type { CiSignalSlice, Repo, SignalSlice } from '../../types/fleet';
+import type { CiSignalSlice, IssuesSignalSlice, Repo, SignalSlice } from '../../types/fleet';
 import {
   GraphQLRateLimitPartSchema,
   fetchGraphQL,
@@ -55,6 +55,9 @@ const DefaultBranchRefSchema = z
   .object({ target: CommitTargetSchema.nullable().optional() })
   .passthrough();
 
+/** Zod schema for a `{ totalCount }` issue-count field (issues + myIssues). */
+const IssueCountSchema = z.object({ totalCount: z.number() }).passthrough();
+
 /**
  * Zod schema for one repository node as selected by the fleet query. Only
  * `nameWithOwner` is required (it keys every slice); all signal-specific fields
@@ -66,6 +69,8 @@ export const FleetRepoNodeSchema = z
     nameWithOwner: z.string(),
     isArchived: z.boolean().optional(),
     defaultBranchRef: DefaultBranchRefSchema.nullable().optional(),
+    openIssues: IssueCountSchema.nullable().optional(),
+    myIssues: IssueCountSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -192,7 +197,7 @@ export interface SignalDeriver {
   /** Whether the deriver contributes inside each repo or at the top level. */
   readonly kind: 'per-repo' | 'top-level';
   /** Selection-set fragment composed inside each `repository(...)` alias. */
-  repoFragment?(): string;
+  repoFragment?(viewerLogin: string | null): string;
   /** Aliased top-level selection (e.g. a `search(...)` field). */
   topLevelFragment?(repos: readonly Repo[], viewerLogin: string | null): string;
   /** Folds the chunk into one slice per `nameWithOwner`. */
@@ -293,34 +298,131 @@ export const ciDeriver: SignalDeriver = {
   },
 };
 
+// ── Issues deriver (open-issue count; viewer mine/community split) ────────────
+
 /**
- * The registered signal derivers. A future increment adds one entry per signal
- * (PRs, Issues, Dependabot, Stale, Reviews) — nothing else changes.
+ * Threshold above which a repo is considered in need of issue triage. Mirrors
+ * {@link ISSUE_TRIAGE_THRESHOLD} in `useIssuesSignal` so the two paths produce
+ * identical scores and bands without a cross-layer import.
  */
-export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [ciDeriver];
+const ISSUE_TRIAGE_THRESHOLD = 20;
+
+/**
+ * Builds a ready slice from an open-issue count, mirroring `readySlice` in
+ * `useIssuesSignal` so the GraphQL and REST paths are value-identical.
+ */
+function issuesReadySlice(openCount: number, mineCount?: number): IssuesSignalSlice {
+  const overThreshold = openCount >= ISSUE_TRIAGE_THRESHOLD;
+  const slice: IssuesSignalSlice = {
+    status: 'ready',
+    openCount,
+    overThreshold,
+    score: overThreshold ? openCount : Math.floor(openCount / 4),
+  };
+  if (mineCount !== undefined) {
+    slice.mineCount = mineCount;
+    slice.communityCount = Math.max(openCount - mineCount, 0);
+  }
+  return slice;
+}
+
+/**
+ * Per-repo issues selection fragment.
+ *
+ * `issues(states: OPEN).totalCount` returns open issues only — pull requests
+ * are excluded by the GraphQL Issues object (unlike the REST `open_issues_count`
+ * field which includes PRs). This makes the REST subtract-PRs dance unnecessary.
+ *
+ * When `viewerLogin` is non-null/non-empty, a `myIssues` alias is added using
+ * `filterBy: { createdBy: $viewer }` so the viewer's own open issues can be
+ * split out. The `$viewer` query variable is declared by {@link buildFleetQuery}
+ * whenever a non-null viewerLogin is present.
+ */
+function issuesRepoFragment(viewerLogin: string | null): string {
+  const lines = ['openIssues: issues(states: OPEN) { totalCount }'];
+  if (viewerLogin) {
+    lines.push('myIssues: issues(states: OPEN, filterBy: { createdBy: $viewer }) { totalCount }');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Folds one repo's node + the error index into an {@link IssuesSignalSlice}.
+ *
+ * Error guard: if the whole repo alias or its `openIssues` subtree errored →
+ * `{ status: 'error' }`. Absent node (no error) → zero ready slice. Otherwise
+ * derives from `openIssues.totalCount`; if `myIssues` is present, includes the
+ * viewer's mine/community split.
+ */
+function deriveIssuesSlice(
+  node: FleetRepoNode | null,
+  alias: string,
+  errors: FleetErrorIndex,
+): IssuesSignalSlice {
+  if (errors.has(alias) || errors.coversField(`${alias}.openIssues`)) {
+    return { status: 'error' };
+  }
+  if (!node || !node.openIssues) return issuesReadySlice(0);
+  const mineCount = node.myIssues?.totalCount ?? undefined;
+  return issuesReadySlice(node.openIssues.totalCount, mineCount);
+}
+
+/** The issues deriver: open-issue count with optional viewer mine/community split. */
+export const issuesDeriver: SignalDeriver = {
+  signal: 'issues',
+  kind: 'per-repo',
+  repoFragment: issuesRepoFragment,
+  derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
+    const out = new Map<string, SignalSlice>();
+    for (const repo of ctx.repos) {
+      out.set(
+        repo.nameWithOwner,
+        deriveIssuesSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors),
+      );
+    }
+    return out;
+  },
+};
+
+// ── Signal deriver registry ──────────────────────────────────────────────────
+
+/**
+ * The registered signal derivers. Add one entry per signal to extend the
+ * batch — nothing in {@link buildFleetQuery} or {@link executeFleetBatch}
+ * needs editing when a new deriver is appended here.
+ */
+export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [ciDeriver, issuesDeriver];
 
 // ── Query builder ─────────────────────────────────────────────────────────────
 
 /**
  * Builds the variables object paired with {@link buildFleetQuery}: one
- * `owner{i}`/`name{i}` entry per repo. Passing owner/name as GraphQL variables
- * (never string literals) makes the query injection-safe.
+ * `owner{i}`/`name{i}` entry per repo, plus a `viewer` entry when
+ * `viewerLogin` is non-null/non-empty (consumed by `$viewer: String` when any
+ * deriver emits a viewer-scoped fragment). Passing all values as variables
+ * (never as string literals) makes the query injection-safe.
  */
-export function buildFleetVariables(repos: readonly Repo[]): Record<string, string> {
+export function buildFleetVariables(
+  repos: readonly Repo[],
+  viewerLogin?: string | null,
+): Record<string, string> {
   const vars: Record<string, string> = {};
   repos.forEach((repo, i) => {
     vars[`owner${i}`] = repo.owner;
     vars[`name${i}`] = repo.name;
   });
+  if (viewerLogin) {
+    vars['viewer'] = viewerLogin;
+  }
   return vars;
 }
 
 /** The per-repo derivers' fragments, composed once per repo alias. */
-function perRepoSelection(): string {
+function perRepoSelection(viewerLogin: string | null): string {
   const fragments: string[] = ['nameWithOwner'];
   for (const deriver of SIGNAL_DERIVERS) {
     if (deriver.kind === 'per-repo' && deriver.repoFragment) {
-      fragments.push(deriver.repoFragment());
+      fragments.push(deriver.repoFragment(viewerLogin));
     }
   }
   return fragments.join('\n');
@@ -336,14 +438,16 @@ function perRepoSelection(): string {
  * aliased field is appended, followed by `viewer { login }` and
  * `rateLimit { cost remaining resetAt limit }`.
  *
- * Pair the returned string with {@link buildFleetVariables} for the `$owner{i}`/
- * `$name{i}` values.
+ * When `viewerLogin` is non-null/non-empty, `$viewer: String` is added to the
+ * variable declarations so per-repo derivers can reference it (e.g. the issues
+ * deriver's `myIssues` alias). Pair with {@link buildFleetVariables} which
+ * supplies the matching `viewer` binding.
  *
  * @param repos - Repos for this chunk (already chunked by the caller).
- * @param viewerLogin - Viewer login forwarded to top-level derivers.
+ * @param viewerLogin - Viewer login forwarded to per-repo and top-level derivers.
  */
 export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | null): string {
-  const selection = perRepoSelection();
+  const selection = perRepoSelection(viewerLogin);
 
   const varDecls: string[] = [];
   const repoAliases: string[] = [];
@@ -351,6 +455,10 @@ export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | nu
     varDecls.push(`$owner${i}: String!`, `$name${i}: String!`);
     repoAliases.push(`r${i}: repository(owner: $owner${i}, name: $name${i}) {\n${selection}\n}`);
   });
+
+  if (viewerLogin) {
+    varDecls.push('$viewer: String');
+  }
 
   const topLevelFragments: string[] = [];
   for (const deriver of SIGNAL_DERIVERS) {
@@ -470,7 +578,7 @@ export async function executeFleetBatch(
     chunks.map(async (chunkRepos) => {
       try {
         const query = buildFleetQuery(chunkRepos, viewerLogin);
-        const variables = buildFleetVariables(chunkRepos);
+        const variables = buildFleetVariables(chunkRepos, viewerLogin);
         const dataSchema = buildChunkDataSchema(chunkRepos.length);
 
         const { data, errors } = await scheduleGraphQLRequest(

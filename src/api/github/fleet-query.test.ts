@@ -515,7 +515,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 5 } },
         },
@@ -560,7 +560,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 5 } },
         },
@@ -593,7 +593,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 20 } },
         },
@@ -610,7 +610,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: { nameWithOwner: 'o/broken', openIssues: null },
           r1: { nameWithOwner: 'o/ok', openIssues: { totalCount: 3 } },
@@ -628,7 +628,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: null,
         },
@@ -644,7 +644,7 @@ describe('issuesDeriver – executeFleetBatch', () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
-          viewer: { login: null },
+          viewer: null,
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
           r0: null,
         },
