@@ -16,7 +16,9 @@
  */
 import { useMemo, useState } from 'react';
 
-import type { CiSignalSlice, GetRowData, Repo } from '../types/fleet';
+import type { FleetBatchResult } from '../api/github/fleet-query';
+import type { TileSignalType } from '../types/dashboard';
+import type { CiSignalSlice, GetRowData, Repo, SignalSlice } from '../types/fleet';
 import { graphqlSignalEnabled } from '../lib/graphql-flags';
 import { useCiSignal } from './signals/useCiSignal';
 import { useIssuesSignal } from './signals/useIssuesSignal';
@@ -31,6 +33,28 @@ import { useVisibilityRevalidate } from './useVisibilityRevalidate';
 export interface UseRepoSignalsResult {
   /** Resolves the composed signal payload for a single repo row. */
   getRowData: GetRowData;
+}
+
+/**
+ * Builds a signal override map for a GraphQL-migrated signal.
+ *
+ * - Flag OFF → `undefined`: the signal hook uses its normal REST fan-out.
+ * - Flag ON, batch loading → per-repo `{ status: 'loading' }` map: the hook
+ *   short-circuits its REST fan-out and surfaces loading cells immediately.
+ * - Flag ON, batch settled → the resolved slice map (empty map when the signal
+ *   is absent from the result): REST is permanently suppressed.
+ */
+function buildSignalOverride<T extends SignalSlice>(
+  signal: TileSignalType,
+  loading: boolean,
+  result: FleetBatchResult,
+  repos: Repo[],
+): Map<string, T> | undefined {
+  if (!graphqlSignalEnabled(signal)) return undefined;
+  if (loading) {
+    return new Map(repos.map((repo) => [repo.nameWithOwner, { status: 'loading' } as T]));
+  }
+  return (result.get(signal) as Map<string, T> | undefined) ?? new Map<string, T>();
 }
 
 /**
@@ -62,16 +86,21 @@ export function useRepoSignals(
     [repos, revalidateNonce],
   );
 
-  // One batched GraphQL query covers every GraphQL-enabled signal. Each signal
-  // hook picks its own slice via an optional override param; hooks for signals
-  // whose flag is still off receive `undefined` and fall through to REST.
+  // One batched GraphQL query covers every GraphQL-enabled signal. For each
+  // migrated signal, build an override with:
+  //   const xOverride = buildSignalOverride<XSlice>('x', batch.loading, batch.result, revalidatedRepos)
+  // then pass it to useXSignal. When the flag is ON, the override is always
+  // defined: a per-repo loading-slice map while the batch is in-flight, the
+  // settled batch result afterward — so the signal hook NEVER falls through to
+  // REST. When the flag is OFF, undefined is returned and REST is used.
   const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
 
-  // Generic seam: add `xOverride` + pass it to `useXSignal` for each new signal.
-  const ciOverride =
-    graphqlSignalEnabled('ci') && !batch.loading
-      ? (batch.result.get('ci') as Map<string, CiSignalSlice> | undefined)
-      : undefined;
+  const ciOverride = buildSignalOverride<CiSignalSlice>(
+    'ci',
+    batch.loading,
+    batch.result,
+    revalidatedRepos,
+  );
 
   const ci = useCiSignal(revalidatedRepos, token, ciOverride);
   const security = useSecuritySignal(revalidatedRepos, token);
