@@ -22,6 +22,7 @@ import type {
   CiSignalSlice,
   GetRowData,
   IssuesSignalSlice,
+  PullRequestsSignalSlice,
   Repo,
   SignalSlice,
 } from '../types/fleet';
@@ -115,10 +116,17 @@ export function useRepoSignals(
     revalidatedRepos,
   );
 
+  const pullRequestsOverride = buildSignalOverride<PullRequestsSignalSlice>(
+    'pullRequests',
+    batch.loading,
+    batch.result,
+    revalidatedRepos,
+  );
+
   const ci = useCiSignal(revalidatedRepos, token, ciOverride);
   const security = useSecuritySignal(revalidatedRepos, token);
   const reviews = useReviewsSignal(revalidatedRepos, token);
-  const pullRequests = usePullRequestsSignal(revalidatedRepos, token);
+  const pullRequests = usePullRequestsSignal(revalidatedRepos, token, pullRequestsOverride);
   const issues = useIssuesSignal(revalidatedRepos, token, viewerLogin, issuesOverride);
   const stale = useStaleSignal(revalidatedRepos, token);
 

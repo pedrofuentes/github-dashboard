@@ -30,7 +30,13 @@ import { z, type ZodType } from 'zod';
 
 import { isAbortError } from '../../lib/abort';
 import type { TileSignalType } from '../../types/dashboard';
-import type { CiSignalSlice, IssuesSignalSlice, Repo, SignalSlice } from '../../types/fleet';
+import type {
+  CiSignalSlice,
+  IssuesSignalSlice,
+  PullRequestsSignalSlice,
+  Repo,
+  SignalSlice,
+} from '../../types/fleet';
 import {
   GraphQLRateLimitPartSchema,
   fetchGraphQL,
@@ -58,6 +64,24 @@ const DefaultBranchRefSchema = z
 /** Zod schema for a `{ totalCount }` issue-count field (issues + myIssues). */
 const IssueCountSchema = z.object({ totalCount: z.number() }).passthrough();
 
+/** Zod schema for one node in a `pullRequests` connection. */
+const PullRequestNodeSchema = z
+  .object({
+    number: z.number(),
+    title: z.string(),
+    url: z.string(),
+    createdAt: z.string(),
+    isDraft: z.boolean(),
+    authorAssociation: z.string(),
+    author: z.object({ login: z.string() }).passthrough().nullable().optional(),
+  })
+  .passthrough();
+
+/** Zod schema for the `pullRequests { nodes [...] }` connection. */
+const PullRequestsConnectionSchema = z
+  .object({ nodes: z.array(PullRequestNodeSchema) })
+  .passthrough();
+
 /**
  * Zod schema for one repository node as selected by the fleet query. Only
  * `nameWithOwner` is required (it keys every slice); all signal-specific fields
@@ -71,6 +95,7 @@ export const FleetRepoNodeSchema = z
     defaultBranchRef: DefaultBranchRefSchema.nullable().optional(),
     openIssues: IssueCountSchema.nullable().optional(),
     myIssues: IssueCountSchema.nullable().optional(),
+    pullRequests: PullRequestsConnectionSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -393,6 +418,92 @@ export const issuesDeriver: SignalDeriver = {
   },
 };
 
+// ── PR deriver (open / new-contributor pull requests) ────────────────────────
+
+/**
+ * `author_association` values that identify a new outside contributor (not a
+ * member, owner, collaborator, or returning `CONTRIBUTOR`). Value-identical to
+ * the same constant in `usePullRequestsSignal` so both REST and GraphQL paths
+ * produce identical externalCount values.
+ */
+const OUTSIDE_CONTRIBUTOR_ASSOCIATIONS = new Set([
+  'FIRST_TIME_CONTRIBUTOR',
+  'FIRST_TIMER',
+  'NONE',
+  'MANNEQUIN',
+]);
+
+/**
+ * Per-repo PR selection fragment.
+ *
+ * Fetches the first 100 OPEN pull requests — matching the REST hook's
+ * `per_page=100` cap — so `openCount` is the non-draft subset of ≤100, never
+ * an uncapped server total. `totalCount` is intentionally omitted: it would
+ * include drafts and exceed the 100-item cap, diverging from REST semantics.
+ */
+function prRepoFragment(): string {
+  return [
+    'pullRequests(states: OPEN, first: 100) {',
+    '  nodes { number title url createdAt isDraft authorAssociation author { login } }',
+    '}',
+  ].join('\n');
+}
+
+/**
+ * Folds one repo's node + the error index into a {@link PullRequestsSignalSlice}
+ * that is value-identical in shape to what `usePullRequestsSignal` emits today.
+ *
+ * openCount = non-draft PRs (drafts are WIP, not awaiting review)
+ * externalCount = non-draft PRs whose authorAssociation ∈ OUTSIDE_CONTRIBUTOR_ASSOCIATIONS
+ * score = externalCount * 5 + openCount  (new-contributor PRs weighted 5×)
+ * externalPullRequests = identity list present only when externalCount > 0
+ */
+function derivePrSlice(
+  node: FleetRepoNode | null,
+  alias: string,
+  errors: FleetErrorIndex,
+): PullRequestsSignalSlice {
+  if (errors.has(alias) || errors.coversField(`${alias}.pullRequests`)) {
+    return { status: 'error' };
+  }
+  if (!node?.pullRequests) return { status: 'ready', openCount: 0, externalCount: 0, score: 0 };
+
+  const nonDraft = node.pullRequests.nodes.filter((p) => !p.isDraft);
+  const external = nonDraft.filter((p) =>
+    OUTSIDE_CONTRIBUTOR_ASSOCIATIONS.has(p.authorAssociation),
+  );
+  const externalCount = external.length;
+  const openCount = nonDraft.length;
+  const score = externalCount * 5 + openCount;
+
+  const slice: PullRequestsSignalSlice = { status: 'ready', openCount, externalCount, score };
+  if (externalCount > 0) {
+    slice.externalPullRequests = external.map((p) => ({
+      number: p.number,
+      title: p.title,
+      html_url: p.url,
+      created_at: p.createdAt,
+      user_login: p.author?.login ?? '',
+      author_association: p.authorAssociation,
+    }));
+  }
+  return slice;
+}
+
+/** The PR deriver: open / new-contributor pull requests (non-draft, first 100). */
+export const prDeriver: SignalDeriver = {
+  signal: 'pullRequests',
+  kind: 'per-repo',
+  repoFragment: prRepoFragment,
+  derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
+    const out = new Map<string, SignalSlice>();
+    for (const repo of ctx.repos) {
+      out.set(repo.nameWithOwner, derivePrSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors));
+    }
+    return out;
+  },
+};
+
 // ── Signal deriver registry ──────────────────────────────────────────────────
 
 /**
@@ -400,7 +511,7 @@ export const issuesDeriver: SignalDeriver = {
  * batch — nothing in {@link buildFleetQuery} or {@link executeFleetBatch}
  * needs editing when a new deriver is appended here.
  */
-export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [ciDeriver, issuesDeriver];
+export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [ciDeriver, issuesDeriver, prDeriver];
 
 // ── Query builder ─────────────────────────────────────────────────────────────
 
