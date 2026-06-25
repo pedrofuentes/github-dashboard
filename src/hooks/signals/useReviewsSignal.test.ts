@@ -483,3 +483,42 @@ describe('useReviewsSignal', () => {
     errorSpy.mockRestore();
   });
 });
+
+describe('useReviewsSignal — override param', () => {
+  it('returns the override map directly and never calls the fetcher', () => {
+    const override = new Map([
+      ['octo/a', { status: 'ready' as const, requestedCount: 3, score: 3 * REVIEW_SCORE_WEIGHT }],
+    ]);
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token', override));
+
+    expect(result.current).toBe(override);
+    expect(mockFetchPage).not.toHaveBeenCalled();
+  });
+
+  it('falls back to REST behavior when override is undefined', async () => {
+    resolveOnce(page(['octo/a']));
+    const { result } = renderHook(() => useReviewsSignal(REPOS, 'ghp_token', undefined));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    expect(mockFetchPage).toHaveBeenCalled();
+  });
+
+  it('skips REST and stays on the override when it changes to a new map', () => {
+    const overrideA = new Map([
+      ['octo/a', { status: 'ready' as const, requestedCount: 1, score: REVIEW_SCORE_WEIGHT }],
+    ]);
+    const overrideB = new Map([
+      ['octo/a', { status: 'ready' as const, requestedCount: 2, score: 2 * REVIEW_SCORE_WEIGHT }],
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ override }) => useReviewsSignal(REPOS, 'ghp_token', override),
+      { initialProps: { override: overrideA } },
+    );
+    expect(result.current).toBe(overrideA);
+
+    rerender({ override: overrideB });
+    expect(result.current).toBe(overrideB);
+    expect(mockFetchPage).not.toHaveBeenCalled();
+  });
+});
