@@ -488,19 +488,26 @@ describe('useIssuesSignal', () => {
       expect(result.current.get('octo/a')?.communityCount).toBeUndefined();
     });
 
-    it('marks the repo as error when only the viewer-count fetch rejects', async () => {
-      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('degrades to ready (open count kept, mine/community undefined) when only the viewer-count fetch rejects', async () => {
+      // #494: a viewer-count failure (e.g. a Search rate limit) must not blank
+      // the whole slice. The open count is the backbone and stays surfaced;
+      // only the mine/community enrichment is dropped, and the loss is warned.
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       mockFetchIssueCount.mockResolvedValue(5);
       mockFetchViewerIssueCount.mockRejectedValue(new Error('viewer boom'));
 
       const { result } = renderHook(() => useIssuesSignal(ONE_REPO, 'ghp_token', 'octocat'));
 
       await waitFor(() => {
-        expect(result.current.get('octo/a')?.status).toBe('error');
+        expect(result.current.get('octo/a')?.status).toBe('ready');
       });
 
-      expect(result.current.get('octo/a')?.mineCount).toBeUndefined();
-      errorSpy.mockRestore();
+      const slice = result.current.get('octo/a');
+      expect(slice).toMatchObject({ status: 'ready', openCount: 5, overThreshold: false });
+      expect(slice?.mineCount).toBeUndefined();
+      expect(slice?.communityCount).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
     });
   });
 });

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
-import { fetchWithETag } from '../../api/github';
+import { GitHubApiError, GitHubErrorCode, fetchWithETag, searchLimiter } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import {
   STALE_THRESHOLD_DAYS,
@@ -12,10 +12,12 @@ import {
   useStaleSignal,
 } from './useStaleSignal';
 
-vi.mock('../../api/github', () => ({
-  GITHUB_API_BASE: 'https://api.github.com',
-  fetchWithETag: vi.fn(),
-}));
+vi.mock('../../api/github', async (importActual) => {
+  const actual = await importActual<typeof import('../../api/github')>();
+  // Keep the real api/github (Search limiter, error types) but stub the network
+  // boundary so the hook's fan-out is driven entirely by the test.
+  return { ...actual, fetchWithETag: vi.fn() };
+});
 
 const mockFetchWithETag = vi.mocked(fetchWithETag);
 
@@ -75,10 +77,12 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 
 beforeEach(() => {
   mockFetchWithETag.mockReset();
+  searchLimiter.reset();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  searchLimiter.reset();
 });
 
 describe('staleCutoffDate', () => {
@@ -471,6 +475,33 @@ describe('useStaleSignal', () => {
     expect(args.some((arg) => typeof arg === 'string' && arg.includes('octo/a'))).toBe(true);
     expect(args).toContain(failure);
     errorSpy.mockRestore();
+  });
+
+  it('recovers from a transient Search secondary rate limit and settles ready', async () => {
+    // A secondary-limit 403 (RATE_LIMITED + short Retry-After) must be retried
+    // by the shared Search limiter, not surfaced as a per-repo error (T-bf2).
+    let calls = 0;
+    mockFetchWithETag.mockImplementation((() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(
+          new GitHubApiError(
+            'secondary rate limit',
+            403,
+            undefined,
+            0,
+            GitHubErrorCode.RATE_LIMITED,
+          ),
+        );
+      }
+      return Promise.resolve({ total_count: 3 });
+    }) as never);
+
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+
+    expect(result.current.get('octo/a')).toMatchObject({ status: 'ready', staleCount: 3 });
+    expect(calls).toBe(2);
   });
 
   it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {

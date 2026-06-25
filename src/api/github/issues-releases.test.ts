@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchLatestRelease, formatRelativeTime, fetchViewerIssueCount } from './issues-releases';
-import { GitHubApiError } from './index';
+import { GitHubApiError, searchLimiter } from './index';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
@@ -40,10 +40,12 @@ describe('fetchViewerIssueCount', () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn();
+    searchLimiter.reset();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    searchLimiter.reset();
   });
 
   it('returns total_count from the Search API', async () => {
@@ -51,6 +53,25 @@ describe('fetchViewerIssueCount', () => {
 
     const result = await fetchViewerIssueCount('owner', 'repo', 'alice');
     expect(result).toBe(7);
+  });
+
+  it('retries through the shared Search limiter on a secondary-limit 403, then resolves', async () => {
+    // A 403 carrying Retry-After is a secondary rate limit: routed through the
+    // shared Search limiter it is reclassified RATE_LIMITED and retried, so the
+    // count resolves instead of erroring the repo (T-bf2 / #495).
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(
+        mockFetchResponse(
+          403,
+          { message: 'secondary rate limit' },
+          mockHeaders({ 'retry-after': '0' }),
+        ),
+      )
+      .mockResolvedValueOnce(mockFetchResponse(200, { total_count: 4 }));
+
+    const result = await fetchViewerIssueCount('owner', 'repo', 'alice', 'ghp_test');
+    expect(result).toBe(4);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('builds URL with repo, type:issue, is:open and author:<login> qualifiers', async () => {
