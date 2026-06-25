@@ -28,8 +28,11 @@ vi.mock('./signals/useStaleSignal', () => ({ useStaleSignal: vi.fn() }));
 vi.mock('./useFleetBatchLoader', () => ({ useFleetBatchLoader: vi.fn() }));
 
 const REPO: Repo = { nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false };
+const REPO_B: Repo = { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false };
 const ABSENT: Repo = { nameWithOwner: 'octo/z', owner: 'octo', name: 'z', isPrivate: false };
 const REPOS: Repo[] = [REPO];
+/** Two-repo stable array for progressive-fill / identity tests. */
+const REPOS_AB: Repo[] = [REPO, REPO_B];
 
 const ci: CiSignalSlice = { status: 'ready', score: 3, conclusion: 'failure', failingCount: 2 };
 const security: SecuritySignalSlice = {
@@ -244,9 +247,10 @@ describe('useRepoSignals', () => {
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
 
     const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
-    // New behaviour: a loading Map is passed so useCiSignal skips REST entirely.
+    // Progressive behaviour: a Map override is still passed (skips REST entirely),
+    // and repos with settled batch data surface their slice even while loading.
     expect(lastCiCall?.[2]).toBeInstanceOf(Map);
-    expect(lastCiCall?.[2]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+    expect(lastCiCall?.[2]?.get(REPO.nameWithOwner)).toEqual(ci);
   });
 
   it('CI slices in getRowData come from the batch loader via the useCiSignal override', () => {
@@ -611,8 +615,12 @@ describe('useRepoSignals', () => {
   // ── Progressive fill during loading (#progressive) ───────────────────────
 
   it('shows settled slice for a loaded repo and {status:loading} for an unloaded repo while batch is loading', () => {
-    const REPO_B: Repo = { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false };
-    const readyCi: CiSignalSlice = { status: 'ready', score: 1, conclusion: 'success', failingCount: 0 };
+    const readyCi: CiSignalSlice = {
+      status: 'ready',
+      score: 1,
+      conclusion: 'success',
+      failingCount: 0,
+    };
     const partialCiMap = new Map([[REPO.nameWithOwner, readyCi]]);
 
     vi.mocked(useFleetBatchLoader).mockReturnValue({
@@ -626,7 +634,7 @@ describe('useRepoSignals', () => {
       (_repos, _token, override) => override ?? new Map([[REPO.nameWithOwner, ci]]),
     );
 
-    const { result } = renderHook(() => useRepoSignals([REPO, REPO_B], 'ghp_token'));
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
 
     // octo/a: batch has a settled slice — must surface it progressively.
     expect(result.current.getRowData(REPO).ci).toEqual(readyCi);
@@ -635,8 +643,12 @@ describe('useRepoSignals', () => {
   });
 
   it('progressive loading override Map is the same reference across re-renders when batch.result is stable', () => {
-    const REPO_B: Repo = { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false };
-    const readyCi: CiSignalSlice = { status: 'ready', score: 1, conclusion: 'success', failingCount: 0 };
+    const readyCi: CiSignalSlice = {
+      status: 'ready',
+      score: 1,
+      conclusion: 'success',
+      failingCount: 0,
+    };
 
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', new Map([[REPO.nameWithOwner, readyCi]])]]),
@@ -644,7 +656,7 @@ describe('useRepoSignals', () => {
       error: false,
     });
 
-    const { rerender } = renderHook(() => useRepoSignals([REPO, REPO_B], 'ghp_token'));
+    const { rerender } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
     const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
 
     rerender();

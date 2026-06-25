@@ -45,6 +45,18 @@ import { useVisibilityRevalidate } from './useVisibilityRevalidate';
  */
 const EMPTY_OVERRIDE: Map<string, never> = new Map<string, never>();
 
+/**
+ * Stable per-repo `{ status: 'loading' }` slice reference used in the
+ * progressive loading map — prevents object allocation on every render (#540).
+ */
+const LOADING_SLICE: SignalSlice = { status: 'loading' };
+
+/**
+ * Signals served via the batched GraphQL layer (mirrors {@link graphql-flags.ts}).
+ * Listed here so the progressive-loading memo iterates exactly this set.
+ */
+const GRAPHQL_SIGNAL_KEYS: TileSignalType[] = ['ci', 'reviews', 'pullRequests', 'issues', 'stale'];
+
 /** Public shape returned by {@link useRepoSignals}. */
 export interface UseRepoSignalsResult {
   /** Resolves the composed signal payload for a single repo row. */
@@ -55,8 +67,9 @@ export interface UseRepoSignalsResult {
  * Builds a signal override map for a GraphQL-migrated signal.
  *
  * - Flag OFF → `undefined`: the signal hook uses its normal REST fan-out.
- * - Flag ON, batch loading → the memoized per-repo `{ status: 'loading' }` map
- *   (stable identity across renders): hook short-circuits REST immediately.
+ * - Flag ON, batch loading → the per-repo merged map from `partialLoadingMaps`:
+ *   repos with a settled slice show that slice progressively; the rest show
+ *   `{ status: 'loading' }` (stable reference, #540).
  * - Flag ON, batch error → the memoized per-repo `{ status: 'error' }` map
  *   (stable identity): hook surfaces error cells instead of falling through to
  *   REST (#541).
@@ -66,11 +79,15 @@ export interface UseRepoSignalsResult {
 function buildSignalOverride<T extends SignalSlice>(
   signal: TileSignalType,
   batch: UseFleetBatchLoaderResult,
-  loadingMap: Map<string, SignalSlice>,
+  partialLoadingMaps: Map<TileSignalType, Map<string, SignalSlice>>,
   errorMap: Map<string, SignalSlice>,
 ): Map<string, T> | undefined {
   if (!graphqlSignalEnabled(signal)) return undefined;
-  if (batch.loading) return loadingMap as Map<string, T>;
+  if (batch.loading)
+    return (
+      (partialLoadingMaps.get(signal) as Map<string, T> | undefined) ??
+      (EMPTY_OVERRIDE as Map<string, T>)
+    );
   if (batch.error) return errorMap as Map<string, T>;
   return (
     (batch.result.get(signal) as Map<string, T> | undefined) ?? (EMPTY_OVERRIDE as Map<string, T>)
@@ -108,20 +125,33 @@ export function useRepoSignals(
 
   // One batched GraphQL query covers every GraphQL-enabled signal. For each
   // migrated signal, build an override with:
-  //   const xOverride = buildSignalOverride<XSlice>('x', batch, loadingOverride, errorOverride)
+  //   const xOverride = buildSignalOverride<XSlice>('x', batch, partialLoadingMaps, errorOverride)
   // then pass it to useXSignal. When the flag is ON, the override is always
-  // defined: a per-repo loading-slice map while the batch is in-flight, the
-  // settled batch result afterward — so the signal hook NEVER falls through to
-  // REST. When the flag is OFF, undefined is returned and REST is used.
+  // defined: a per-repo progressive map while the batch is in-flight (settled
+  // slices surfaced as they arrive, loading for the rest), the settled batch
+  // result afterward — so the signal hook NEVER falls through to REST. When the
+  // flag is OFF, undefined is returned and REST is used.
   const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
 
-  // Memoized on revalidatedRepos so the same Map reference is returned on every
-  // render while repos are unchanged — preventing getRowData from seeing a new
-  // dep and re-running the grid sort during the loading / error windows (#540).
-  const loadingOverride = useMemo<Map<string, SignalSlice>>(
-    () => new Map(revalidatedRepos.map((r) => [r.nameWithOwner, { status: 'loading' as const }])),
-    [revalidatedRepos],
-  );
+  // Per-signal merged loading maps for the progressive fill: repos that have a
+  // settled batch slice show it immediately; the rest show LOADING_SLICE.
+  // Memoized on [batch.result, batch.loading, revalidatedRepos] so the same Map
+  // reference is returned on every render while inputs are unchanged — preventing
+  // getRowData from seeing a new dep and re-running the grid sort (#540).
+  // batch.loading is an intentional invalidation trigger (not read in body).
+  const partialLoadingMaps = useMemo<Map<TileSignalType, Map<string, SignalSlice>>>(() => {
+    const out = new Map<TileSignalType, Map<string, SignalSlice>>();
+    for (const sig of GRAPHQL_SIGNAL_KEYS) {
+      const settled = batch.result.get(sig);
+      const perRepo = new Map<string, SignalSlice>();
+      for (const repo of revalidatedRepos) {
+        perRepo.set(repo.nameWithOwner, settled?.get(repo.nameWithOwner) ?? LOADING_SLICE);
+      }
+      out.set(sig, perRepo);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- batch.loading is an intentional invalidation trigger
+  }, [batch.result, batch.loading, revalidatedRepos]);
 
   const errorOverride = useMemo<Map<string, SignalSlice>>(
     () => new Map(revalidatedRepos.map((r) => [r.nameWithOwner, { status: 'error' as const }])),
@@ -131,35 +161,35 @@ export function useRepoSignals(
   const ciOverride = buildSignalOverride<CiSignalSlice>(
     'ci',
     batch,
-    loadingOverride,
+    partialLoadingMaps,
     errorOverride,
   );
 
   const issuesOverride = buildSignalOverride<IssuesSignalSlice>(
     'issues',
     batch,
-    loadingOverride,
+    partialLoadingMaps,
     errorOverride,
   );
 
   const pullRequestsOverride = buildSignalOverride<PullRequestsSignalSlice>(
     'pullRequests',
     batch,
-    loadingOverride,
+    partialLoadingMaps,
     errorOverride,
   );
 
   const staleOverride = buildSignalOverride<StaleSignalSlice>(
     'stale',
     batch,
-    loadingOverride,
+    partialLoadingMaps,
     errorOverride,
   );
 
   const reviewsOverride = buildSignalOverride<ReviewsSignalSlice>(
     'reviews',
     batch,
-    loadingOverride,
+    partialLoadingMaps,
     errorOverride,
   );
 
