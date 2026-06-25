@@ -385,3 +385,81 @@ describe('BoardKey — data-* seams', () => {
     expect(el).toHaveAttribute('data-state', 'ready');
   });
 });
+
+describe('BoardKey — security no-access key accessible text', () => {
+  const noAccessData: RepoSignalData = { security: { status: 'ready' } };
+  const NO_ACCESS_REASON =
+    'No security-alert access for this repository (token scope or feature disabled)';
+
+  it('includes the no-access reason in the aria-label of an interactive no-access security key', () => {
+    render(
+      <BoardKey repo={makeRepo()} signal="security" data={noAccessData} onActivate={vi.fn()} />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button.getAttribute('aria-label')).toContain(NO_ACCESS_REASON);
+  });
+
+  it('includes the no-access reason in the sr-only text of a non-interactive no-access security key', () => {
+    const { container } = render(
+      <BoardKey repo={makeRepo()} signal="security" data={noAccessData} />,
+    );
+
+    expect(container.querySelector('.sr-only')?.textContent).toContain(NO_ACCESS_REASON);
+  });
+
+  it('adds a title attribute on the root element for hover context', () => {
+    const { container } = render(
+      <BoardKey repo={makeRepo()} signal="security" data={noAccessData} />,
+    );
+
+    expect(root(container).getAttribute('title')).toBe(NO_ACCESS_REASON);
+  });
+
+  it('adds a title attribute on the interactive (button) root element too', () => {
+    const { container } = render(
+      <BoardKey repo={makeRepo()} signal="security" data={noAccessData} onActivate={vi.fn()} />,
+    );
+
+    expect(root(container).getAttribute('title')).toBe(NO_ACCESS_REASON);
+  });
+
+  it('does NOT add the no-access reason to a graded security key with counts', () => {
+    const gradedData: RepoSignalData = {
+      security: {
+        status: 'ready',
+        grade: 'A',
+        counts: { critical: 0, high: 0, medium: 0, low: 0 },
+      },
+    };
+    render(<BoardKey repo={makeRepo()} signal="security" data={gradedData} onActivate={vi.fn()} />);
+
+    const name = screen.getByRole('button').getAttribute('aria-label') ?? '';
+    expect(name).not.toContain('token scope');
+    expect(name).not.toContain('No security-alert access');
+  });
+
+  it('does NOT add the no-access reason to a security key in the error state', () => {
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="security"
+        data={{ security: { status: 'error' } }}
+        onActivate={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const name = screen.getByRole('button').getAttribute('aria-label') ?? '';
+    expect(name).not.toContain('token scope');
+    expect(name).not.toContain('No security-alert access');
+  });
+
+  it('does NOT set title on a non-security key', () => {
+    const { container } = render(
+      <BoardKey repo={makeRepo()} signal="issues" data={{ issues: { status: 'ready' } }} />,
+    );
+
+    expect(root(container).getAttribute('title')).toBeNull();
+  });
+});
