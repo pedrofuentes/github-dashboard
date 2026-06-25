@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
-import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { GITHUB_API_BASE, fetchWithETag, scheduleSearchRequest } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
 import type { Repo, StaleItem, StaleSignalSlice } from '../../types/fleet';
 
@@ -171,10 +171,21 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
       SIGNAL_FETCH_CONCURRENCY,
       async (repo, signal) => {
         try {
-          const data = await fetchWithETag(
-            staleSearchUrl(repo.owner, repo.name, cutoffDate),
-            StaleSearchResponseSchema,
-            { token, context: 'useStaleSignal', signal },
+          // Route every per-repo Search call through the shared Search limiter
+          // so the fleet stays inside GitHub's ~30 req/min Search budget and a
+          // transient secondary-limit 403 is retried instead of erroring (#495).
+          const data = await scheduleSearchRequest(
+            () =>
+              fetchWithETag(
+                staleSearchUrl(repo.owner, repo.name, cutoffDate),
+                StaleSearchResponseSchema,
+                {
+                  token,
+                  context: 'useStaleSignal',
+                  signal,
+                },
+              ),
+            signal,
           );
           if (generation !== generationRef.current) {
             return;
