@@ -683,4 +683,32 @@ describe('issuesDeriver – executeFleetBatch', () => {
       communityCount: 0,
     });
   });
+
+  it('myIssues subtree error nulls the repo node → error slice, not a false openCount:0', async () => {
+    // When `myIssues` errors at runtime, GraphQL null-propagation nulls the whole
+    // repository node (nearest nullable ancestor). The error path is [alias, 'myIssues'].
+    // Neither `has(alias)` (exact) nor `coversField(alias.openIssues)` matches, so without
+    // the myIssues guard the deriver falls through to the !node branch and silently
+    // returns openCount:0 — hiding an unhealthy repo. This test asserts the honest result.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: null,
+          r1: { nameWithOwner: 'o/sibling', openIssues: { totalCount: 7 } },
+        },
+        errors: [{ message: 'Could not resolve myIssues', path: ['r0', 'myIssues'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/broken'), repo('o/sibling')], 'me', TOKEN);
+    // r0 nulled by myIssues error propagation → must be an honest error slice, not zero.
+    expect(issues(issuesMapOf(result), 'o/broken')).toEqual({ status: 'error' });
+    // r1 (sibling) is unaffected and derives correctly.
+    expect(issues(issuesMapOf(result), 'o/sibling')).toMatchObject({
+      status: 'ready',
+      openCount: 7,
+    });
+  });
 });
