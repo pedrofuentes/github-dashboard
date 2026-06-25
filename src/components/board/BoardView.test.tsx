@@ -3,11 +3,25 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
+import { deckKeyId } from '../../lib/deck-visibility';
+import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../../types/fleet';
 import { BoardView } from './BoardView';
 
 /** The six signals BoardView renders, in their fixed left-to-right order. */
-const SIGNAL_ORDER = ['ci', 'security', 'reviews', 'pullRequests', 'issues', 'stale'];
+const SIGNAL_ORDER: TileSignalType[] = [
+  'ci',
+  'security',
+  'reviews',
+  'pullRequests',
+  'issues',
+  'stale',
+];
+
+/** Builds the hidden-set ids for the given signals of `repo` (deck-visibility lib). */
+function hidden(repo: Repo, signals: TileSignalType[]): Set<string> {
+  return new Set(signals.map((signal) => deckKeyId(repo.nameWithOwner, signal)));
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -215,5 +229,156 @@ describe('BoardView — per-key retry threading', () => {
 
     expect(onRepoActivate).toHaveBeenCalledTimes(1);
     expect(onRetry).not.toHaveBeenCalled();
+  });
+});
+
+describe('BoardView — per-tile hide (hiddenKeys)', () => {
+  it('treats an absent hiddenKeys set as "all visible"', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(keys(container)).toHaveLength(2 * 6);
+  });
+
+  it('omits only the hidden signals for a repo, keeping the rest in fixed order', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, ['ci', 'issues'])}
+      />,
+    );
+
+    const signals = keys(container).map((key) => key.getAttribute('data-signal'));
+    expect(signals).toEqual(['security', 'reviews', 'pullRequests', 'stale']);
+  });
+
+  it('renders repos×6 minus the hidden keys across multiple repos', () => {
+    const hiddenKeys = new Set([...hidden(repoA, ['ci']), ...hidden(repoB, ['stale', 'issues'])]);
+    const { container } = render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} hiddenKeys={hiddenKeys} />,
+    );
+
+    expect(keys(container)).toHaveLength(2 * 6 - 3);
+  });
+
+  it('applies repoFilter and hiddenKeys together', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        repoFilter={new Set([repoA.nameWithOwner])}
+        hiddenKeys={hidden(repoA, ['ci'])}
+      />,
+    );
+
+    expect(keys(container)).toHaveLength(5);
+    expect(screen.queryByText('octo/repo-b')).toBeNull();
+  });
+
+  it('announces the visible tile count when some tiles are hidden (plural)', () => {
+    render(
+      <BoardView repos={[repoA]} getRowData={getRowData} hiddenKeys={hidden(repoA, ['ci'])} />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('5 tiles');
+  });
+
+  it('uses the singular noun when exactly one tile is visible', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, ['ci', 'security', 'reviews', 'pullRequests', 'issues'])}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(/\b1 tile\b/);
+  });
+
+  it('does not annotate the tile count when no tiles are hidden', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 repositories');
+    expect(screen.getByRole('status').textContent).not.toMatch(/tile/i);
+  });
+
+  it('shows the all-tiles-hidden empty state, distinct from no-repos/filtered', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, SIGNAL_ORDER)}
+      />,
+    );
+
+    expect(keys(container)).toHaveLength(0);
+    expect(screen.getByText(/all tiles hidden/i)).toBeInTheDocument();
+    expect(screen.getByText(/customize/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No repositories/i)).toBeNull();
+  });
+});
+
+describe('BoardView — edit mode (× remove overlay)', () => {
+  it('renders no remove overlay when not editing', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} onToggleKey={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /remove .* tile for/i })).toBeNull();
+  });
+
+  it('overlays a remove button on every visible key when editing', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={vi.fn()} />);
+
+    expect(
+      screen.getAllByRole('button', { name: /remove .* tile for octo\/repo-a/i }),
+    ).toHaveLength(6);
+  });
+
+  it('labels each remove button and toggles that (repo, signal) on click', async () => {
+    const user = userEvent.setup();
+    const onToggleKey = vi.fn();
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={onToggleKey} />);
+
+    await user.click(screen.getByRole('button', { name: 'Remove CI tile for octo/repo-a' }));
+
+    expect(onToggleKey).toHaveBeenCalledTimes(1);
+    expect(onToggleKey).toHaveBeenCalledWith(repoA, 'ci');
+  });
+
+  it('uses the multi-word signal label in the remove aria-label', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={vi.fn()} />);
+
+    expect(
+      screen.getByRole('button', { name: 'Remove Pull requests tile for octo/repo-a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the remove button as a sibling overlay, not nested in the key button', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        editing
+        onRepoActivate={vi.fn()}
+        onToggleKey={vi.fn()}
+      />,
+    );
+
+    const removeCi = screen.getByRole('button', { name: 'Remove CI tile for octo/repo-a' });
+    expect(removeCi.closest('[data-signal]')).toBeNull();
+  });
+
+  it('overlays a remove button only on the visible keys', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        editing
+        hiddenKeys={hidden(repoA, ['ci', 'security'])}
+        onToggleKey={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: /remove .* tile for/i })).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Remove CI tile for octo/repo-a' })).toBeNull();
   });
 });

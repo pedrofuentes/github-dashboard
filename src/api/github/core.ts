@@ -303,6 +303,20 @@ export function handleApiError(
     );
   }
 
+  if (status === 403 && retryAfterSeconds !== undefined) {
+    // Secondary rate limit: GitHub returns 403 + Retry-After while the primary
+    // budget (x-ratelimit-remaining) may still look healthy. Treat it as a
+    // recoverable RATE_LIMITED error so the Search limiter can back off (#495),
+    // rather than a permanent ACCESS_DENIED.
+    throw new GitHubApiError(
+      `GitHub API secondary rate limit hit. Retry after ${retryAfterSeconds}s`,
+      status,
+      rateLimitInfo,
+      retryAfterSeconds,
+      GitHubErrorCode.RATE_LIMITED,
+    );
+  }
+
   if (status === 403 && rateLimitInfo.remaining === 0) {
     const resetTime = rateLimitInfo.reset.toLocaleTimeString();
     const waitSec = Math.max(Math.ceil((rateLimitInfo.reset.getTime() - Date.now()) / 1000), 0);

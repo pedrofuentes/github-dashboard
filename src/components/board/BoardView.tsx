@@ -17,25 +17,14 @@
  * The board is a labelled region; each key carries its own accessible name from
  * {@link BoardKey}, so the grid itself stays a plain styled container.
  */
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import type { ReactElement } from 'react';
 
+import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
+import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
 import { BoardKey } from './BoardKey';
-
-/**
- * The six signals every repo renders, in fixed left-to-right order. `activity`
- * is deliberately absent (no signal slice — out of scope for the board).
- */
-const BOARD_SIGNALS: TileSignalType[] = [
-  'ci',
-  'security',
-  'reviews',
-  'pullRequests',
-  'issues',
-  'stale',
-];
 
 /** Placeholder keys shown while the fleet loads (two board rows of six). */
 const SKELETON_KEYS = 12;
@@ -46,6 +35,21 @@ const SKELETON_KEYS = 12;
  * a single row at the widest breakpoint.
  */
 const GRID_CLASS = 'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6';
+
+/** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
+const EMPTY_HIDDEN: Set<string> = new Set();
+
+/** Focus-token ring shared with the app's other affordances. */
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
+
+/**
+ * The customize-mode × that removes (hides) a single key. It sits in the key's
+ * top-right corner as an absolute overlay — a real `<button>` with the shared
+ * focus ring, deliberately a sibling of the key (never nested inside its button)
+ * so the two presses never collide.
+ */
+const REMOVE_BUTTON_CLASS = `absolute right-1.5 top-1.5 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong bg-surface-raised text-sm leading-none text-text-muted shadow-sm hover:text-text ${FOCUS_RING}`;
 
 export interface BoardViewProps {
   /** Repositories to render (already adapted by `useRepos`). */
@@ -70,6 +74,20 @@ export interface BoardViewProps {
    * (a defined-but-empty Set matches nothing ⇒ the filtered empty state).
    */
   repoFilter?: Set<string>;
+  /**
+   * The HIDDEN per-key set (`${repo}:${signal}` ids — see `deck-visibility`).
+   * A key in this set is not rendered; an empty/omitted set ⇒ every key visible,
+   * so brand-new fleet repos appear automatically.
+   */
+  hiddenKeys?: Set<string>;
+  /**
+   * Customize mode. When true, every still-visible key gains an accessible ×
+   * remove overlay (calling {@link BoardViewProps.onToggleKey}); otherwise keys
+   * render exactly as normal.
+   */
+  editing?: boolean;
+  /** Toggles one (repo, signal) key's visibility — wired to the × remove overlay. */
+  onToggleKey?: (repo: Repo, signal: TileSignalType) => void;
 }
 
 export function BoardView({
@@ -80,6 +98,9 @@ export function BoardView({
   error = null,
   onRetry,
   repoFilter,
+  hiddenKeys = EMPTY_HIDDEN,
+  editing = false,
+  onToggleKey,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -87,6 +108,22 @@ export function BoardView({
     () =>
       repoFilter === undefined ? repos : repos.filter((repo) => repoFilter.has(repo.nameWithOwner)),
     [repos, repoFilter],
+  );
+
+  // The signals each visible repo still shows, after removing its hidden keys —
+  // memoised so both the key count and the grid render the same filtered list.
+  const visibleKeysByRepo = useMemo(
+    () =>
+      visibleRepos.map((repo) => ({
+        repo,
+        signals: DECK_SIGNALS.filter((signal) => !isHidden(hiddenKeys, repo.nameWithOwner, signal)),
+      })),
+    [visibleRepos, hiddenKeys],
+  );
+
+  const visibleKeyCount = useMemo(
+    () => visibleKeysByRepo.reduce((total, { signals }) => total + signals.length, 0),
+    [visibleKeysByRepo],
   );
 
   if (error !== null) {
@@ -113,14 +150,24 @@ export function BoardView({
   }
 
   const showSkeleton = loading && visibleRepos.length === 0;
-  const isEmpty = !showSkeleton && visibleRepos.length === 0;
+  const noRepos = !showSkeleton && visibleRepos.length === 0;
+  // Distinct from the no-repos/filtered states: repos exist, but every one of
+  // their keys is hidden, so the grid would render empty.
+  const allTilesHidden = !showSkeleton && visibleRepos.length > 0 && visibleKeyCount === 0;
   const emptyMessage =
     repos.length === 0
       ? 'No repositories found for this token.'
       : 'No repositories match your filter.';
+
+  const repoCount = visibleRepos.length;
+  const repoNoun = repoCount === 1 ? 'repository' : 'repositories';
+  const hasHiddenVisible = visibleKeyCount < repoCount * DECK_SIGNALS.length;
+  const tileNoun = visibleKeyCount === 1 ? 'tile' : 'tiles';
   const statusMessage = loading
     ? 'Loading repositories…'
-    : `${visibleRepos.length} ${visibleRepos.length === 1 ? 'repository' : 'repositories'}`;
+    : hasHiddenVisible
+      ? `${repoCount} ${repoNoun} · ${visibleKeyCount} ${tileNoun}`
+      : `${repoCount} ${repoNoun}`;
 
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
@@ -138,24 +185,46 @@ export function BoardView({
             />
           ))}
         </div>
-      ) : isEmpty ? (
+      ) : noRepos ? (
         <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
           <p className="text-sm text-text-muted">{emptyMessage}</p>
         </div>
+      ) : allTilesHidden ? (
+        <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
+          <p className="text-sm font-medium text-text">All tiles hidden.</p>
+          <p className="text-sm text-text-muted">Use Customize to bring tiles back.</p>
+        </div>
       ) : (
         <div aria-busy={loading} className={GRID_CLASS}>
-          {visibleRepos.flatMap((repo) => {
+          {visibleKeysByRepo.flatMap(({ repo, signals }) => {
             const data = getRowData(repo);
-            return BOARD_SIGNALS.map((signal) => (
-              <BoardKey
-                key={`${repo.nameWithOwner}:${signal}`}
-                repo={repo}
-                signal={signal}
-                data={data}
-                onActivate={onRepoActivate}
-                onRetry={onRetry}
-              />
-            ));
+            return signals.map((signal) => {
+              const id = `${repo.nameWithOwner}:${signal}`;
+              const boardKey = (
+                <BoardKey
+                  repo={repo}
+                  signal={signal}
+                  data={data}
+                  onActivate={onRepoActivate}
+                  onRetry={onRetry}
+                />
+              );
+              return editing ? (
+                <div key={id} className="relative">
+                  {boardKey}
+                  <button
+                    type="button"
+                    onClick={() => onToggleKey?.(repo, signal)}
+                    aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
+                    className={REMOVE_BUTTON_CLASS}
+                  >
+                    <span aria-hidden="true">✕</span>
+                  </button>
+                </div>
+              ) : (
+                <Fragment key={id}>{boardKey}</Fragment>
+              );
+            });
           })}
         </div>
       )}
