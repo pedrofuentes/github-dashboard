@@ -115,15 +115,26 @@ function runsUrl(repo: Repo): string {
 /**
  * Resolves the latest CI status for each repo.
  *
- * @param repos - Repositories to resolve CI status for.
- * @param token - Auth token; `null` yields a stable empty map (no requests).
+ * @param repos    - Repositories to resolve CI status for.
+ * @param token    - Auth token; `null` yields a stable empty map (no requests).
+ * @param override - When provided, the hook returns it immediately and makes
+ *   zero network calls (used by {@link useRepoSignals} to inject slices from the
+ *   batched GraphQL loader when the `ci` flag is enabled). `undefined` restores
+ *   normal REST behavior.
  * @returns A map of `nameWithOwner` → {@link CiSignalSlice}.
  */
-export function useCiSignal(repos: Repo[], token: string | null): Map<string, CiSignalSlice> {
+export function useCiSignal(
+  repos: Repo[],
+  token: string | null,
+  override?: Map<string, CiSignalSlice>,
+): Map<string, CiSignalSlice> {
   const [signals, setSignals] = useState<Map<string, CiSignalSlice>>(EMPTY_CI_SIGNALS);
   const generationRef = useRef(0);
 
   useEffect(() => {
+    // When an override is supplied the caller owns the data; skip all REST work.
+    if (override) return;
+
     const generation = (generationRef.current += 1);
 
     if (!token || repos.length === 0) {
@@ -175,7 +186,7 @@ export function useCiSignal(repos: Repo[], token: string | null): Map<string, Ci
     );
 
     return () => controller.abort();
-  }, [repos, token]);
+  }, [repos, token, override]);
 
-  return signals;
+  return override ?? signals;
 }
