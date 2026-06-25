@@ -141,4 +141,26 @@ describe('App — Deck per-tile customize wiring', () => {
     expect(stored).toContain('octo/a:ci');
     expect(stored).toContain('octo/b:ci');
   });
+
+  it('resets Deck edit mode when navigating away from the Deck view', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    // Enter Deck edit mode — the customize panel opens.
+    await user.click(screen.getByRole('button', { name: /customize tiles/i }));
+    expect(screen.getByRole('dialog', { name: /customize deck/i })).toBeInTheDocument();
+
+    // Navigate away to Boards, then back to the Deck.
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    await screen.findByRole('region', { name: /dashboard/i });
+    await user.click(screen.getByRole('button', { name: /deck/i }));
+    await screen.findByRole('region', { name: /repository board/i });
+
+    // Edit mode must have reset: panel closed, toggle back to "Customize tiles",
+    // and no inline remove overlay on the board.
+    expect(screen.queryByRole('dialog', { name: /customize deck/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /customize tiles/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /remove ci tile for octo\/a/i })).toBeNull();
+  });
 });
