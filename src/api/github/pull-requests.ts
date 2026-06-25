@@ -16,6 +16,7 @@ import {
   parseRetryAfter,
 } from './core';
 import { SearchCountResponseSchema, ReviewSearchResponseSchema } from './schemas';
+import { scheduleSearchRequest } from './search-limiter';
 import { z } from 'zod';
 
 /** Summary of a PR requesting the user's review */
@@ -79,15 +80,27 @@ export async function fetchPullRequestCount(
   const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers, signal }, 'fetchPullRequestCount');
-  const rateLimitInfo = parseRateLimitHeaders(response.headers);
+  // Routed through the shared Search limiter so this per-repo PR count shares
+  // the fleet's ~30 req/min Search budget and recovers from a secondary-limit
+  // 403 (#515) — matching the other Search callers (fetchViewerIssueCount,
+  // fetchIssueCount, useStaleSignal).
+  return scheduleSearchRequest(async () => {
+    const response = await fetchWithRetry(url, { headers, signal }, 'fetchPullRequestCount');
+    const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
-  if (!response.ok) {
-    handleApiError(response.status, rateLimitInfo, owner, repo, parseRetryAfter(response.headers));
-  }
+    if (!response.ok) {
+      handleApiError(
+        response.status,
+        rateLimitInfo,
+        owner,
+        repo,
+        parseRetryAfter(response.headers),
+      );
+    }
 
-  const data = SearchCountResponseSchema.parse(await response.json());
-  return data.total_count;
+    const data = SearchCountResponseSchema.parse(await response.json());
+    return data.total_count;
+  }, signal);
 }
 
 /**

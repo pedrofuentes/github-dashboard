@@ -12,7 +12,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchPullRequestCount, fetchReviewRequestedPRs, fetchReviewRequestedPage } from './pull-requests';
+import {
+  fetchPullRequestCount,
+  fetchReviewRequestedPRs,
+  fetchReviewRequestedPage,
+} from './pull-requests';
 import { GitHubApiError, searchLimiter } from './index';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
