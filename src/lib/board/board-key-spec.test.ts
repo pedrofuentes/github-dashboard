@@ -163,12 +163,12 @@ describe('boardKeySpec — ci (icon layout)', () => {
     });
   });
 
-  it('renders an errored ci slice as the error state', () => {
+  it('renders an errored ci slice as the error state with a non-failure accent', () => {
     const data: RepoSignalData = { ci: { status: 'error' } };
     expect(boardKeySpec('ci', data)).toEqual({
       state: 'error',
       layout: 'icon',
-      accent: 'failure',
+      accent: 'warning',
       line2: '',
       line3: 'Error',
     });
@@ -275,13 +275,13 @@ describe('boardKeySpec — security grade → accent', () => {
     });
   }
 
-  it('falls back to a neutral em-dash when a ready slice carries no grade', () => {
+  it('renders an explicit "n/a" (not a bare dash) when a ready slice carries no grade', () => {
     const data: RepoSignalData = { security: { status: 'ready' } };
     expect(boardKeySpec('security', data)).toEqual({
       state: 'ready',
       layout: 'value',
       accent: 'neutral',
-      line2: '—',
+      line2: 'n/a',
       line3: 'Security',
     });
   });
@@ -318,11 +318,11 @@ describe('boardKeySpec — activity (separate input)', () => {
     });
   });
 
-  it('renders an errored activity input as the error state', () => {
+  it('renders an errored activity input as the error state with a non-failure accent', () => {
     expect(boardKeySpec('activity', {}, { status: 'error' })).toEqual({
       state: 'error',
       layout: 'value',
-      accent: 'failure',
+      accent: 'warning',
       line2: '—',
       line3: 'Commits (7d)',
     });
@@ -355,12 +355,12 @@ describe('boardKeySpec — lifecycle state machine (value signals)', () => {
     });
   });
 
-  it('errored slice → error state with a failure em-dash placeholder', () => {
+  it('errored slice → error state with a non-failure (warning) accent', () => {
     const data: RepoSignalData = { pullRequests: { status: 'error' } };
     expect(boardKeySpec('pullRequests', data)).toEqual({
       state: 'error',
       layout: 'value',
-      accent: 'failure',
+      accent: 'warning',
       line2: '—',
       line3: 'Open PRs',
     });
@@ -395,5 +395,27 @@ describe('boardKeySpec — lifecycle state machine (value signals)', () => {
     for (const signal of ['ci', 'issues', 'security'] as const) {
       expect(BOARD_KEY_ACCENT_VAR[boardKeySpec(signal, data).accent]).toBeDefined();
     }
+  });
+});
+
+describe('boardKeySpec — error accent is distinct from a CI failure (T-bf1)', () => {
+  it('never reuses the failure accent for an errored value slice', () => {
+    const spec = boardKeySpec('issues', { issues: { status: 'error' } });
+    expect(spec.state).toBe('error');
+    expect(spec.accent).not.toBe('failure');
+    expect(spec.accent).toBe('warning');
+  });
+
+  it('never reuses the failure accent for an errored icon (CI) slice', () => {
+    const spec = boardKeySpec('ci', { ci: { status: 'error' } });
+    expect(spec.state).toBe('error');
+    expect(spec.accent).not.toBe('failure');
+    expect(spec.accent).toBe('warning');
+  });
+
+  it('keeps the failure accent for a genuinely failing CI run (not an error state)', () => {
+    const spec = boardKeySpec('ci', { ci: { status: 'ready', conclusion: 'failure' } });
+    expect(spec.state).toBe('ready');
+    expect(spec.accent).toBe('failure');
   });
 });
