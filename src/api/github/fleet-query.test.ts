@@ -605,7 +605,7 @@ describe('executeFleetBatch (prDeriver)', () => {
   });
 
   it('openCount excludes draft PRs and matches the REST non-draft page-capped count', async () => {
-    // 3 non-draft + 2 draft: openCount must be 3 (not 5), externalCount = 2 (NONE + CONTRIBUTOR)
+    // 3 non-draft + 2 draft: openCount must be 3 (not 5), externalCount = 2 (NONE + FIRST_TIME_CONTRIBUTOR)
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
@@ -615,7 +615,7 @@ describe('executeFleetBatch (prDeriver)', () => {
             prItem(1, 'MEMBER', false), // non-draft, not external
             prItem(2, 'NONE', false), // non-draft, external
             prItem(3, 'OWNER', true), // draft — excluded from openCount
-            prItem(4, 'CONTRIBUTOR', false), // non-draft, external
+            prItem(4, 'FIRST_TIME_CONTRIBUTOR', false), // non-draft, external
             prItem(5, 'FIRST_TIMER', true), // draft — excluded from openCount
           ]),
         },
@@ -625,7 +625,7 @@ describe('executeFleetBatch (prDeriver)', () => {
     const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
     const slice = pr(prMapOf(result), 'o/a');
     expect(slice.openCount).toBe(3); // 3 non-draft only
-    expect(slice.externalCount).toBe(2); // NONE + CONTRIBUTOR
+    expect(slice.externalCount).toBe(2); // NONE + FIRST_TIME_CONTRIBUTOR
     expect(slice.score).toBe(2 * 5 + 3); // 13
   });
 

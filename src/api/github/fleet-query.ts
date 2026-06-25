@@ -74,7 +74,6 @@ const PrNodeSchema = z.object({
 
 /** Zod schema for the `pullRequests(states: OPEN, first: 100)` connection. */
 const PullRequestsConnectionSchema = z.object({
-  totalCount: z.number(),
   nodes: z.array(PrNodeSchema),
 });
 
@@ -336,7 +335,6 @@ const OUTSIDE_CONTRIBUTOR_ASSOCIATIONS = new Set([
 function prRepoFragment(): string {
   return [
     'pullRequests(states: OPEN, first: 100) {',
-    '  totalCount',
     '  nodes {',
     '    number',
     '    title',
@@ -354,7 +352,8 @@ function prRepoFragment(): string {
  * Folds one repo's PR node into a {@link PullRequestsSignalSlice} that is
  * value-identical in shape to what `usePullRequestsSignal` emits today.
  *
- * - `openCount` = `totalCount` (all open PRs, matching the REST feed).
+ * - `openCount` = count of **non-draft** open PRs among the first 100 nodes
+ *   (matching the REST feed's non-draft, page-capped count).
  * - `external` = non-draft nodes whose `authorAssociation` is in
  *   {@link OUTSIDE_CONTRIBUTOR_ASSOCIATIONS} (same predicate as REST).
  * - `externalPullRequests` mapped only when `externalCount > 0`.
@@ -373,12 +372,13 @@ function derivePrSlice(
     return { status: 'ready', openCount: 0, externalCount: 0, score: 0 };
   }
 
-  const { totalCount, nodes } = node.pullRequests;
-  const external = nodes.filter(
-    (p) => !p.isDraft && OUTSIDE_CONTRIBUTOR_ASSOCIATIONS.has(p.authorAssociation),
+  const { nodes } = node.pullRequests;
+  const nonDraft = nodes.filter((p) => !p.isDraft);
+  const external = nonDraft.filter((p) =>
+    OUTSIDE_CONTRIBUTOR_ASSOCIATIONS.has(p.authorAssociation),
   );
   const externalCount = external.length;
-  const openCount = totalCount;
+  const openCount = nonDraft.length;
   const score = externalCount * 5 + openCount;
 
   const slice: PullRequestsSignalSlice = { status: 'ready', openCount, externalCount, score };
