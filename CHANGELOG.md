@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   signal (CI, security, reviews, pull requests, issues, stale). Reachable from
   the view switcher, the `g d` keyboard shortcut, and selectable as the default
   view (#500).
+- **Deck per-tile customization** — hide or show individual repository × signal
+  keys directly in the Deck view. In edit mode (toggled via **Customize tiles**
+  in the toolbar), every visible key shows an inline **×** remove button; the
+  **Customize deck** panel adds per-signal column toggles (show/hide a signal
+  across every repo at once), bulk **Show all keys** / **Hide all keys** /
+  **Show only selected** actions, and a search-to-reveal section for targeted
+  per-repo row and per-key overrides. Visibility state persists locally
+  (independent of the dashboard layout) and new fleet repos appear automatically.
 - **Show/hide repo owner** — a Settings → Appearance toggle (and a ⌘K "Toggle
   repo owner" command) that hides the `owner/` prefix in repository labels
   across the matrix, tiles, inbox, and drill-down, while keeping the full
@@ -213,6 +221,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Deck error / empty key states** — errored keys now show an in-place retry
+  button and clearer empty ("n/a") states instead of a misleading red ✕, making
+  transient fetch failures recoverable without a full reload.
+- **Stale and Security signals recover from GitHub Search secondary rate-limits**
+  (HTTP 403 + `Retry-After`) instead of erroring every repo in the fleet; the
+  client backs off and retries after the server-specified delay.
 - **Triage rows now surface every pending action for a repo**: a repository is
   grouped into its single highest-priority band (e.g. **Needs attention** for an
   over-threshold issue backlog), but its row now renders **all** of its active
