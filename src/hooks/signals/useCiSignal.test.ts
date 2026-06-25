@@ -375,3 +375,53 @@ describe('useCiSignal', () => {
     errorSpy.mockRestore();
   });
 });
+
+describe('useCiSignal — override param', () => {
+  it('returns the override map directly and never calls fetchWithETag', () => {
+    const overrideSlice = {
+      status: 'ready' as const,
+      conclusion: 'success' as const,
+      score: 0,
+      failingCount: 0,
+    };
+    const override = new Map([['octo/a', overrideSlice]]);
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token', override));
+
+    expect(result.current).toBe(override);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to REST behavior when override is undefined', async () => {
+    fetchMock.mockResolvedValue(runs({ status: 'completed', conclusion: 'success' }));
+    const { result } = renderHook(() => useCiSignal(REPOS, 'ghp_token', undefined));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    expect(result.current.get('octo/a')?.conclusion).toBe('success');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips REST and stays on override when override changes to a new map', async () => {
+    const overrideA = new Map([
+      [
+        'octo/a',
+        { status: 'ready' as const, conclusion: 'failure' as const, score: 100, failingCount: 1 },
+      ],
+    ]);
+    const overrideB = new Map([
+      [
+        'octo/a',
+        { status: 'ready' as const, conclusion: 'success' as const, score: 0, failingCount: 0 },
+      ],
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ override }) => useCiSignal(REPOS, 'ghp_token', override),
+      { initialProps: { override: overrideA } },
+    );
+    expect(result.current).toBe(overrideA);
+
+    rerender({ override: overrideB });
+    expect(result.current).toBe(overrideB);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
