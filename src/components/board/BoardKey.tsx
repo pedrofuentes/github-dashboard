@@ -16,18 +16,21 @@
  * (`bg-surface`, `text-text`, `text-text-muted`, …). No raw hex, so the `.dark`
  * class flips the whole key.
  *
- * Lifecycle: `loading` shows a reduced-motion-safe spinner, `error` an error
- * glyph (plus a "Press to retry" caption when `onActivate` is wired), `empty` a
- * neutral dash — all token-only and uniform across both layouts.
+ * Lifecycle: `loading` shows a reduced-motion-safe spinner, `error` a distinct
+ * "couldn't load" warning glyph on a `warning` accent (deliberately NOT the
+ * CI-failure red ×) — keeping the signal label and, when `onRetry` is wired,
+ * adding a "Retry" affordance — and `empty` an explicit `n/a`; all token-only
+ * and uniform across both layouts.
  *
  * Accessibility: the repo label line honours the owner show/hide setting (it can
  * render the bare repo name), but the key's accessible name ALWAYS carries the
  * full `repo.nameWithOwner` + the signal + the value/status, so a screen-reader
- * user keeps full context even when the owner is visually hidden. When
- * `onActivate` is supplied the whole key is a `<button>` (native Enter/Space +
- * the `focus`-token ring); otherwise it is a non-interactive container with an
- * `sr-only` summary. `data-signal` / `data-layout` / `data-state` are stable
- * seams for tests and the grid.
+ * user keeps full context even when the owner is visually hidden. The whole key
+ * is a `<button>` (native Enter/Space + the `focus`-token ring) when it can act
+ * on a press — a retryable `error` (press ⇒ `onRetry`, labelled "Retry {signal}
+ * for {repo}") or a drill-down (`onActivate`, press ⇒ activate); otherwise it is
+ * a non-interactive container with an `sr-only` summary. `data-signal` /
+ * `data-layout` / `data-state` are stable seams for tests and the grid.
  */
 import type { ReactElement, ReactNode } from 'react';
 
@@ -51,6 +54,13 @@ export interface BoardKeyProps {
   activity?: BoardActivityInput;
   /** When supplied, the key becomes a button that activates the repo on press. */
   onActivate?: (repo: Repo) => void;
+  /**
+   * Re-fetch handler for a failed signal. When the key is in its `error` state
+   * and this is provided, the key becomes a *retry* button (its press calls
+   * `onRetry` instead of `onActivate`), so a load failure is recoverable in
+   * place. Ignored in every non-error state.
+   */
+  onRetry?: () => void;
 }
 
 /** Shared root box — the rounded Stream Deck square (sdgh-design-spec §2.1). */
@@ -77,11 +87,13 @@ function accessibleStatus(spec: BoardKeySpec): string {
 
 /**
  * The key's centre slot. State takes precedence over layout so every loading
- * key spins, every error key shows the failure glyph, and every empty key shows
- * the neutral dash; a `ready` key then resolves to its hero value or status
- * icon. The accent colour rides `currentColor`/the bar via {@link accentVar}.
+ * key spins, every error key shows the "couldn't load" glyph (a warning sign —
+ * deliberately NOT the CI-failure ×), and every empty key shows an explicit
+ * "n/a"; a `ready` key then resolves to its hero value or status icon. When the
+ * error is recoverable (`retryable`) a small "Retry" affordance sits under the
+ * glyph. The accent colour rides `currentColor`/the bar via {@link accentVar}.
  */
-function renderCenter(spec: BoardKeySpec, accentVar: string): ReactNode {
+function renderCenter(spec: BoardKeySpec, accentVar: string, retryable: boolean): ReactNode {
   if (spec.state === 'loading') {
     return (
       <span
@@ -110,15 +122,27 @@ function renderCenter(spec: BoardKeySpec, accentVar: string): ReactNode {
   }
   if (spec.state === 'error') {
     return (
-      <span data-part="error-glyph" className="inline-flex" style={{ color: accentVar }}>
-        <BoardStatusIcon status="failure" size={40} />
+      <span
+        data-part="error-glyph"
+        className="inline-flex flex-col items-center gap-1"
+        style={{ color: accentVar }}
+      >
+        <BoardStatusIcon status="action_required" size={retryable ? 32 : 40} />
+        {retryable ? (
+          <span
+            data-part="retry-hint"
+            className="text-[10px] font-semibold uppercase leading-none tracking-wide"
+          >
+            Retry
+          </span>
+        ) : null}
       </span>
     );
   }
   if (spec.state === 'empty') {
     return (
-      <span data-part="empty" className="text-4xl font-semibold leading-none text-text-muted">
-        —
+      <span data-part="empty" className="text-3xl font-semibold leading-none text-text-muted">
+        n/a
       </span>
     );
   }
@@ -142,18 +166,29 @@ export function BoardKey({
   data,
   activity,
   onActivate,
+  onRetry,
 }: BoardKeyProps): ReactElement {
   const { display } = useRepoOwner();
   const spec = boardKeySpec(signal, data, activity);
   const accentVar = BOARD_KEY_ACCENT_VAR[spec.accent];
   const repoLabel = formatRepoLabel(repo, display);
 
-  // The error caption becomes a retry affordance only when the key can act on a
-  // press; otherwise it falls back to the spec's static caption.
-  const caption =
-    spec.state === 'error' && onActivate !== undefined ? 'Press to retry' : spec.line3;
-  // Always the FULL nameWithOwner — independent of the visual owner setting.
-  const accessibleName = `${SIGNAL_LABELS[signal]}: ${accessibleStatus(spec)} — ${repo.nameWithOwner}`;
+  // A failed signal is recoverable in place: when `onRetry` is wired the error
+  // key's press re-fetches instead of drilling down. Every other state keeps the
+  // `onActivate` drill-down (when one is provided).
+  const retryable = spec.state === 'error' && onRetry !== undefined;
+  const handlePress = retryable
+    ? onRetry
+    : onActivate !== undefined
+      ? () => onActivate(repo)
+      : undefined;
+
+  // Always the FULL nameWithOwner — independent of the visual owner setting. A
+  // retryable error reads as a retry action; every other state keeps the details
+  // label. The visible signal label (spec.line3) is never folded away here.
+  const accessibleName = retryable
+    ? `Retry ${SIGNAL_LABELS[signal]} for ${repo.nameWithOwner}`
+    : `${SIGNAL_LABELS[signal]}: ${accessibleStatus(spec)} — ${repo.nameWithOwner}`;
 
   // The visible face is decorative (aria-hidden); the accessible name is carried
   // by the button label / the sr-only summary so it is never read twice.
@@ -177,16 +212,16 @@ export function BoardKey({
           {repoLabel}
         </span>
         <span data-part="center" className="flex min-h-0 flex-1 items-center justify-center">
-          {renderCenter(spec, accentVar)}
+          {renderCenter(spec, accentVar, retryable)}
         </span>
         <span data-part="line3" className="w-full truncate text-xs text-text-muted">
-          {caption}
+          {spec.line3}
         </span>
       </div>
     </>
   );
 
-  if (onActivate !== undefined) {
+  if (handlePress !== undefined) {
     return (
       <button
         type="button"
@@ -195,7 +230,7 @@ export function BoardKey({
         data-state={spec.state}
         data-accent={spec.accent}
         aria-label={accessibleName}
-        onClick={() => onActivate(repo)}
+        onClick={handlePress}
         className={`${ROOT_CLASS} text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
       >
         {face}
