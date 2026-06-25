@@ -29,6 +29,7 @@
 import { z, type ZodType } from 'zod';
 
 import { isAbortError } from '../../lib/abort';
+import { STALE_ITEMS_PER_REPO, staleCutoffDate } from '../../lib/stale-cutoff';
 import type { TileSignalType } from '../../types/dashboard';
 import type {
   CiSignalSlice,
@@ -36,6 +37,8 @@ import type {
   PullRequestsSignalSlice,
   Repo,
   SignalSlice,
+  StaleItem,
+  StaleSignalSlice,
 } from '../../types/fleet';
 import {
   GraphQLRateLimitPartSchema,
@@ -225,6 +228,17 @@ export interface SignalDeriver {
   repoFragment?(viewerLogin: string | null): string;
   /** Aliased top-level selection (e.g. a `search(...)` field). */
   topLevelFragment?(repos: readonly Repo[], viewerLogin: string | null): string;
+  /**
+   * Top-level query variables this deriver needs declared and bound. Each entry
+   * contributes a `$<name>: <type>` declaration to {@link buildFleetQuery}'s
+   * header and a `<name>: <value>` binding to {@link buildFleetVariables}. Used
+   * to pass per-repo `search(...)` queries as BOUND variables (never inline
+   * literals) so the document stays injection-safe.
+   */
+  topLevelVariables?(
+    repos: readonly Repo[],
+    viewerLogin: string | null,
+  ): Array<{ name: string; type: string; value: string }>;
   /** Folds the chunk into one slice per `nameWithOwner`. */
   derive(ctx: FleetChunkContext): Map<string, SignalSlice>;
 }
@@ -504,6 +518,139 @@ export const prDeriver: SignalDeriver = {
   },
 };
 
+// ── Stale deriver (first top-level deriver: aliased GraphQL search) ──────────
+
+/**
+ * Builds the ready slice for a repo's stale tally, value-identical to
+ * `readyStaleSlice` in `useStaleSignal` so the GraphQL and REST paths agree:
+ * `score` is the raw count and `staleItems` is present only when non-empty.
+ */
+function staleReadySlice(staleCount: number, staleItems: StaleItem[] = []): StaleSignalSlice {
+  const slice: StaleSignalSlice = { status: 'ready', staleCount, score: staleCount };
+  if (staleItems.length > 0) {
+    slice.staleItems = staleItems;
+  }
+  return slice;
+}
+
+/** Zod schema for one node in a stale `search(type: ISSUE)` connection. */
+const StaleSearchNodeSchema = z
+  .object({
+    __typename: z.string(),
+    number: z.number(),
+    title: z.string(),
+    url: z.string(),
+    updatedAt: z.string(),
+  })
+  .passthrough();
+
+/**
+ * Zod schema for one aliased `stale_r{i}: search(...)` payload. Tolerant
+ * (`.passthrough()`) so the many unused Search-connection fields don't break
+ * validation; `issueCount` is the stale tally and `nodes` carry each item's
+ * identity (defaulted to `[]` so a count-only payload still validates).
+ */
+const StaleSearchPayloadSchema = z
+  .object({
+    issueCount: z.number(),
+    nodes: z.array(StaleSearchNodeSchema).optional().default([]),
+  })
+  .passthrough();
+
+/** The stale alias for the repo at index `i` within a chunk. */
+function staleAlias(index: number): string {
+  return `stale_r${index}`;
+}
+
+/**
+ * Top-level variables for the stale deriver: one `stale_r{i}: String!` bound to
+ * the per-repo Search query (`repo:<owner>/<name> is:open updated:<<cutoff>`).
+ * Passing it as a bound variable — never an inline literal — keeps the document
+ * injection-safe (gql-2 review #534). The cutoff is the same UTC `YYYY-MM-DD`
+ * threshold the REST hook uses, reused from `lib/stale-cutoff`.
+ */
+function staleTopLevelVariables(
+  repos: readonly Repo[],
+): Array<{ name: string; type: string; value: string }> {
+  const cutoff = staleCutoffDate(new Date());
+  return repos.map((repo, i) => ({
+    name: staleAlias(i),
+    type: 'String!',
+    value: `repo:${repo.owner}/${repo.name} is:open updated:<${cutoff}`,
+  }));
+}
+
+/**
+ * Top-level fragment for the stale deriver: one aliased
+ * `stale_r{i}: search(type: ISSUE, first: N, query: $stale_r{i})` per repo,
+ * selecting `issueCount` (the tally) plus each node's identity. The per-repo
+ * query reaches the document ONLY through the `$stale_r{i}` variable.
+ */
+function staleTopLevelFragment(repos: readonly Repo[]): string {
+  return repos
+    .map((_, i) => {
+      const alias = staleAlias(i);
+      return [
+        `${alias}: search(type: ISSUE, first: ${STALE_ITEMS_PER_REPO}, query: $${alias}) {`,
+        '  issueCount',
+        '  nodes {',
+        '    __typename',
+        '    ... on Issue { number title url updatedAt }',
+        '    ... on PullRequest { number title url updatedAt }',
+        '  }',
+        '}',
+      ].join('\n');
+    })
+    .join('\n');
+}
+
+/**
+ * Folds one repo's aliased search payload + the error index into a
+ * {@link StaleSignalSlice} that is value-identical to what `useStaleSignal`
+ * emits today.
+ *
+ * - The alias errored (`has`/`coversField`) → `{ status: 'error' }`.
+ * - The alias is absent WITHOUT a covering error → ready-zero (no data), so a
+ *   repo GitHub silently omitted never reads as a failure.
+ * - Otherwise `issueCount` → `staleCount`/`score`; nodes → `staleItems`
+ *   (`html_url`/`updated_at` un-projected, `type` from `__typename`), omitted
+ *   when empty.
+ */
+function deriveStaleSlice(alias: string, ctx: FleetChunkContext): StaleSignalSlice {
+  if (ctx.errors.has(alias) || ctx.errors.coversField(alias)) {
+    return { status: 'error' };
+  }
+  const raw: unknown = ctx.data[alias];
+  if (raw === null || raw === undefined) return staleReadySlice(0);
+
+  const parsed = StaleSearchPayloadSchema.safeParse(raw);
+  if (!parsed.success) return staleReadySlice(0);
+
+  const staleItems: StaleItem[] = parsed.data.nodes.map((node) => ({
+    number: node.number,
+    title: node.title,
+    html_url: node.url,
+    updated_at: node.updatedAt,
+    type: node.__typename === 'PullRequest' ? 'pr' : 'issue',
+  }));
+  return staleReadySlice(parsed.data.issueCount, staleItems);
+}
+
+/** The stale deriver: one aliased top-level `search(...)` per repo (issue #17). */
+export const staleDeriver: SignalDeriver = {
+  signal: 'stale',
+  kind: 'top-level',
+  topLevelVariables: staleTopLevelVariables,
+  topLevelFragment: staleTopLevelFragment,
+  derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
+    const out = new Map<string, SignalSlice>();
+    ctx.repos.forEach((repo, i) => {
+      out.set(repo.nameWithOwner, deriveStaleSlice(staleAlias(i), ctx));
+    });
+    return out;
+  },
+};
+
 // ── Signal deriver registry ──────────────────────────────────────────────────
 
 /**
@@ -511,7 +658,12 @@ export const prDeriver: SignalDeriver = {
  * batch — nothing in {@link buildFleetQuery} or {@link executeFleetBatch}
  * needs editing when a new deriver is appended here.
  */
-export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [ciDeriver, issuesDeriver, prDeriver];
+export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [
+  ciDeriver,
+  issuesDeriver,
+  prDeriver,
+  staleDeriver,
+];
 
 // ── Query builder ─────────────────────────────────────────────────────────────
 
@@ -533,6 +685,13 @@ export function buildFleetVariables(
   });
   if (viewerLogin) {
     vars['viewer'] = viewerLogin;
+  }
+  // Top-level derivers (e.g. stale's per-repo search) bind their own variables.
+  for (const deriver of SIGNAL_DERIVERS) {
+    if (deriver.kind !== 'top-level' || !deriver.topLevelVariables) continue;
+    for (const { name, value } of deriver.topLevelVariables(repos, viewerLogin ?? null)) {
+      vars[name] = value;
+    }
   }
   return vars;
 }
@@ -582,8 +741,14 @@ export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | nu
 
   const topLevelFragments: string[] = [];
   for (const deriver of SIGNAL_DERIVERS) {
-    if (deriver.kind === 'top-level' && deriver.topLevelFragment) {
+    if (deriver.kind !== 'top-level') continue;
+    if (deriver.topLevelFragment) {
       topLevelFragments.push(deriver.topLevelFragment(repos, viewerLogin));
+    }
+    if (deriver.topLevelVariables) {
+      for (const { name, type } of deriver.topLevelVariables(repos, viewerLogin)) {
+        varDecls.push(`$${name}: ${type}`);
+      }
     }
   }
 
