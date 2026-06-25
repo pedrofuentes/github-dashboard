@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
 import { fetchWithETag } from '../../api/github';
-import type { Repo } from '../../types/fleet';
+import type { PullRequestsSignalSlice, Repo } from '../../types/fleet';
 import { usePullRequestsSignal } from './usePullRequestsSignal';
 
 vi.mock('../../api/github', () => ({
@@ -441,5 +441,24 @@ describe('usePullRequestsSignal', () => {
     expect(result.current.get('octo/a')?.status).not.toBe('error');
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+// ── override fast-path ────────────────────────────────────────────────────────
+
+describe('usePullRequestsSignal override', () => {
+  it('returns the override map immediately and makes zero REST calls', () => {
+    const overrideSlice: PullRequestsSignalSlice = {
+      status: 'ready',
+      openCount: 4,
+      externalCount: 1,
+      score: 9,
+    };
+    const overrideMap = new Map([['octo/a', overrideSlice]]);
+
+    const { result } = renderHook(() => usePullRequestsSignal(REPOS, 'ghp_token', overrideMap));
+
+    expect(result.current).toBe(overrideMap);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
   });
 });
