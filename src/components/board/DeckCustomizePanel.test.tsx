@@ -182,10 +182,7 @@ describe('DeckCustomizePanel', () => {
     expect(screen.queryByRole('button', { name: /keys for octo\/a/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /keys for octo\/b/i })).toBeNull();
 
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /search repositories/i }),
-      'octo/a',
-    );
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
     expect(screen.getByRole('button', { name: /keys for octo\/a/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /keys for octo\/b/i })).toBeNull();
   });
