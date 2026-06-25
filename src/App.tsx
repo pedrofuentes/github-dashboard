@@ -248,6 +248,14 @@ function FleetPanel({
     }
   }, [view]);
 
+  // Deck edit affordances likewise only make sense on the Deck; leaving it drops
+  // edit mode so returning doesn't re-show the inline ✕ overlay + customize panel.
+  useEffect(() => {
+    if (view !== 'deck') {
+      setDeckEditing(false);
+    }
+  }, [view]);
+
   // The per-repo signals load asynchronously after the repo list resolves, so a
   // `status === 'success'` render can still have an incomplete derived inbox.
   // Treat the fleet as settled only once every repo has every signal slice
