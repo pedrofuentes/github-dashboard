@@ -115,8 +115,9 @@ describe('useRepoSignals', () => {
     for (const hook of tokenOnlySignalHooks) {
       expect(vi.mocked(hook)).toHaveBeenCalledWith(REPOS, 'ghp_token');
     }
-    // useCiSignal now accepts an optional 3rd override arg.
-    expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', undefined);
+    // useCiSignal now accepts an optional 3rd override arg; with CI flag on and
+    // an empty batch result (not loading), it receives an empty Map override.
+    expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(expect.anything(), 'ghp_token', new Map());
     // The issues hook also receives the viewer login so it can split "mine" vs
     // "community" open issues.
     expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
@@ -170,7 +171,11 @@ describe('useRepoSignals', () => {
     // that re-invokes every signal hook with the same repos.
     setHidden(false);
     expect(vi.mocked(useCiSignal).mock.calls.length).toBeGreaterThan(before);
-    expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(REPOS, 'ghp_token', undefined);
+    expect(vi.mocked(useCiSignal)).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'ghp_token',
+      new Map(),
+    );
   });
 
   it('hands the signal hooks a fresh repos array (not the caller reference) on revalidation', () => {
@@ -204,7 +209,7 @@ describe('useRepoSignals', () => {
     expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(expect.anything(), 'ghp_token', batchCiMap);
   });
 
-  it('passes undefined as CI override while the batch loader is still loading', () => {
+  it('passes a loading-map override (not undefined) to useCiSignal while the batch loader is loading', () => {
     const batchCiMap = new Map([[REPO.nameWithOwner, ci]]);
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', batchCiMap]]),
@@ -214,7 +219,9 @@ describe('useRepoSignals', () => {
     renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
 
     const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
-    expect(lastCiCall?.[2]).toBeUndefined();
+    // New behaviour: a loading Map is passed so useCiSignal skips REST entirely.
+    expect(lastCiCall?.[2]).toBeInstanceOf(Map);
+    expect(lastCiCall?.[2]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
   });
 
   it('CI slices in getRowData come from the batch loader via the useCiSignal override', () => {
