@@ -130,4 +130,30 @@ describe('useFleetBatchLoader', () => {
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  // ── error flag (#541) ──────────────────────────────────────────────────────
+
+  it('error is false in the idle state (no token)', () => {
+    const { result } = renderHook(() => useFleetBatchLoader(REPOS, null));
+    expect((result.current as unknown as { error: boolean }).error).toBe(false);
+  });
+
+  it('error is true after a hard non-abort rejection', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    executeMock.mockRejectedValue(new Error('hard fail'));
+
+    const { result } = renderHook(() => useFleetBatchLoader(REPOS, 'ghp_token'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect((result.current as unknown as { error: boolean }).error).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it('error is false after a successful fetch', async () => {
+    const batchResult: FleetBatchResult = new Map() as FleetBatchResult;
+    executeMock.mockResolvedValueOnce(batchResult);
+
+    const { result } = renderHook(() => useFleetBatchLoader(REPOS, 'ghp_token'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect((result.current as unknown as { error: boolean }).error).toBe(false);
+  });
 });

@@ -16,7 +16,7 @@ import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
-import { useFleetBatchLoader } from './useFleetBatchLoader';
+import { type UseFleetBatchLoaderResult, useFleetBatchLoader } from './useFleetBatchLoader';
 import { useRepoSignals } from './useRepoSignals';
 
 vi.mock('./signals/useCiSignal', () => ({ useCiSignal: vi.fn() }));
@@ -504,5 +504,80 @@ describe('useRepoSignals', () => {
 
     const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
     expect(result.current.getRowData(REPO).reviews).toEqual(batchReviews);
+  });
+
+  // ── Override Map identity (#540) ─────────────────────────────────────────────
+
+  it('loading override Map passed to signal hooks is the same reference across re-renders', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({ result: new Map(), loading: true });
+
+    const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    rerender();
+    const secondOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    expect(firstOverride).toBeInstanceOf(Map);
+    expect(secondOverride).toBe(firstOverride);
+  });
+
+  it('settled-absent override is the shared EMPTY constant (same reference across re-renders)', () => {
+    // Flag ON, not loading, result has no entry for 'ci' → settled-absent path
+    vi.mocked(useFleetBatchLoader).mockReturnValue({ result: new Map(), loading: false });
+
+    const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    rerender();
+    const secondOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    expect(firstOverride).toBeInstanceOf(Map);
+    expect(firstOverride?.size).toBe(0);
+    expect(secondOverride).toBe(firstOverride);
+  });
+
+  // ── Error short-circuit (#541) ────────────────────────────────────────────────
+
+  it('passes {status:"error"} override to every GraphQL-enabled signal hook when batch.error is true', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: false,
+      error: true,
+    } as unknown as UseFleetBatchLoaderResult);
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(useCiSignal).mock.calls.at(-1)?.[2]?.get(REPO.nameWithOwner)).toEqual({
+      status: 'error',
+    });
+    expect(vi.mocked(useReviewsSignal).mock.calls.at(-1)?.[2]?.get(REPO.nameWithOwner)).toEqual({
+      status: 'error',
+    });
+    expect(
+      vi.mocked(usePullRequestsSignal).mock.calls.at(-1)?.[2]?.get(REPO.nameWithOwner),
+    ).toEqual({ status: 'error' });
+    expect(vi.mocked(useIssuesSignal).mock.calls.at(-1)?.[3]?.get(REPO.nameWithOwner)).toEqual({
+      status: 'error',
+    });
+    expect(vi.mocked(useStaleSignal).mock.calls.at(-1)?.[2]?.get(REPO.nameWithOwner)).toEqual({
+      status: 'error',
+    });
+  });
+
+  it('error override Map passed to signal hooks is the same reference across re-renders', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: false,
+      error: true,
+    } as unknown as UseFleetBatchLoaderResult);
+
+    const { rerender } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    const firstOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    rerender();
+    const secondOverride = vi.mocked(useCiSignal).mock.calls.at(-1)?.[2];
+
+    expect(firstOverride).toBeInstanceOf(Map);
+    expect(secondOverride).toBe(firstOverride);
   });
 });
