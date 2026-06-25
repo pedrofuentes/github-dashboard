@@ -138,9 +138,9 @@ export function DeckCustomizePanel({
     [hidden, repoNames],
   );
 
-  // Per-repo overrides: the search narrows the list (empty query ⇒ all repos),
-  // then the summary drives each row's tri-state — `repoVisibilitySummary`
-  // preserves order, so it aligns with `matchingRepos`.
+  // Per-repo overrides use search-to-reveal: an empty query shows no repos; a
+  // query filters to matches, and the summary drives each row's tri-state —
+  // `repoVisibilitySummary` preserves order, so it aligns with `matchingRepos`.
   const matchingRepos = useMemo(() => {
     const query = repoQuery.trim().toLowerCase();
     if (query === '') return [];
