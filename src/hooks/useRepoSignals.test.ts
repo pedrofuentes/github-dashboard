@@ -118,15 +118,20 @@ describe('useRepoSignals', () => {
     // useCiSignal now accepts an optional 3rd override arg; with CI flag on and
     // an empty batch result (not loading), it receives an empty Map override.
     expect(vi.mocked(useCiSignal)).toHaveBeenCalledWith(expect.anything(), 'ghp_token', new Map());
-    // The issues hook also receives the viewer login so it can split "mine" vs
-    // "community" open issues.
-    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', 'octocat');
+    // The issues hook receives viewer login AND a 4th override arg; with issues
+    // flag on and an empty batch result (not loading), it receives an empty Map.
+    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(
+      REPOS,
+      'ghp_token',
+      'octocat',
+      new Map(),
+    );
   });
 
   it('forwards a null viewer login to the issues hook when unauthenticated', () => {
     renderHook(() => useRepoSignals(REPOS, 'ghp_token', null));
 
-    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', null);
+    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(REPOS, 'ghp_token', null, new Map());
   });
 
   it('threads the viewer login to the issues hook only — never the other signal hooks', () => {
@@ -270,5 +275,71 @@ describe('useRepoSignals', () => {
     const lastCiCall = vi.mocked(useCiSignal).mock.calls.at(-1);
     const ciOverride = lastCiCall?.[2];
     expect(ciOverride?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  // ── Issues batch-loader override seam ─────────────────────────────────────
+
+  it('passes the batch issues map as override to useIssuesSignal when issues flag is enabled', () => {
+    const batchIssuesMap = new Map([[REPO.nameWithOwner, issues]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['issues', batchIssuesMap]]),
+      loading: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    expect(vi.mocked(useIssuesSignal)).toHaveBeenCalledWith(
+      expect.anything(),
+      'ghp_token',
+      undefined,
+      batchIssuesMap,
+    );
+  });
+
+  it('passes a loading-map override to useIssuesSignal while the batch loader is loading', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastIssuesCall = vi.mocked(useIssuesSignal).mock.calls.at(-1);
+    expect(lastIssuesCall?.[3]).toBeInstanceOf(Map);
+    expect(lastIssuesCall?.[3]?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
+  });
+
+  it('issues slices in getRowData come from the batch loader via the useIssuesSignal override', () => {
+    const batchIssues: IssuesSignalSlice = {
+      status: 'ready',
+      score: 12,
+      openCount: 48,
+      overThreshold: true,
+    };
+    const batchIssuesMap = new Map([[REPO.nameWithOwner, batchIssues]]);
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['issues', batchIssuesMap]]),
+      loading: false,
+    });
+    // Simulate real override-aware behavior: return the override when supplied.
+    vi.mocked(useIssuesSignal).mockImplementation(
+      (_repos, _token, _viewer, override) => override ?? new Map([[REPO.nameWithOwner, issues]]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+    expect(result.current.getRowData(REPO).issues).toEqual(batchIssues);
+  });
+
+  it('the issues loading-map override carries a loading slice for every repo so REST is always suppressed', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map(),
+      loading: true,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    const lastIssuesCall = vi.mocked(useIssuesSignal).mock.calls.at(-1);
+    const issuesOverride = lastIssuesCall?.[3];
+    expect(issuesOverride?.get(REPO.nameWithOwner)).toEqual({ status: 'loading' });
   });
 });

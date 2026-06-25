@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CiSignalSlice, Repo, SignalSlice } from '../../types/fleet';
+import type { CiSignalSlice, IssuesSignalSlice, Repo, SignalSlice } from '../../types/fleet';
 import {
   FLEET_QUERY_CHUNK_SIZE,
   SIGNAL_DERIVERS,
@@ -75,6 +75,16 @@ function ciMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
   const map = result.get('ci');
   if (!map) throw new Error('expected a ci slice map');
   return map;
+}
+
+function issuesMapOf(result: FleetBatchResult): Map<string, SignalSlice> {
+  const map = result.get('issues');
+  if (!map) throw new Error('expected an issues slice map');
+  return map;
+}
+
+function issues(result: Map<string, SignalSlice>, key: string): IssuesSignalSlice {
+  return result.get(key) as IssuesSignalSlice;
 }
 
 const TOKEN = 'ghs_token';
@@ -441,9 +451,236 @@ describe('executeFleetBatch', () => {
 // ── registry ────────────────────────────────────────────────────────────────
 
 describe('SIGNAL_DERIVERS registry', () => {
-  it('starts with only the CI deriver registered', () => {
-    expect(SIGNAL_DERIVERS).toHaveLength(1);
+  it('registers the CI deriver and the issues deriver (in that order)', () => {
+    expect(SIGNAL_DERIVERS).toHaveLength(2);
     expect(SIGNAL_DERIVERS[0].signal).toBe('ci');
     expect(SIGNAL_DERIVERS[0].kind).toBe('per-repo');
+    expect(SIGNAL_DERIVERS[1].signal).toBe('issues');
+    expect(SIGNAL_DERIVERS[1].kind).toBe('per-repo');
+  });
+});
+
+// ── issuesDeriver ────────────────────────────────────────────────────────────
+
+describe('issuesDeriver – buildFleetQuery viewer seam', () => {
+  const r = repo('o/r');
+
+  it('includes openIssues selection in every query regardless of viewerLogin', () => {
+    expect(buildFleetQuery([r], null)).toContain('openIssues:');
+    expect(buildFleetQuery([r], 'octocat')).toContain('openIssues:');
+  });
+
+  it('omits myIssues and $viewer when viewerLogin is null', () => {
+    const query = buildFleetQuery([r], null);
+    expect(query).not.toContain('myIssues');
+    expect(query).not.toContain('$viewer');
+    expect(query).not.toContain('createdBy');
+  });
+
+  it('includes myIssues, $viewer declaration, and createdBy filter when viewerLogin is present', () => {
+    const query = buildFleetQuery([r], 'octocat');
+    expect(query).toContain('myIssues:');
+    expect(query).toContain('$viewer');
+    expect(query).toContain('createdBy: $viewer');
+  });
+
+  it('buildFleetVariables includes viewer key when viewerLogin is supplied', () => {
+    const vars = buildFleetVariables([r], 'octocat');
+    expect(vars.viewer).toBe('octocat');
+  });
+
+  it('buildFleetVariables omits viewer key when viewerLogin is null/absent', () => {
+    expect(buildFleetVariables([r], null)).not.toHaveProperty('viewer');
+    expect(buildFleetVariables([r])).not.toHaveProperty('viewer');
+  });
+});
+
+describe('issuesDeriver – executeFleetBatch', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('derives ready slice with openCount from openIssues.totalCount', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 5 } },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toMatchObject({
+      status: 'ready',
+      openCount: 5,
+      overThreshold: false,
+      score: 1, // Math.floor(5 / 4)
+    });
+  });
+
+  it('with viewerLogin: mineCount and communityCount are populated from myIssues.totalCount', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: {
+            nameWithOwner: 'o/r',
+            openIssues: { totalCount: 10 },
+            myIssues: { totalCount: 3 },
+          },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], 'me', TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toMatchObject({
+      status: 'ready',
+      openCount: 10,
+      mineCount: 3,
+      communityCount: 7,
+      overThreshold: false,
+    });
+  });
+
+  it('without viewerLogin: mineCount and communityCount are undefined', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 5 } },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = issues(issuesMapOf(result), 'o/r');
+    expect(slice.status).toBe('ready');
+    expect(slice.mineCount).toBeUndefined();
+    expect(slice.communityCount).toBeUndefined();
+  });
+
+  it('clamps communityCount to 0 when mineCount exceeds openCount', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 2 }, myIssues: { totalCount: 5 } },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], 'me', TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toMatchObject({ communityCount: 0 });
+  });
+
+  it('score escalates to the full open count when at or above ISSUE_TRIAGE_THRESHOLD (20)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', openIssues: { totalCount: 20 } },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = issues(issuesMapOf(result), 'o/r');
+    expect(slice.overThreshold).toBe(true);
+    expect(slice.score).toBe(20);
+  });
+
+  it('openIssues subtree error → error slice; sibling repo with clean data stays ready', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/broken', openIssues: null },
+          r1: { nameWithOwner: 'o/ok', openIssues: { totalCount: 3 } },
+        },
+        errors: [{ message: 'issues field error', path: ['r0', 'openIssues'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/broken'), repo('o/ok')], null, TOKEN);
+    expect(issues(issuesMapOf(result), 'o/broken')).toEqual({ status: 'error' });
+    expect(issues(issuesMapOf(result), 'o/ok')).toMatchObject({ status: 'ready', openCount: 3 });
+  });
+
+  it('whole-repo error (alias path) → issues error slice', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: null,
+        },
+        errors: [{ message: 'repo gone', path: ['r0'] }],
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toEqual({ status: 'error' });
+  });
+
+  it('null node without a path error → zero ready slice (no-data, not failure)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: null },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: null,
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toMatchObject({
+      status: 'ready',
+      openCount: 0,
+      overThreshold: false,
+      score: 0,
+    });
+  });
+
+  it('overThreshold and score are keyed to the TOTAL openCount, not communityCount', async () => {
+    // mineCount === openCount → communityCount === 0, but score must escalate on total
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: {
+            nameWithOwner: 'o/r',
+            openIssues: { totalCount: 20 },
+            myIssues: { totalCount: 20 },
+          },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], 'me', TOKEN);
+    expect(issues(issuesMapOf(result), 'o/r')).toMatchObject({
+      overThreshold: true,
+      score: 20,
+      communityCount: 0,
+    });
   });
 });
