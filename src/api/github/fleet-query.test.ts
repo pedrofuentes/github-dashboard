@@ -106,13 +106,14 @@ function prItem(idx: number, authorAssociation: string, isDraft = false): unknow
 /**
  * Builds a mock repository node containing a pullRequests connection.
  * Also includes the minimal CI fields so the CI deriver produces a none slice.
+ * `nodes` represents ALL open PRs for the repo (≤100), matching the REST page.
  */
-function prNode(nameWithOwner: string, totalCount: number, nodes: unknown[]): unknown {
+function prNode(nameWithOwner: string, nodes: unknown[]): unknown {
   return {
     nameWithOwner,
     isArchived: false,
     defaultBranchRef: null,
-    pullRequests: { totalCount, nodes },
+    pullRequests: { nodes },
   };
 }
 
@@ -497,7 +498,6 @@ describe('buildFleetQuery (PR fragment)', () => {
   it('composes the PR per-repo fragment inside each repository alias', () => {
     const query = buildFleetQuery(repos, null);
     expect(query).toContain('pullRequests');
-    expect(query).toContain('totalCount');
     expect(query).toContain('isDraft');
     expect(query).toContain('authorAssociation');
   });
@@ -521,13 +521,13 @@ describe('executeFleetBatch (prDeriver)', () => {
     graphqlRateLimitStore.reset();
   });
 
-  it('derives openCount from totalCount', async () => {
+  it('derives openCount from non-draft nodes (matching REST non-draft page-capped count)', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 7, [prItem(1, 'MEMBER'), prItem(2, 'NONE')]),
+          r0: prNode('o/a', [prItem(1, 'MEMBER'), prItem(2, 'NONE')]),
         },
       }),
     );
@@ -535,7 +535,7 @@ describe('executeFleetBatch (prDeriver)', () => {
     const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
     expect(pr(prMapOf(result), 'o/a')).toMatchObject({
       status: 'ready',
-      openCount: 7,
+      openCount: 2,
     });
   });
 
@@ -545,7 +545,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 8, [
+          r0: prNode('o/a', [
             prItem(1, 'OWNER'),
             prItem(2, 'MEMBER'),
             prItem(3, 'COLLABORATOR'),
@@ -570,7 +570,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 3, [
+          r0: prNode('o/a', [
             prItem(1, 'MEMBER', false),
             prItem(2, 'NONE', true), // draft — excluded from external
             prItem(3, 'FIRST_TIMER', false),
@@ -590,7 +590,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 3, [
+          r0: prNode('o/a', [
             prItem(1, 'MEMBER'),
             prItem(2, 'NONE'),
             prItem(3, 'FIRST_TIME_CONTRIBUTOR'),
@@ -599,9 +599,34 @@ describe('executeFleetBatch (prDeriver)', () => {
       }),
     );
 
-    // openCount=3, externalCount=2 → 2*5 + 3 = 13
+    // openCount=3 (all non-draft), externalCount=2 (NONE + FIRST_TIME_CONTRIBUTOR) → 2*5 + 3 = 13
     const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
     expect(pr(prMapOf(result), 'o/a').score).toBe(13);
+  });
+
+  it('openCount excludes draft PRs and matches the REST non-draft page-capped count', async () => {
+    // 3 non-draft + 2 draft: openCount must be 3 (not 5), externalCount = 2 (NONE + CONTRIBUTOR)
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: { login: 'me' },
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/a', [
+            prItem(1, 'MEMBER', false), // non-draft, not external
+            prItem(2, 'NONE', false), // non-draft, external
+            prItem(3, 'OWNER', true), // draft — excluded from openCount
+            prItem(4, 'CONTRIBUTOR', false), // non-draft, external
+            prItem(5, 'FIRST_TIMER', true), // draft — excluded from openCount
+          ]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a')], 'me', TOKEN);
+    const slice = pr(prMapOf(result), 'o/a');
+    expect(slice.openCount).toBe(3); // 3 non-draft only
+    expect(slice.externalCount).toBe(2); // NONE + CONTRIBUTOR
+    expect(slice.score).toBe(2 * 5 + 3); // 13
   });
 
   it('includes externalPullRequests with identity fields only when externalCount > 0', async () => {
@@ -610,7 +635,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 4, [
+          r0: prNode('o/a', [
             prItem(1, 'MEMBER'),
             prItem(2, 'NONE'),
             prItem(3, 'FIRST_TIMER', true), // draft — excluded
@@ -649,7 +674,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 2, [prItem(1, 'MEMBER'), prItem(2, 'OWNER')]),
+          r0: prNode('o/a', [prItem(1, 'MEMBER'), prItem(2, 'OWNER')]),
         },
       }),
     );
@@ -721,7 +746,7 @@ describe('executeFleetBatch (prDeriver)', () => {
         data: {
           viewer: { login: 'me' },
           rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
-          r0: prNode('o/a', 1, [prWithNullAuthor]),
+          r0: prNode('o/a', [prWithNullAuthor]),
         },
       }),
     );
