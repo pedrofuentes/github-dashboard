@@ -167,39 +167,43 @@ describe('BoardKey — lifecycle states', () => {
     expect(part(container, 'accent-bar')?.style.backgroundColor).toBe('var(--color-neutral)');
   });
 
-  it('renders an error glyph + retry caption wired to onActivate', () => {
-    const onActivate = vi.fn();
+  it('renders a distinct error glyph that is NOT the CI-failure × and keeps the signal label', () => {
     const { container } = render(
       <BoardKey
         repo={makeRepo()}
         signal="issues"
         data={{ issues: { status: 'error' } }}
-        onActivate={onActivate}
+        onActivate={vi.fn()}
+        onRetry={vi.fn()}
       />,
     );
 
     expect(root(container)).toHaveAttribute('data-state', 'error');
     expect(part(container, 'error-glyph')).not.toBeNull();
-    expect(container.querySelector('svg[data-status="failure"]')).toBeInTheDocument();
-    expect(part(container, 'line3')?.textContent).toMatch(/retry/i);
-    expect(part(container, 'accent-bar')?.style.backgroundColor).toBe('var(--color-failure)');
+    // A load error must never reuse the red CI-failure × glyph or accent.
+    expect(container.querySelector('svg[data-status="failure"]')).toBeNull();
+    expect(container.querySelector('svg[data-status="action_required"]')).toBeInTheDocument();
+    expect(part(container, 'accent-bar')?.style.backgroundColor).toBe('var(--color-warning)');
+    // The signal label survives the error state (not overwritten by a retry hint).
+    expect(part(container, 'line3')?.textContent).toBe('Open Issues');
   });
 
-  it('falls back to a static caption for an error key without onActivate', () => {
+  it('shows the signal label and stays non-interactive for an error key with no handlers', () => {
     const { container } = render(
       <BoardKey repo={makeRepo()} signal="issues" data={{ issues: { status: 'error' } }} />,
     );
 
     expect(part(container, 'error-glyph')).not.toBeNull();
     expect(part(container, 'line3')?.textContent).toBe('Open Issues');
+    expect(part(container, 'retry-hint')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('renders a neutral dash placeholder for an empty value signal', () => {
+  it('renders an explicit "n/a" placeholder for an empty value signal', () => {
     const { container } = render(<BoardKey repo={makeRepo()} signal="issues" data={{}} />);
 
     expect(root(container)).toHaveAttribute('data-state', 'empty');
-    expect(part(container, 'empty')?.textContent).toBe('—');
+    expect(part(container, 'empty')?.textContent).toBe('n/a');
     expect(part(container, 'value')).toBeNull();
     expect(part(container, 'accent-bar')?.style.backgroundColor).toBe('var(--color-neutral)');
   });
@@ -272,6 +276,96 @@ describe('BoardKey — interactivity', () => {
 
     expect(screen.queryByRole('button')).toBeNull();
     expect(root(container).tagName).toBe('DIV');
+  });
+});
+
+describe('BoardKey — error retry', () => {
+  it('turns an error key into a button when onRetry is supplied', () => {
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button')).toBeInTheDocument();
+  });
+
+  it('calls onRetry (not onActivate) when an error key is pressed', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    const onRetry = vi.fn();
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        onActivate={onActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    await user.click(screen.getByRole('button'));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('keeps drill-down (onActivate) for a non-error key even when onRetry is supplied', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    const onRetry = vi.fn();
+    const repo = makeRepo();
+    render(
+      <BoardKey
+        repo={repo}
+        signal="issues"
+        data={{ issues: { status: 'ready', openCount: 3 } }}
+        onActivate={onActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    await user.click(screen.getByRole('button'));
+
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(onActivate).toHaveBeenCalledWith(repo);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('exposes a retry-specific accessible name carrying the signal + full nameWithOwner', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const name = screen.getByRole('button').getAttribute('aria-label') ?? '';
+    expect(name).toMatch(/retry/i);
+    expect(name).toContain('Issues');
+    expect(name).toContain('octo/hello-world');
+  });
+
+  it('shows a visible "Retry" affordance only while the error key is retryable', () => {
+    const { container, rerender } = render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(part(container, 'retry-hint')?.textContent).toMatch(/retry/i);
+
+    rerender(<BoardKey repo={makeRepo()} signal="issues" data={{ issues: { status: 'error' } }} />);
+    expect(part(container, 'retry-hint')).toBeNull();
   });
 });
 
