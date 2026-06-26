@@ -73,7 +73,9 @@ function Shell(): ReactElement {
 
   const handleViewChange = useCallback((next: FleetView) => setView(next), []);
   const handleDefaultViewChange = useCallback((next: FleetView) => {
-    saveDefaultView(next);
+    if (!saveDefaultView(next)) {
+      return;
+    }
     setDefaultView(next);
     setView(next);
   }, []);
