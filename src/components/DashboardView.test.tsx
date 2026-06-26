@@ -86,7 +86,7 @@ describe('DashboardView', () => {
       />,
     );
     // Seven per-repo signals → seven tiles for a single repo.
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i })).toHaveLength(7);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i })).toHaveLength(7);
   });
 
   it('passes per-repo signal data through to its tiles', () => {
@@ -106,13 +106,13 @@ describe('DashboardView', () => {
     expect(screen.getAllByText('Failing')).toHaveLength(2);
   });
 
-  it('calls onRepoActivate when a tile is activated (opens the drill-down)', async () => {
-    const onRepoActivate = vi.fn();
+  it('renders each tile as a link to the signal’s GitHub page (new tab)', () => {
     const repo = makeRepo('octo/a');
-    const user = userEvent.setup();
-    render(<DashboardView repos={[repo]} getRowData={emptyData} onRepoActivate={onRepoActivate} />);
-    await user.click(screen.getAllByRole('button', { name: /: .*octo\/a/i })[0]);
-    expect(onRepoActivate).toHaveBeenCalledWith(repo);
+    render(<DashboardView repos={[repo]} getRowData={emptyData} onRepoActivate={vi.fn()} />);
+    const ciTile = screen.getAllByRole('link', { name: /: .*octo\/a/i })[0];
+    expect(ciTile.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/a\//);
+    expect(ciTile).toHaveAttribute('target', '_blank');
+    expect(ciTile).toHaveAttribute('rel', 'noreferrer noopener');
   });
 
   it('shows an empty state when there are no repos', () => {

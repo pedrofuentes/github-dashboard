@@ -28,32 +28,51 @@ describe('SignalTile', () => {
     expect(screen.getByText('CI')).toBeInTheDocument();
   });
 
-  it('is an activatable button that calls onActivate with the repo on click', async () => {
-    const onActivate = vi.fn();
-    const repo = makeRepo();
-    const user = userEvent.setup();
+  it('renders the tile as a link to the signal’s GitHub page (new tab)', () => {
+    render(
+      <SignalTile
+        tile={makeTile('issues')}
+        repo={makeRepo()}
+        data={{ issues: { status: 'ready', openCount: 3 } }}
+        onActivate={vi.fn()}
+      />,
+    );
+    const link = screen.getByRole('link', { name: /issues: .*octo\/a/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/a/issues');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer noopener');
+  });
+
+  it('links the CI tile to the latest run when the slice carries one', () => {
     render(
       <SignalTile
         tile={makeTile('ci')}
-        repo={repo}
-        data={{ ci: { status: 'ready', conclusion: 'failure' } }}
-        onActivate={onActivate}
+        repo={makeRepo()}
+        data={{
+          ci: {
+            status: 'ready',
+            conclusion: 'failure',
+            latestRunUrl: 'https://github.com/octo/a/actions/runs/7',
+          },
+        }}
+        onActivate={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole('button', { name: /ci: .*octo\/a/i }));
-    expect(onActivate).toHaveBeenCalledWith(repo);
+    expect(screen.getByRole('link', { name: /ci: .*octo\/a/i })).toHaveAttribute(
+      'href',
+      'https://github.com/octo/a/actions/runs/7',
+    );
   });
 
-  it('is keyboard-activatable (Enter) via button semantics', async () => {
-    const onActivate = vi.fn();
+  it('exposes the tile link as the keyboard-focusable roving tab stop', async () => {
     const user = userEvent.setup();
     render(
-      <SignalTile tile={makeTile('issues')} repo={makeRepo()} data={{}} onActivate={onActivate} />,
+      <SignalTile tile={makeTile('issues')} repo={makeRepo()} data={{}} onActivate={vi.fn()} />,
     );
     await user.tab();
-    expect(screen.getByRole('button', { name: /issues: .*octo\/a/i })).toHaveFocus();
-    await user.keyboard('{Enter}');
-    expect(onActivate).toHaveBeenCalledTimes(1);
+    const link = screen.getByRole('link', { name: /issues: .*octo\/a/i });
+    expect(link).toHaveFocus();
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/a/issues');
   });
 
   it('exposes the slice status for redundant (non-colour) state encoding', () => {
@@ -148,7 +167,7 @@ describe('SignalTile', () => {
   ])('renders the %s signal with its label and bespoke body', (signal, label, bodyMarker) => {
     render(<SignalTile tile={makeTile(signal)} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
     expect(screen.getByText(label)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: new RegExp(`octo/a`, 'i') })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: new RegExp(`octo/a`, 'i') })).toBeInTheDocument();
     // The bespoke per-signal body (DESIGN-TILES §6) renders its own redundant
     // sr-text — proof the tile now dispatches to the bodies, not the `*Cell`
     // atoms (which the table view keeps).
@@ -161,7 +180,7 @@ describe('SignalTile', () => {
     );
     // The signal label resolves to "Activity" and the activate affordance names it.
     expect(screen.getByText('Activity')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /activity: .*octo\/a/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /activity: .*octo\/a/i })).toBeInTheDocument();
     // Activity has no lifecycle slice in RepoSignalData — the frame shows a stable
     // calm identity: a 'ready'-equivalent status and the purple identity accent
     // on the header dot (spec §5 "purple icon"; redesign R2 — the old success
@@ -189,7 +208,7 @@ describe('SignalTile', () => {
     expect(container.querySelector('[data-salience="problem"]')).not.toBeNull();
     // The activate label carries the scope + metric + tier + repo (a11y summary).
     expect(
-      screen.getByRole('button', { name: 'CI: 2 failing, problem — octo/a' }),
+      screen.getByRole('link', { name: 'CI: 2 failing, problem — octo/a' }),
     ).toBeInTheDocument();
   });
 
@@ -204,7 +223,7 @@ describe('SignalTile', () => {
     );
     expect(container.querySelector('[data-salience="actionable"]')).not.toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Reviews: 2 awaiting review, actionable — octo/a' }),
+      screen.getByRole('link', { name: 'Reviews: 2 awaiting review, actionable — octo/a' }),
     ).toBeInTheDocument();
   });
 
@@ -218,9 +237,7 @@ describe('SignalTile', () => {
       />,
     );
     expect(container.querySelector('[data-salience="calm"]')).not.toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Issues: 7 open, calm — octo/a' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Issues: 7 open, calm — octo/a' })).toBeInTheDocument();
   });
 
   it('threads a display alias to the frame while still announcing the real repo (a11y)', () => {
@@ -240,9 +257,7 @@ describe('SignalTile', () => {
     // …plus a visually-hidden "(alias for octo/a)" so the real repo is reachable.
     expect(within(heading).getByText('(alias for octo/a)')).toHaveClass('sr-only');
     // The activate label still announces the real owner/repo via accessibleSummary.
-    expect(
-      screen.getByRole('button', { name: 'Issues: 7 open, calm — octo/a' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Issues: 7 open, calm — octo/a' })).toBeInTheDocument();
   });
 });
 

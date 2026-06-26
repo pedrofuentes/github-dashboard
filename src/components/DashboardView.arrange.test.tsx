@@ -289,24 +289,24 @@ describe('DashboardView — keyboard neighbour parity over filtered cells', () =
     renderGrid();
     // octo/a Activity sits at x6,y2; its nearest right-neighbour by centre
     // distance is octo/b's CI tile at x9,y2.
-    const activity = screen.getByRole('button', { name: /activity: .*octo\/a/i });
+    const activity = screen.getByRole('link', { name: /activity: .*octo\/a/i });
     act(() => activity.focus());
     fireEvent.keyDown(activity, { key: 'ArrowRight' });
-    expect(screen.getByRole('button', { name: /ci: .*octo\/b/i })).toHaveFocus();
+    expect(screen.getByRole('link', { name: /ci: .*octo\/b/i })).toHaveFocus();
   });
 
   it('filtered: the SAME ArrowRight skips the projected-out repo (neighbour search ignores it)', () => {
     renderGrid(new Set(['octo/a']));
     // octo/b is projected out of the grid entirely — its tiles never render.
     const grid = screen.getByRole('grid', { name: /dashboard tiles/i });
-    expect(within(grid).queryByRole('button', { name: /ci: .*octo\/b/i })).toBeNull();
+    expect(within(grid).queryByRole('link', { name: /ci: .*octo\/b/i })).toBeNull();
 
-    const activity = screen.getByRole('button', { name: /activity: .*octo\/a/i });
+    const activity = screen.getByRole('link', { name: /activity: .*octo\/a/i });
     act(() => activity.focus());
     fireEvent.keyDown(activity, { key: 'ArrowRight' });
     // octo/b's CI was the unfiltered neighbour; with it absent from `cells`,
     // focus stays within octo/a (its pull-requests tile is now the nearest
     // rendered right-neighbour). The filtered-out tile is never visited.
-    expect(screen.getByRole('button', { name: /pull requests: .*octo\/a/i })).toHaveFocus();
+    expect(screen.getByRole('link', { name: /pull requests: .*octo\/a/i })).toHaveFocus();
   });
 });

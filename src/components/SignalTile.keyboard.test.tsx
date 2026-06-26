@@ -23,7 +23,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
 
   it('exposes the tile id on the activation control for grid navigation', () => {
     render(<SignalTile tile={makeTile()} repo={makeRepo()} data={{}} onActivate={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /ci: .*octo\/a/i })).toHaveAttribute(
       'data-tile-activate',
       'octo/a:ci',
     );
@@ -33,7 +33,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
     render(
       <SignalTile tile={makeTile()} repo={makeRepo()} data={{}} onActivate={vi.fn()} active />,
     );
-    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('link', { name: /ci: .*octo\/a/i })).toHaveAttribute('tabindex', '0');
   });
 
   it('is removed from the tab order when not active (roving tabindex)', () => {
@@ -46,10 +46,7 @@ describe('SignalTile — grid semantics & roving tabindex', () => {
         active={false}
       />,
     );
-    expect(screen.getByRole('button', { name: /ci: .*octo\/a/i })).toHaveAttribute(
-      'tabindex',
-      '-1',
-    );
+    expect(screen.getByRole('link', { name: /ci: .*octo\/a/i })).toHaveAttribute('tabindex', '-1');
   });
 
   it('removes the tile and its Move/Resize controls from the tab order when editing but not active', () => {

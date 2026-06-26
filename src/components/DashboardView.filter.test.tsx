@@ -103,7 +103,7 @@ describe('DashboardView — repo-filter projection', () => {
         repoFilter={new Set(['octo/a'])}
       />,
     );
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /: .*octo\/b/i })).toBeNull();
   });
 
@@ -119,8 +119,8 @@ describe('DashboardView — repo-filter projection', () => {
         repoFilter={undefined}
       />,
     );
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBe(7);
-    expect(screen.getAllByRole('button', { name: /: .*octo\/b/i }).length).toBe(7);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBe(7);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/b/i }).length).toBe(7);
   });
 
   it('keeps a hidden tile hidden across a filter apply + clear (orthogonal to visibility, AC-7)', () => {
@@ -179,8 +179,8 @@ describe('DashboardView — repo-filter projection', () => {
     expect(headings[0]).toHaveAttribute('title', 'octo/a');
 
     // The activate control's accessible name keeps the real repo, not the alias.
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBe(7);
-    expect(screen.queryByRole('button', { name: /alpha/i })).toBeNull();
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBe(7);
+    expect(screen.queryByRole('link', { name: /alpha/i })).toBeNull();
   });
 });
 

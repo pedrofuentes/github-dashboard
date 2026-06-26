@@ -148,6 +148,36 @@ describe('TileFrame — activate overlay', () => {
     expect(onTileFocus).toHaveBeenCalledWith('octo/a:ci');
   });
 
+  it('renders the activate overlay as a new-tab link when activateHref is set (display mode)', () => {
+    renderFrame({ activateHref: 'https://github.com/octo/a/issues' });
+    const link = screen.getByRole('link', { name: /view ci details for octo\/a/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/a/issues');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer noopener');
+    expect(link).toHaveAttribute('data-tile-activate', 'octo/a:ci');
+    // No drill-down button is rendered when the overlay is a link.
+    expect(screen.queryByRole('button', { name: /view ci details for octo\/a/i })).toBeNull();
+  });
+
+  it('reports focus via onTileFocus from the link overlay', async () => {
+    const onTileFocus = vi.fn();
+    const user = userEvent.setup();
+    renderFrame({ onTileFocus, activateHref: 'https://github.com/octo/a/issues' });
+    await user.tab();
+    expect(onTileFocus).toHaveBeenCalledWith('octo/a:ci');
+  });
+
+  it('keeps the activate overlay a drill-down button in edit mode even when activateHref is set', async () => {
+    const onActivate = vi.fn();
+    const user = userEvent.setup();
+    renderFrame({ onActivate, editing: true, activateHref: 'https://github.com/octo/a/issues' });
+    // In edit mode the overlay stays a button so keyboard reorder/resize and the
+    // in-app activation are unaffected; it must NOT become a navigation link.
+    expect(screen.queryByRole('link', { name: /view ci details for octo\/a/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /view ci details for octo\/a/i }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces aria-colindex and aria-rowindex on the cell', () => {
     renderFrame({ colIndex: 2, rowIndex: 3 });
     const cell = screen.getByRole('gridcell');

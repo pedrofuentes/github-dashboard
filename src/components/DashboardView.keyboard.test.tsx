@@ -72,8 +72,8 @@ describe('DashboardView — grid semantics & roving navigation', () => {
       />,
     );
     const tabbable = screen
-      .getAllByRole('button', { name: /: .*octo\/a/i })
-      .filter((button) => button.getAttribute('tabindex') === '0');
+      .getAllByRole('link', { name: /: .*octo\/a/i })
+      .filter((tile) => tile.getAttribute('tabindex') === '0');
     expect(tabbable).toHaveLength(1);
   });
 
@@ -88,12 +88,12 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     );
     // Tab lands on the first (CI) tile, the initial roving tab stop.
     await user.tab();
-    const ci = screen.getByRole('button', { name: /ci: .*octo\/a/i });
+    const ci = screen.getByRole('link', { name: /ci: .*octo\/a/i });
     expect(ci).toHaveFocus();
 
     // ArrowRight moves to the neighbouring Security tile and updates the tab stop.
     await user.keyboard('{ArrowRight}');
-    const security = screen.getByRole('button', { name: /security: .*octo\/a/i });
+    const security = screen.getByRole('link', { name: /security: .*octo\/a/i });
     expect(security).toHaveFocus();
     expect(security).toHaveAttribute('tabindex', '0');
     expect(ci).toHaveAttribute('tabindex', '-1');
@@ -112,25 +112,30 @@ describe('DashboardView — grid semantics & roving navigation', () => {
       />,
     );
     await user.tab();
-    const ci = screen.getByRole('button', { name: /ci: .*octo\/a"b/i });
+    const ci = screen.getByRole('link', { name: /ci: .*octo\/a"b/i });
     expect(ci).toHaveFocus();
 
     // Without CSS.escape this querySelector throws and focus never moves.
     await user.keyboard('{ArrowRight}');
-    const security = screen.getByRole('button', {
+    const security = screen.getByRole('link', {
       name: /security: .*octo\/a"b/i,
     });
     expect(security).toHaveFocus();
   });
 
-  it('keeps Enter activation working from a tile (no T2 regression)', async () => {
+  it('navigates a tile to its GitHub page via the link (Enter activates the anchor)', async () => {
     const onRepoActivate = vi.fn();
     const repo = makeRepo('octo/a');
     const user = userEvent.setup();
     render(<DashboardView repos={[repo]} getRowData={emptyData} onRepoActivate={onRepoActivate} />);
     await user.tab();
-    await user.keyboard('{Enter}');
-    expect(onRepoActivate).toHaveBeenCalledWith(repo);
+    const ci = screen.getByRole('link', { name: /ci: .*octo\/a/i });
+    expect(ci).toHaveFocus();
+    // The tile is an anchor to GitHub (opened in a new tab) — Enter activates the
+    // link natively rather than the in-app drill-down, so onRepoActivate is unused.
+    expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/a\//);
+    expect(ci).toHaveAttribute('target', '_blank');
+    expect(onRepoActivate).not.toHaveBeenCalled();
   });
 
   it('prevents the default page scroll for an arrow key at a grid boundary', async () => {
@@ -146,7 +151,7 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     // ArrowUp have no spatial neighbour, so focus stays put — but the handler
     // must still call preventDefault() so the page doesn't native-scroll.
     await user.tab();
-    const ci = screen.getByRole('button', { name: /ci: .*octo\/a/i });
+    const ci = screen.getByRole('link', { name: /ci: .*octo\/a/i });
     expect(ci).toHaveFocus();
 
     // fireEvent returns false when a handler called event.preventDefault().
@@ -168,7 +173,7 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     // tall): CI sits at x=0,y=0 → column 1, row 1; Security at x=3,y=0 → column
     // 4, row 1; Stale at x=3,y=2 → column 4, row 3.
     const cellFor = (name: RegExp): HTMLElement | null =>
-      screen.getByRole('button', { name }).closest('[role="gridcell"]');
+      screen.getByRole('link', { name }).closest('[role="gridcell"]');
 
     const ci = cellFor(/ci: .*octo\/a/i);
     expect(ci).toHaveAttribute('aria-colindex', '1');
