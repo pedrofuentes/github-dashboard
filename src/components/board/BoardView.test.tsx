@@ -333,6 +333,12 @@ describe('BoardView — edit mode (× remove overlay)', () => {
     ).toHaveLength(6);
   });
 
+  it('renders no remove overlay when editing without a toggle handler', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing />);
+
+    expect(screen.queryByRole('button', { name: /remove .* tile for/i })).toBeNull();
+  });
+
   it('labels each remove button and toggles that (repo, signal) on click', async () => {
     const user = userEvent.setup();
     const onToggleKey = vi.fn();
