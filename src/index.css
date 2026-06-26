@@ -113,7 +113,7 @@
   --color-surface-selected: #1b2b3a; /* selected row/cell bg (multi-select) */
   --color-chart-track: #30363d; /* unfilled bar/spark/heatmap track */
   --color-selection: #58a6ff; /* checkbox/active-outline accent */
-  --color-attention: #d29922; /* needs-attention accent, more urgent than warning */
+  --color-attention: #db6d28; /* needs-attention accent, more urgent than warning */
 }
 
 /*
