@@ -1039,8 +1039,7 @@ const GlobalSearchPageSchema = z
   .object({
     pageInfo: z
       .object({ hasNextPage: z.boolean(), endCursor: z.string().nullable().optional() })
-      .passthrough()
-      .optional(),
+      .passthrough(),
     nodes: z.array(z.unknown()).optional().default([]),
   })
   .passthrough();
@@ -1159,7 +1158,7 @@ async function runGlobalDerivers(
 
   const accumulated = new Map<string, GlobalAliasAccumulator>();
   let latestData: FleetQueryData | null = null;
-  let latestErrors: GraphQLError[] = [];
+  const allErrors: GraphQLError[] = [];
   let cursor: string | null = null;
 
   try {
@@ -1188,7 +1187,7 @@ async function runGlobalDerivers(
 
       if (data.rateLimit) recordGraphQLCost(data.rateLimit);
       latestData = data;
-      latestErrors = errors;
+      allErrors.push(...errors);
 
       let hasNext = false;
       let nextCursor: string | null = null;
@@ -1199,7 +1198,12 @@ async function runGlobalDerivers(
         if (!page.success) {
           // Malformed page: record it as not-ok so the merge leaves the raw
           // payload in place for the deriver's strict parse to reject.
-          if (!accumulated.has(alias)) accumulated.set(alias, { base: {}, nodes: [], ok: false });
+          const entry = accumulated.get(alias);
+          if (entry) {
+            entry.ok = false;
+          } else {
+            accumulated.set(alias, { base: {}, nodes: [], ok: false });
+          }
           continue;
         }
         const entry = accumulated.get(alias);
@@ -1242,7 +1246,7 @@ async function runGlobalDerivers(
     }
   }
 
-  const errorIndex = buildErrorIndex(latestErrors);
+  const errorIndex = buildErrorIndex(allErrors);
   const ctx = buildGlobalContext(repos, viewerLogin, finalData as FleetQueryData, errorIndex);
   for (const deriver of globalDerivers) {
     const slices = deriver.derive(ctx);
