@@ -11,6 +11,7 @@ import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
 import { FacetedRepoFilter } from './components/FacetedRepoFilter';
 import { FleetGrid } from './components/FleetGrid';
+import { FleetLoadingBanner } from './components/FleetLoadingBanner';
 import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
 import { SavedViewsMenu } from './components/SavedViewsMenu';
@@ -215,7 +216,9 @@ function FleetPanel({
   onOpenSettings,
 }: FleetPanelProps): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
-  const { getRowData } = useRepoSignals(repos, token, viewerLogin);
+  const { getRowData, fleet = { loading: false, ready: repos.length, total: repos.length } } =
+    useRepoSignals(repos, token, viewerLogin);
+  const viewLoading = status === 'loading' || fleet.loading;
   // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
   // DashboardView grid and the sibling CustomizePanel, so the tile picker and
   // the grid never desync. Aliases + repo filter are owned alongside it.
@@ -466,12 +469,13 @@ function FleetPanel({
             onRemove={saved.remove}
           />
         </div>
+        <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
         {view === 'triage' ? (
           <TriageView
             repos={filteredRepos}
             getRowData={getRowData}
             onRepoActivate={handleRepoActivate}
-            loading={status === 'loading'}
+            loading={viewLoading}
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
@@ -480,7 +484,7 @@ function FleetPanel({
             repos={filteredRepos}
             getRowData={getRowData}
             onRepoActivate={handleRepoActivate}
-            loading={status === 'loading'}
+            loading={viewLoading}
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
@@ -496,7 +500,7 @@ function FleetPanel({
               repoFilter={filter.isActive ? filter.derivedSelected : undefined}
               onClearFilter={filter.clearAll}
               aliases={aliases.aliases}
-              loading={status === 'loading'}
+              loading={viewLoading}
               error={status === 'error' ? error : null}
               onRetry={reload}
             />
@@ -517,7 +521,7 @@ function FleetPanel({
             inbox={inbox}
             repos={filteredRepos}
             repoScope={filter.isActive ? filter.derivedSelected : undefined}
-            loading={status === 'loading'}
+            loading={viewLoading}
             error={status === 'error' ? error : null}
             onRetry={reload}
           />
@@ -527,7 +531,7 @@ function FleetPanel({
               repos={filteredRepos}
               getRowData={getRowData}
               onRepoActivate={handleRepoActivate}
-              loading={status === 'loading'}
+              loading={viewLoading}
               error={status === 'error' ? error : null}
               onRetry={reload}
               hiddenKeys={deck.hidden}
@@ -552,7 +556,7 @@ function FleetPanel({
           <FleetGrid
             repos={filteredRepos}
             getRowData={getRowData}
-            loading={status === 'loading'}
+            loading={viewLoading}
             error={status === 'error' ? error : null}
             onRetry={reload}
             onRepoActivate={handleRepoActivate}

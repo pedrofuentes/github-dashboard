@@ -268,6 +268,10 @@ export function TriageView({
         <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
           <p className="text-sm text-text-muted">No repositories found for this token.</p>
         </div>
+      ) : loading ? (
+        <div className="rounded-md border border-border bg-surface px-4 py-6 text-center">
+          <p className="text-sm text-text-muted">Loading fleet signals…</p>
+        </div>
       ) : model.allClear ? (
         <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
           <span aria-hidden="true" className="text-2xl text-accent-success">
