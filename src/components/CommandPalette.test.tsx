@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -226,6 +226,67 @@ describe('CommandPalette keyboard model', () => {
 
     await user.keyboard('{Home}');
     expect(input).toHaveAttribute('aria-activedescendant', options[0].id);
+  });
+
+  it('lets Home and End use native input behavior when there are no matching options', async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+    const input = screen.getByRole('combobox');
+
+    await user.type(input, 'zzzzzz');
+
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(input).not.toHaveAttribute('aria-activedescendant');
+    expect(fireEvent.keyDown(input, { key: 'Home' })).toBe(true);
+    expect(fireEvent.keyDown(input, { key: 'End' })).toBe(true);
+    expect(input).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('preserves the active option for raw query edits that keep the same results', async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+    const input = screen.getByRole('combobox');
+    const initialOptions = screen.getAllByRole('option');
+
+    await user.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute('aria-activedescendant', initialOptions[1].id);
+
+    await user.type(input, ' ');
+
+    const sameOptions = screen.getAllByRole('option');
+    expect(sameOptions.map((option) => option.id)).toEqual(
+      initialOptions.map((option) => option.id),
+    );
+    expect(input).toHaveAttribute('aria-activedescendant', sameOptions[1].id);
+
+    fireEvent.change(input, { target: { value: 'charlie' } });
+
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1));
+    expect(input).toHaveAttribute('aria-activedescendant', screen.getAllByRole('option')[0].id);
+  });
+
+  it('clamps the active option when the command list shrinks while open', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CommandPalette open onClose={vi.fn()} commands={makeCommands()} />,
+    );
+    const input = screen.getByRole('combobox');
+
+    await user.keyboard('{End}');
+    expect(input).toHaveAttribute('aria-activedescendant', screen.getAllByRole('option')[2].id);
+
+    rerender(
+      <CommandPalette
+        open
+        onClose={vi.fn()}
+        commands={[{ id: 'alpha', label: 'Alpha Action', group: 'Navigation', run: vi.fn() }]}
+      />,
+    );
+
+    const remaining = screen.getAllByRole('option');
+    expect(remaining).toHaveLength(1);
+    await waitFor(() => expect(input).toHaveAttribute('aria-activedescendant', remaining[0].id));
+    expect(remaining[0]).toHaveAttribute('aria-selected', 'true');
   });
 
   it('runs a command and closes when its option is clicked', async () => {
