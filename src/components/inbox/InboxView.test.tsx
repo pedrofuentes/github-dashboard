@@ -95,6 +95,29 @@ describe('InboxView states (AC-13)', () => {
     expect(screen.queryByText(/no items match these filters/i)).toBeNull();
   });
 
+  it('treats an active repo scope with no matching items as narrowed, while fleet-wide empty stays caught up', () => {
+    const { rerender } = render(
+      <InboxView inbox={inboxResult({ items: [], filters: DEFAULT_FILTERS })} repos={REPOS} />,
+    );
+
+    expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no items match these filters/i)).toBeNull();
+
+    rerender(
+      <InboxView
+        inbox={inboxResult({
+          items: [makeItem({ id: 'ci:octo/app:scope', repo: REPOS[0] })],
+          filters: DEFAULT_FILTERS,
+        })}
+        repos={REPOS}
+        repoScope={new Set([REPOS[1].nameWithOwner])}
+      />,
+    );
+
+    expect(screen.getByText(/no items match these filters/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all caught up/i)).toBeNull();
+  });
+
   it('shows a distinct empty-filtered state with a clear-filters control when filters hide everything', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
@@ -323,7 +346,7 @@ describe('InboxView bulk selection + actions (T-f5-inbox-bulk)', () => {
     expect(screen.queryByRole('toolbar', { name: /bulk actions/i })).toBeNull();
   });
 
-  it('enables Restore only when a dismissed item is selected, then routes to restoreMany', async () => {
+  it('enables Restore for a mixed selection and announces only the dismissed items restored', async () => {
     const user = userEvent.setup();
     const restoreMany = vi.fn();
     const dismissedItem = makeItem({ id: 'd', title: 'Dead', dismissed: true, repo: REPOS[0] });
@@ -349,7 +372,7 @@ describe('InboxView bulk selection + actions (T-f5-inbox-bulk)', () => {
     await user.click(screen.getByRole('button', { name: /^restore$/i }));
     expect(restoreMany).toHaveBeenCalledTimes(1);
     expect([...restoreMany.mock.calls[0][0]].sort()).toEqual(['a', 'd']);
-    expect(screen.getByText('Restored 2 items')).toBeInTheDocument();
+    expect(screen.getByText('Restored 1 items')).toBeInTheDocument();
   });
 
   it('Select all selects every visible item; Clear selection empties it', async () => {
