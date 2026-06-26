@@ -46,14 +46,16 @@ export async function fetchOpenPullRequestCount(
   const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers }, 'fetchOpenPullRequestCount');
+  return scheduleSearchRequest(async () => {
+    const response = await fetchWithRetry(url, { headers }, 'fetchOpenPullRequestCount');
 
-  if (!response.ok) {
-    return 0; // Graceful fallback — PR count is supplementary data
-  }
+    if (!response.ok) {
+      return 0; // Graceful fallback — PR count is supplementary data
+    }
 
-  const data = SearchCountResponseSchema.parse(await response.json());
-  return data.total_count;
+    const data = SearchCountResponseSchema.parse(await response.json());
+    return data.total_count;
+  });
 }
 
 /**
@@ -280,28 +282,30 @@ export async function fetchReviewRequestedPage(
   options: { token: string; signal?: AbortSignal },
 ): Promise<ReviewRequestedSearchPage> {
   const headers = buildHeaders(options.token);
-  const response = await fetchWithRetry(
-    url,
-    { headers, signal: options.signal },
-    'fetchReviewRequestedPage',
-  );
-  const rateLimitInfo = parseRateLimitHeaders(response.headers);
+  return scheduleSearchRequest(async () => {
+    const response = await fetchWithRetry(
+      url,
+      { headers, signal: options.signal },
+      'fetchReviewRequestedPage',
+    );
+    const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
-  if (!response.ok) {
-    handleApiError(response.status, rateLimitInfo, '', '', parseRetryAfter(response.headers));
-  }
+    if (!response.ok) {
+      handleApiError(response.status, rateLimitInfo, '', '', parseRetryAfter(response.headers));
+    }
 
-  const data = ReviewRequestedSearchPageSchema.parse(await response.json());
-  return {
-    items: data.items.map((item) => ({
-      repository_url: item.repository_url,
-      number: item.number,
-      title: item.title,
-      html_url: item.html_url,
-      created_at: item.created_at,
-      user_login: item.user?.login ?? '',
-    })),
-    totalCount: data.total_count,
-    nextPageUrl: parseNextPageUrl(response.headers.get('link')),
-  };
+    const data = ReviewRequestedSearchPageSchema.parse(await response.json());
+    return {
+      items: data.items.map((item) => ({
+        repository_url: item.repository_url,
+        number: item.number,
+        title: item.title,
+        html_url: item.html_url,
+        created_at: item.created_at,
+        user_login: item.user?.login ?? '',
+      })),
+      totalCount: data.total_count,
+      nextPageUrl: parseNextPageUrl(response.headers.get('link')),
+    };
+  }, options.signal);
 }
