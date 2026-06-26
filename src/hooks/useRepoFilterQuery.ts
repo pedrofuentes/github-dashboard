@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { GetRowData, Repo } from '../types/fleet';
+import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import {
   createRepoFilterQueryStore,
   evaluateRepoFilterQuery,
@@ -139,6 +139,48 @@ function withFacet<K extends keyof Facets>(
   value: Facets[K],
 ): RepoFilterQueryV2 {
   return { ...query, facets: { ...query.facets, [key]: value } };
+}
+
+function signalFilterKey(data: RepoSignalData): string {
+  const staleItems = data.stale?.staleItems ?? [];
+  return JSON.stringify({
+    ci: {
+      status: data.ci?.status,
+      conclusion: data.ci?.conclusion,
+    },
+    security: {
+      status: data.security?.status,
+      grade: data.security?.grade,
+      counts: data.security?.counts,
+      truncated: data.security?.truncated,
+    },
+    pullRequests: {
+      status: data.pullRequests?.status,
+      openCount: data.pullRequests?.openCount,
+      externalCount: data.pullRequests?.externalCount,
+    },
+    reviews: {
+      status: data.reviews?.status,
+      requestedCount: data.reviews?.requestedCount,
+    },
+    issues: {
+      status: data.issues?.status,
+      openCount: data.issues?.openCount,
+      overThreshold: data.issues?.overThreshold,
+    },
+    stale: {
+      status: data.stale?.status,
+      staleCount: data.stale?.staleCount,
+      hasPullRequest: staleItems.some((item) => item.type === 'pr'),
+      hasIssue: staleItems.some((item) => item.type === 'issue'),
+    },
+  });
+}
+
+function fleetSignalFilterKey(repos: readonly Repo[], getRowData: GetRowData): string {
+  return repos
+    .map((repo) => `${repo.nameWithOwner}\0${signalFilterKey(getRowData(repo))}`)
+    .join('\n');
 }
 
 /**
@@ -306,9 +348,20 @@ export function useRepoFilterQuery(
     [update, repos],
   );
 
+  const latestGetRowData = useRef(getRowData);
+  latestGetRowData.current = getRowData;
+  const filterSignalKey = fleetSignalFilterKey(repos, getRowData);
+  const stableFilterGetRowData = useCallback(
+    (repo: Repo) => {
+      void filterSignalKey;
+      return latestGetRowData.current(repo);
+    },
+    [filterSignalKey],
+  );
+
   const derivedSelected = useMemo(
-    () => evaluateRepoFilterQuery(query, repos, getRowData),
-    [query, repos, getRowData],
+    () => evaluateRepoFilterQuery(query, repos, stableFilterGetRowData),
+    [query, repos, stableFilterGetRowData],
   );
 
   const isActive = useMemo(() => isQueryActive(query), [query]);
