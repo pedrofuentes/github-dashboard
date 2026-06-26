@@ -213,10 +213,9 @@ export async function fetchWithRetry(
 
       if (RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_RETRIES) {
         const retryAfter = parseRetryAfter(response.headers);
-        const computedDelay = retryAfter
+        const delay = retryAfter
           ? retryAfter * 1000
-          : RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-        const delay = jitterRetryDelayMs(computedDelay);
+          : jitterRetryDelayMs(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
         await abortableSleep(delay, signal);
         continue;
       }
