@@ -158,11 +158,26 @@ describe('TriageView healthy band', () => {
     'octo/healthy2': HEALTHY,
   });
 
-  it('collapses the Healthy band by default (rows absent, aria-expanded false)', () => {
+  it('collapses the Healthy band by default (rows hidden, aria-expanded false)', () => {
     render(<TriageView repos={repos} getRowData={getRowData} />);
     const toggle = screen.getByRole('button', { name: /healthy.*2/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('octo/healthy1')).not.toBeInTheDocument();
+    const healthyRow = screen.queryByText('octo/healthy1');
+    if (healthyRow) {
+      expect(healthyRow).not.toBeVisible();
+    }
+  });
+
+  it('keeps the collapsed Healthy controlled region in the DOM', () => {
+    render(<TriageView repos={repos} getRowData={getRowData} />);
+    const toggle = screen.getByRole('button', { name: /healthy.*2/i });
+    const controlledRegionId = toggle.getAttribute('aria-controls');
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(controlledRegionId).toBeTruthy();
+    const controlledRegion = document.getElementById(controlledRegionId ?? '');
+    expect(controlledRegion).toBeInTheDocument();
+    expect(controlledRegion).not.toBeVisible();
   });
 
   it('expands the Healthy band when toggled', async () => {
@@ -223,7 +238,28 @@ describe('TriageView states', () => {
     render(<TriageView repos={repos} getRowData={() => ({})} loading />);
 
     expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/loading fleet signals/i)).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+  });
+
+  it('surfaces settled actionable rows while the fleet is still loading', () => {
+    const repos = [repo('octo/broken'), repo('octo/review')];
+    render(
+      <TriageView
+        repos={repos}
+        getRowData={rowDataFor({
+          'octo/broken': FAILING_CI,
+          'octo/review': REVIEW_REQUESTED,
+        })}
+        loading
+      />,
+    );
+
+    expect(screen.queryByText(/loading fleet signals/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /needs attention/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /waiting on me/i })).toBeInTheDocument();
+    expect(screen.getByText('octo/broken')).toBeInTheDocument();
+    expect(screen.getByText('octo/review')).toBeInTheDocument();
   });
 
   it('lists repos under the correct band with their owner/repo name', () => {
