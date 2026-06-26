@@ -16,7 +16,7 @@ import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
 import { useReviewsSignal } from './signals/useReviewsSignal';
 import { useSecuritySignal } from './signals/useSecuritySignal';
 import { useStaleSignal } from './signals/useStaleSignal';
-import { useFleetBatchLoader } from './useFleetBatchLoader';
+import { useFleetBatchLoader, type UseFleetBatchLoaderResult } from './useFleetBatchLoader';
 import { useRepoSignals } from './useRepoSignals';
 
 vi.mock('./signals/useCiSignal', () => ({ useCiSignal: vi.fn() }));
@@ -715,5 +715,237 @@ describe('useRepoSignals', () => {
     rerender();
 
     expect(result.current.fleet).toBe(firstFleet);
+  });
+});
+
+// ── Scoped signal retry seam (#507) ──────────────────────────────────────────
+//
+// These exercise the REAL retry implementation inside useRepoSignals — the
+// retry-request state, the scoped retry batch/security loaders, and the overlay
+// memos that fold a retried slice onto the primary result. The prior coverage
+// lived only in BoardView/App tests that MOCK useRepoSignals and merely assert
+// the retrySignal callback is forwarded; a no-op retry implementation would
+// have passed them. Here we drive renderHook against the real hook (mocking
+// only the underlying loaders, like the suite above) so the retry data path is
+// actually executed, and we guard the never-cleared-overlay regression.
+describe('useRepoSignals — scoped signal retry', () => {
+  const staleCi: CiSignalSlice = {
+    status: 'ready',
+    score: 1,
+    conclusion: 'success',
+    failingCount: 0,
+  };
+  const retriedCi: CiSignalSlice = {
+    status: 'ready',
+    score: 9,
+    conclusion: 'failure',
+    failingCount: 5,
+  };
+  const freshCi: CiSignalSlice = {
+    status: 'ready',
+    score: 4,
+    conclusion: 'failure',
+    failingCount: 2,
+  };
+
+  const staleSecurity: SecuritySignalSlice = {
+    status: 'ready',
+    score: 1,
+    grade: 'A',
+    counts: { critical: 0, high: 0, medium: 0, low: 1 },
+  };
+  const retriedSecurity: SecuritySignalSlice = {
+    status: 'ready',
+    score: 9,
+    grade: 'F',
+    counts: { critical: 3, high: 1, medium: 0, low: 0 },
+  };
+  const freshSecurity: SecuritySignalSlice = {
+    status: 'ready',
+    score: 5,
+    grade: 'C',
+    counts: { critical: 0, high: 2, medium: 1, low: 0 },
+  };
+
+  /**
+   * Settled primary batch result carrying `repoCi` for REPO (length-2 fleet).
+   * The hook calls the primary fleet loader with the full repo set, so a
+   * length-2 repos arg distinguishes the primary call from the length-1 retry.
+   */
+  function primaryCiBatch(repoCi: CiSignalSlice): UseFleetBatchLoaderResult {
+    return {
+      result: new Map([
+        [
+          'ci',
+          new Map([
+            [REPO.nameWithOwner, repoCi],
+            [REPO_B.nameWithOwner, ci],
+          ]),
+        ],
+      ]),
+      loading: false,
+      error: false,
+    };
+  }
+
+  /** Settled retry batch result for just REPO (length-1 scoped retry). */
+  function retryCiBatch(repoCi: CiSignalSlice): UseFleetBatchLoaderResult {
+    return {
+      result: new Map([['ci', new Map([[REPO.nameWithOwner, repoCi]])]]),
+      loading: false,
+      error: false,
+    };
+  }
+
+  beforeEach(() => {
+    // Pass the batch override straight through so getRowData.ci reflects exactly
+    // what the (possibly overlaid) batch result produced — the real useCiSignal
+    // returns its override verbatim when one is supplied.
+    vi.mocked(useCiSignal).mockImplementation(
+      (_repos, _token, override) => (override as Map<string, CiSignalSlice>) ?? new Map(),
+    );
+  });
+
+  it('(a) retrying a GraphQL signal refetches only that repo+signal and surfaces the refreshed slice', () => {
+    const primary = primaryCiBatch(staleCi);
+    const retried = retryCiBatch(retriedCi);
+    vi.mocked(useFleetBatchLoader).mockImplementation((repos) =>
+      repos.length === 1 ? retried : primary,
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    // Baseline: the tile shows the primary (stale) slice before any retry.
+    expect(result.current.getRowData(REPO).ci).toEqual(staleCi);
+
+    // The primary fleet loader's repos array reference, captured pre-retry.
+    const primaryReposRef = vi
+      .mocked(useFleetBatchLoader)
+      .mock.calls.find((call) => call[0].length === 2)?.[0];
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'ci');
+    });
+
+    // The refreshed slice is surfaced for the retried tile.
+    expect(result.current.getRowData(REPO).ci).toEqual(retriedCi);
+
+    // The retry hit the batch loader scoped to EXACTLY the retried repo.
+    const retryCall = vi
+      .mocked(useFleetBatchLoader)
+      .mock.calls.find((call) => call[0].length === 1);
+    expect(retryCall?.[0]).toEqual([REPO]);
+
+    // Board-wide reload was NOT triggered: the primary fleet loader kept its
+    // stable repos identity (a fleet reload would hand it a fresh array).
+    const primaryReposAfter = vi
+      .mocked(useFleetBatchLoader)
+      .mock.calls.filter((call) => call[0].length === 2)
+      .at(-1)?.[0];
+    expect(primaryReposAfter).toBe(primaryReposRef);
+  });
+
+  it('(b) retrying the REST security signal refetches just that repo and surfaces it', () => {
+    vi.mocked(useSecuritySignal).mockImplementation((repos) =>
+      repos.length === 1
+        ? new Map([[REPO.nameWithOwner, retriedSecurity]])
+        : new Map([
+            [REPO.nameWithOwner, staleSecurity],
+            [REPO_B.nameWithOwner, security],
+          ]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    // Baseline: the tile shows the primary (stale) security slice.
+    expect(result.current.getRowData(REPO).security).toEqual(staleSecurity);
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'security');
+    });
+
+    // The refreshed security slice is surfaced for the retried tile.
+    expect(result.current.getRowData(REPO).security).toEqual(retriedSecurity);
+
+    // The REST security loader refetched ONLY the retried repo.
+    const retrySecurityCall = vi
+      .mocked(useSecuritySignal)
+      .mock.calls.find((call) => call[0].length === 1);
+    expect(retrySecurityCall?.[0]).toEqual([REPO]);
+  });
+
+  it('(c) a later revalidation supersedes a GraphQL retry overlay (no stale shadow)', () => {
+    let primary = primaryCiBatch(staleCi);
+    const retried = retryCiBatch(retriedCi);
+    vi.mocked(useFleetBatchLoader).mockImplementation((repos) =>
+      repos.length === 1 ? retried : primary,
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'ci');
+    });
+    // Retry succeeded: the tile shows the retried slice.
+    expect(result.current.getRowData(REPO).ci).toEqual(retriedCi);
+
+    // A later foreground revalidation returns NEW primary data for that tile.
+    primary = primaryCiBatch(freshCi);
+    setHidden(true);
+    setHidden(false);
+
+    // The tile must reflect the FRESH primary data — the retry slice must not
+    // keep shadowing it after the revalidation (regression: retryRequest was
+    // never cleared, so the stale retry slice was overlaid onto every refresh).
+    expect(result.current.getRowData(REPO).ci).toEqual(freshCi);
+  });
+
+  it('(c) a later revalidation supersedes a REST security retry overlay (no stale shadow)', () => {
+    let primarySecurity = new Map([
+      [REPO.nameWithOwner, staleSecurity],
+      [REPO_B.nameWithOwner, security],
+    ]);
+    vi.mocked(useSecuritySignal).mockImplementation((repos) =>
+      repos.length === 1 ? new Map([[REPO.nameWithOwner, retriedSecurity]]) : primarySecurity,
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'security');
+    });
+    expect(result.current.getRowData(REPO).security).toEqual(retriedSecurity);
+
+    // A later foreground revalidation returns NEW security data for that tile.
+    primarySecurity = new Map([
+      [REPO.nameWithOwner, freshSecurity],
+      [REPO_B.nameWithOwner, security],
+    ]);
+    setHidden(true);
+    setHidden(false);
+
+    expect(result.current.getRowData(REPO).security).toEqual(freshSecurity);
+  });
+
+  it('(d) a security retry whose slice has not arrived yet keeps the primary slice (no blank tile)', () => {
+    // The scoped security refetch (length-1 retry instance) is in-flight and has
+    // not produced a slice for the repo yet — the overlay memo must fall back to
+    // the primary slice rather than blanking the tile while the retry resolves.
+    vi.mocked(useSecuritySignal).mockImplementation((repos) =>
+      repos.length === 1
+        ? new Map()
+        : new Map([
+            [REPO.nameWithOwner, staleSecurity],
+            [REPO_B.nameWithOwner, security],
+          ]),
+    );
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'security');
+    });
+
+    expect(result.current.getRowData(REPO).security).toEqual(staleSecurity);
   });
 });
