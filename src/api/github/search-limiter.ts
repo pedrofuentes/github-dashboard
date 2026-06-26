@@ -163,8 +163,26 @@ export class SearchLimiter {
         // Honor Retry-After before re-issuing the request; an abort during the
         // back-off rejects via abortableSleep.
         await abortableSleep(retryAfterSeconds * 1000, signal);
+        await this.acquireToken(signal);
       }
     }
+  }
+
+  private acquireToken(signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+
+      const waiter: Waiter<void> = { task: () => undefined, signal, resolve, reject };
+      if (signal) {
+        waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
+        signal.addEventListener('abort', waiter.onAbort, { once: true });
+      }
+      this.queue.push(waiter as Waiter);
+      this.pump();
+    });
   }
 
   private abortWaiter(waiter: Waiter): void {
@@ -172,7 +190,7 @@ export class SearchLimiter {
     if (index >= 0) this.queue.splice(index, 1);
     this.detachAbort(waiter);
     waiter.reject(abortError());
-    if (this.queue.length === 0) this.clearRefillTimer();
+    if (this.queue.length === 0 && this.tokens >= this.capacity) this.clearRefillTimer();
   }
 
   private detachAbort(waiter: Waiter): void {
