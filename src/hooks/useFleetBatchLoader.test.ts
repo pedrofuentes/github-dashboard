@@ -49,6 +49,30 @@ describe('useFleetBatchLoader', () => {
     expect(executeMock).not.toHaveBeenCalled();
   });
 
+  it('stays idle and never fetches when every GraphQL signal is disabled', async () => {
+    vi.resetModules();
+    const executeFleetBatchWhenDisabled = vi.fn().mockResolvedValue(new Map());
+    vi.doMock('../api/github/fleet-query', () => ({
+      executeFleetBatch: executeFleetBatchWhenDisabled,
+    }));
+    vi.doMock('../lib/graphql-flags', () => ({
+      GRAPHQL_ENABLED_SIGNALS: [],
+      graphqlSignalEnabled: vi.fn(() => false),
+    }));
+    const { useFleetBatchLoader: useFleetBatchLoaderWithNoSignals } =
+      await import('./useFleetBatchLoader');
+
+    const { result } = renderHook(() => useFleetBatchLoaderWithNoSignals(REPOS, 'ghp_token'));
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBe(false);
+    expect(result.current.result).toBeInstanceOf(Map);
+    expect(executeFleetBatchWhenDisabled).not.toHaveBeenCalled();
+
+    vi.doUnmock('../api/github/fleet-query');
+    vi.doUnmock('../lib/graphql-flags');
+  });
+
   it('sets loading:true while in-flight and loading:false + resolved result after completion', async () => {
     const { promise, resolve: resolveFetch } = deferred<FleetBatchResult>();
     const batchResult: FleetBatchResult = new Map([['ci', new Map()]]) as FleetBatchResult;
