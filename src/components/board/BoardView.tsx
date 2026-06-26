@@ -21,6 +21,7 @@ import { Fragment, useMemo } from 'react';
 import type { ReactElement } from 'react';
 
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
+import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
@@ -210,6 +211,7 @@ export function BoardView({
                   repo={repo}
                   signal={signal}
                   data={data}
+                  href={signalDeepLinkUrl(repo, signal, data)}
                   onActivate={onRepoActivate}
                   onRetry={
                     onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry
