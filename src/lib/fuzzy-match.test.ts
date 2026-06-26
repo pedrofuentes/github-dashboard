@@ -104,6 +104,13 @@ describe('fuzzyMatch', () => {
       expect(fuzzyMatch('rd', 'react-dashboard').indices).toEqual([0, 6]);
     });
 
+    it('returns code point positions for non-BMP characters', () => {
+      const result = fuzzyMatch('😺r', '😺repo');
+
+      expect(result.matched).toBe(true);
+      expect(result.indices).toEqual([0, 1]);
+    });
+
     it('returns empty indices for non-matches', () => {
       expect(fuzzyMatch('xyz', 'github').indices).toEqual([]);
     });
@@ -289,6 +296,20 @@ describe('fuzzyRankBy', () => {
       ]);
 
       expect(results).toEqual([]);
+    });
+
+    it('returns matches whose best score clamps to zero', () => {
+      const longKeyWithMatch = `${'x'.repeat(1001)}z`;
+      const results = fuzzyRankBy(
+        'z',
+        [
+          { id: 1, key: longKeyWithMatch },
+          { id: 2, key: 'x'.repeat(1100) },
+        ],
+        (item) => [item.key],
+      );
+
+      expect(results.map((item) => item.id)).toEqual([1]);
     });
   });
 
