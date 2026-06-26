@@ -55,6 +55,13 @@ export interface BoardKeyProps {
   /** When supplied, the key becomes a button that activates the repo on press. */
   onActivate?: (repo: Repo) => void;
   /**
+   * When supplied (and the key is not a retryable error), the key becomes a link
+   * to this GitHub URL, opened in a new tab — so a press jumps straight to the
+   * matching GitHub page instead of the in-app drill-down. Takes precedence over
+   * {@link onActivate}; ignored while the key is a retryable error (retry wins).
+   */
+  href?: string;
+  /**
    * Re-fetch handler for a failed signal. When the key is in its `error` state
    * and this is provided, the key becomes a *retry* button (its press calls
    * `onRetry` instead of `onActivate`), so a load failure is recoverable in
@@ -172,6 +179,7 @@ export function BoardKey({
   activity,
   onActivate,
   onRetry,
+  href,
 }: BoardKeyProps): ReactElement {
   const { display } = useRepoOwner();
   const spec = boardKeySpec(signal, data, activity);
@@ -179,12 +187,14 @@ export function BoardKey({
   const repoLabel = formatRepoLabel(repo, display);
 
   // A failed signal is recoverable in place: when `onRetry` is wired the error
-  // key's press re-fetches instead of drilling down. Every other state keeps the
-  // `onActivate` drill-down (when one is provided).
+  // key's press re-fetches instead of navigating. Otherwise a deep-link `href`
+  // turns the key into a GitHub link (new tab); failing that, the optional
+  // `onActivate` drill-down still applies.
   const retryable = spec.state === 'error' && onRetry !== undefined;
+  const asLink = !retryable && href !== undefined;
   const handlePress = retryable
     ? onRetry
-    : onActivate !== undefined
+    : !asLink && onActivate !== undefined
       ? () => onActivate(repo)
       : undefined;
 
@@ -225,6 +235,25 @@ export function BoardKey({
       </div>
     </>
   );
+
+  if (asLink) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        data-signal={signal}
+        data-layout={spec.layout}
+        data-state={spec.state}
+        data-accent={spec.accent}
+        aria-label={accessibleName}
+        title={spec.srLabel}
+        className={`${ROOT_CLASS} text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+      >
+        {face}
+      </a>
+    );
+  }
 
   if (handlePress !== undefined) {
     return (
