@@ -161,20 +161,29 @@ describe('BoardView — loading / error / empty states', () => {
 });
 
 describe('BoardView — drill-down', () => {
-  it('fires onRepoActivate with the repo when a key is activated', async () => {
+  it('links a ready key to its signal’s GitHub page instead of drilling down', async () => {
     const user = userEvent.setup();
     const onRepoActivate = vi.fn();
     render(<BoardView repos={[repoA]} getRowData={getRowData} onRepoActivate={onRepoActivate} />);
 
-    await user.click(screen.getByRole('button', { name: /CI:.*octo\/repo-a/ }));
-
-    expect(onRepoActivate).toHaveBeenCalledTimes(1);
-    expect(onRepoActivate).toHaveBeenCalledWith(repoA);
+    const ci = screen.getByRole('link', { name: /CI:.*octo\/repo-a/ });
+    expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//);
+    expect(ci).toHaveAttribute('target', '_blank');
+    await user.click(ci);
+    // The key navigates to GitHub, so the in-app drill-down is never invoked.
+    expect(onRepoActivate).not.toHaveBeenCalled();
   });
 
-  it('renders non-interactive keys when onRepoActivate is omitted', () => {
+  it('renders interactive deep-link keys even when onRepoActivate is omitted', () => {
     render(<BoardView repos={[repoA]} getRowData={getRowData} />);
 
+    // Each key is a GitHub link (its href is intrinsic to the repo + signal), so
+    // the deck is interactive even without a drill-down handler.
+    const links = screen.getAllByRole('link', { name: /octo\/repo-a/ });
+    expect(links).toHaveLength(6);
+    links.forEach((link) =>
+      expect(link.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//),
+    );
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
@@ -232,7 +241,7 @@ describe('BoardView — per-key retry threading', () => {
     expect(onRetry).not.toHaveBeenCalled();
   });
 
-  it('still drills down on a ready key when onRetry is also provided', async () => {
+  it('links a ready key to GitHub even when onRetry is also provided', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
     const onRepoActivate = vi.fn();
@@ -245,9 +254,11 @@ describe('BoardView — per-key retry threading', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /CI:.*octo\/repo-a/ }));
-
-    expect(onRepoActivate).toHaveBeenCalledTimes(1);
+    const ci = screen.getByRole('link', { name: /CI:.*octo\/repo-a/ });
+    expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//);
+    await user.click(ci);
+    // Retry only applies to errored keys; a ready key navigates to GitHub.
+    expect(onRepoActivate).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
   });
 });

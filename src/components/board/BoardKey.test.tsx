@@ -279,6 +279,61 @@ describe('BoardKey — interactivity', () => {
   });
 });
 
+describe('BoardKey — deep link', () => {
+  it('renders a ready key as a new-tab link to its GitHub href', () => {
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'ready', openCount: 3 } }}
+        href="https://github.com/octo/hello-world/issues"
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: /issues.*octo\/hello-world/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/hello-world/issues');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer noopener');
+    expect(link).toHaveAttribute('data-signal', 'issues');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('prefers the deep link over onActivate when both are supplied', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'ready', openCount: 3 } }}
+        href="https://github.com/octo/hello-world/issues"
+        onActivate={onActivate}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: /issues.*octo\/hello-world/i });
+    await user.click(link);
+    // The link navigates to GitHub; the in-app drill-down is not invoked.
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a retryable error key a retry button even when href is supplied', () => {
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        href="https://github.com/octo/hello-world/issues"
+        onRetry={vi.fn()}
+      />,
+    );
+
+    // Retry takes precedence over navigation for a failed signal.
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+});
+
 describe('BoardKey — error retry', () => {
   it('turns an error key into a button when onRetry is supplied', () => {
     render(
