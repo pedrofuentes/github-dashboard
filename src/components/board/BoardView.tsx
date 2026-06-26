@@ -21,6 +21,8 @@ import { Fragment, useMemo } from 'react';
 import type { ReactElement } from 'react';
 
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
+import { DECK_TILE_MIN_PX } from '../../lib/deck-tile-size';
+import type { DeckTileSize } from '../../lib/deck-tile-size';
 import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
@@ -31,11 +33,13 @@ import { BoardKey } from './BoardKey';
 const SKELETON_KEYS = 12;
 
 /**
- * Responsive Stream Deck grid: square keys that flow from two columns on the
- * narrowest viewport up to six on wide ones, so each repo's six keys settle onto
- * a single row at the widest breakpoint.
+ * Responsive Stream Deck grid: square keys flow via `auto-fill`, so the column
+ * count follows the container width and the chosen {@link DeckTileSize} (its
+ * minimum key width — see {@link DECK_TILE_MIN_PX}). `medium` reproduces the
+ * legacy two-to-six-column breakpoints; the inline `grid-template-columns`
+ * supplies the per-size minimum.
  */
-const GRID_CLASS = 'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6';
+const GRID_CLASS = 'grid gap-3';
 
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
@@ -93,6 +97,13 @@ export interface BoardViewProps {
   editing?: boolean;
   /** Toggles one (repo, signal) key's visibility — wired to the × remove overlay. */
   onToggleKey?: (repo: Repo, signal: TileSignalType) => void;
+  /**
+   * How large to render each key. Drives the responsive `auto-fill` grid's
+   * minimum column width (see {@link DECK_TILE_MIN_PX}). `medium` (the default)
+   * reproduces the legacy ~6-per-row layout; smaller/larger sizes pack more or
+   * fewer keys per row — handy full-screen on a wall display.
+   */
+  size?: DeckTileSize;
 }
 
 export function BoardView({
@@ -107,6 +118,7 @@ export function BoardView({
   hiddenKeys = EMPTY_HIDDEN,
   editing = false,
   onToggleKey,
+  size = 'medium',
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -175,6 +187,13 @@ export function BoardView({
       ? `${repoCount} ${repoNoun} · ${visibleKeyCount} ${tileNoun}`
       : `${repoCount} ${repoNoun}`;
 
+  // The chosen size sets the grid's minimum key width; `auto-fill` then derives
+  // the column count from the container width (so full-window decks get more
+  // columns at the same key size).
+  const gridStyle = {
+    gridTemplateColumns: `repeat(auto-fill, minmax(${DECK_TILE_MIN_PX[size]}px, 1fr))`,
+  };
+
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
       <p role="status" aria-live="polite" className="text-sm text-text-muted">
@@ -182,7 +201,7 @@ export function BoardView({
       </p>
 
       {showSkeleton ? (
-        <div aria-busy="true" aria-hidden="true" className={GRID_CLASS}>
+        <div aria-busy="true" aria-hidden="true" className={GRID_CLASS} style={gridStyle}>
           {Array.from({ length: SKELETON_KEYS }, (_, index) => (
             <span
               key={`skeleton-${index}`}
@@ -201,7 +220,7 @@ export function BoardView({
           <p className="text-sm text-text-muted">Use Customize to bring tiles back.</p>
         </div>
       ) : (
-        <div aria-busy={loading} className={GRID_CLASS}>
+        <div aria-busy={loading} className={GRID_CLASS} style={gridStyle}>
           {visibleKeysByRepo.flatMap(({ repo, signals }) => {
             const data = getRowData(repo);
             return signals.map((signal) => {
