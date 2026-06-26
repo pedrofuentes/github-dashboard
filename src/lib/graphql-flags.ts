@@ -10,7 +10,7 @@
  */
 import type { TileSignalType } from '../types/dashboard';
 
-const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
+export const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
   ci: true,
   security: false,
   reviews: true,
@@ -19,6 +19,16 @@ const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
   stale: true,
   activity: false,
 };
+
+/**
+ * Signals currently served via the batched GraphQL fleet-query layer, derived
+ * from {@link GRAPHQL_SIGNAL_FLAGS} so flipping a flag updates every consumer.
+ */
+export const GRAPHQL_ENABLED_SIGNALS: TileSignalType[] = (
+  Object.entries(GRAPHQL_SIGNAL_FLAGS) as Array<[TileSignalType, boolean]>
+)
+  .filter(([, enabled]) => enabled)
+  .map(([signal]) => signal);
 
 /**
  * Returns `true` when `signal` should be served via the batched GraphQL

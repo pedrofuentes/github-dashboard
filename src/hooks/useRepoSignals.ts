@@ -27,7 +27,7 @@ import type {
   SignalSlice,
   StaleSignalSlice,
 } from '../types/fleet';
-import { graphqlSignalEnabled } from '../lib/graphql-flags';
+import { GRAPHQL_ENABLED_SIGNALS, graphqlSignalEnabled } from '../lib/graphql-flags';
 import { useCiSignal } from './signals/useCiSignal';
 import { useIssuesSignal } from './signals/useIssuesSignal';
 import { usePullRequestsSignal } from './signals/usePullRequestsSignal';
@@ -50,12 +50,6 @@ const EMPTY_OVERRIDE: Map<string, never> = new Map<string, never>();
  * progressive loading map — prevents object allocation on every render (#540).
  */
 const LOADING_SLICE: SignalSlice = { status: 'loading' };
-
-/**
- * Signals served via the batched GraphQL layer (mirrors {@link graphql-flags.ts}).
- * Listed here so the progressive-loading memo iterates exactly this set.
- */
-const GRAPHQL_SIGNAL_KEYS: TileSignalType[] = ['ci', 'reviews', 'pullRequests', 'issues', 'stale'];
 
 /** Public shape returned by {@link useRepoSignals}. */
 export interface UseRepoSignalsResult {
@@ -138,21 +132,22 @@ export function useRepoSignals(
   // result afterward — so the signal hook NEVER falls through to REST. When the
   // flag is OFF, undefined is returned and REST is used.
   const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
+  const anyGraphqlSignalEnabled = GRAPHQL_ENABLED_SIGNALS.length > 0;
 
   const fleet = useMemo(() => {
     let ready = 0;
     for (const repo of revalidatedRepos) {
-      const hasSettledSlice = GRAPHQL_SIGNAL_KEYS.some(
+      const hasSettledSlice = GRAPHQL_ENABLED_SIGNALS.some(
         (sig) => batch.result.get(sig)?.get(repo.nameWithOwner)?.status === 'ready',
       );
       if (hasSettledSlice) ready += 1;
     }
     return {
-      loading: batch.loading,
+      loading: anyGraphqlSignalEnabled && batch.loading,
       ready,
       total: revalidatedRepos.length,
     };
-  }, [batch.loading, batch.result, revalidatedRepos]);
+  }, [anyGraphqlSignalEnabled, batch.loading, batch.result, revalidatedRepos]);
 
   // Per-signal merged loading maps for the progressive fill: repos that have a
   // settled batch slice show it immediately; the rest show LOADING_SLICE.
@@ -162,7 +157,7 @@ export function useRepoSignals(
   // batch.loading is an intentional invalidation trigger (not read in body).
   const partialLoadingMaps = useMemo<Map<TileSignalType, Map<string, SignalSlice>>>(() => {
     const out = new Map<TileSignalType, Map<string, SignalSlice>>();
-    for (const sig of GRAPHQL_SIGNAL_KEYS) {
+    for (const sig of GRAPHQL_ENABLED_SIGNALS) {
       const settled = batch.result.get(sig);
       const perRepo = new Map<string, SignalSlice>();
       for (const repo of revalidatedRepos) {
