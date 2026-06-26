@@ -29,6 +29,7 @@
 import { z, type ZodType } from 'zod';
 
 import { isAbortError } from '../../lib/abort';
+import { graphqlSignalEnabled } from '../../lib/graphql-flags';
 import {
   MAX_REVIEW_PAGES,
   REVIEW_REQUESTED_QUERY,
@@ -853,6 +854,10 @@ export const SIGNAL_DERIVERS: readonly SignalDeriver[] = [
   reviewsDeriver,
 ];
 
+function enabledSignalDerivers(): SignalDeriver[] {
+  return SIGNAL_DERIVERS.filter((deriver) => graphqlSignalEnabled(deriver.signal));
+}
+
 // ── Query builder ─────────────────────────────────────────────────────────────
 
 /**
@@ -875,7 +880,7 @@ export function buildFleetVariables(
     vars['viewer'] = viewerLogin;
   }
   // Top-level derivers (e.g. stale's per-repo search) bind their own variables.
-  for (const deriver of SIGNAL_DERIVERS) {
+  for (const deriver of enabledSignalDerivers()) {
     if (deriver.kind !== 'top-level' || !deriver.topLevelVariables) continue;
     for (const { name, value } of deriver.topLevelVariables(repos, viewerLogin ?? null)) {
       vars[name] = value;
@@ -887,7 +892,7 @@ export function buildFleetVariables(
 /** The per-repo derivers' fragments, composed once per repo alias. */
 function perRepoSelection(viewerLogin: string | null): string {
   const fragments: string[] = ['nameWithOwner'];
-  for (const deriver of SIGNAL_DERIVERS) {
+  for (const deriver of enabledSignalDerivers()) {
     if (deriver.kind === 'per-repo' && deriver.repoFragment) {
       fragments.push(deriver.repoFragment(viewerLogin));
     }
@@ -915,6 +920,8 @@ function perRepoSelection(viewerLogin: string | null): string {
  */
 export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | null): string {
   const selection = perRepoSelection(viewerLogin);
+  const topLevelFragments: string[] = [];
+  const enabledDerivers = enabledSignalDerivers();
 
   const varDecls: string[] = [];
   const repoAliases: string[] = [];
@@ -923,12 +930,7 @@ export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | nu
     repoAliases.push(`r${i}: repository(owner: $owner${i}, name: $name${i}) {\n${selection}\n}`);
   });
 
-  if (viewerLogin) {
-    varDecls.push('$viewer: String');
-  }
-
-  const topLevelFragments: string[] = [];
-  for (const deriver of SIGNAL_DERIVERS) {
+  for (const deriver of enabledDerivers) {
     if (deriver.kind !== 'top-level') continue;
     if (deriver.topLevelFragment) {
       topLevelFragments.push(deriver.topLevelFragment(repos, viewerLogin));
@@ -938,6 +940,13 @@ export function buildFleetQuery(repos: readonly Repo[], viewerLogin: string | nu
         varDecls.push(`$${name}: ${type}`);
       }
     }
+  }
+
+  const usesViewerVariable =
+    selection.includes('$viewer') ||
+    topLevelFragments.some((fragment) => fragment.includes('$viewer'));
+  if (viewerLogin && usesViewerVariable) {
+    varDecls.push('$viewer: String');
   }
 
   const header =
@@ -1277,7 +1286,8 @@ export async function executeFleetBatch(
   onProgress?: (partial: FleetBatchResult) => void,
 ): Promise<FleetBatchResult> {
   const result: FleetBatchResult = new Map();
-  for (const deriver of SIGNAL_DERIVERS) {
+  const enabledDerivers = enabledSignalDerivers();
+  for (const deriver of enabledDerivers) {
     if (!result.has(deriver.signal)) result.set(deriver.signal, new Map());
   }
   if (repos.length === 0) return result;
@@ -1307,7 +1317,7 @@ export async function executeFleetBatch(
         if (!data) {
           // A data-less response is a hard chunk failure — error this chunk only.
           // Global derivers run separately and own their own error handling.
-          for (const deriver of SIGNAL_DERIVERS) {
+          for (const deriver of enabledDerivers) {
             if (deriver.kind === 'top-level-global') continue;
             markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
           }
@@ -1319,7 +1329,7 @@ export async function executeFleetBatch(
 
         const errorIndex = buildErrorIndex(errors);
         const ctx = buildChunkContext(chunkRepos, viewerLogin, data, errorIndex);
-        for (const deriver of SIGNAL_DERIVERS) {
+        for (const deriver of enabledDerivers) {
           if (deriver.kind === 'top-level-global') continue;
           const slices = deriver.derive(ctx);
           const target = result.get(deriver.signal);
@@ -1330,7 +1340,7 @@ export async function executeFleetBatch(
       } catch (err) {
         // A caller-abort propagates; any other hard failure isolates to this chunk.
         if (isAbortError(err) || signal?.aborted) throw err;
-        for (const deriver of SIGNAL_DERIVERS) {
+        for (const deriver of enabledDerivers) {
           if (deriver.kind === 'top-level-global') continue;
           markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
         }
@@ -1341,7 +1351,7 @@ export async function executeFleetBatch(
 
   // Global (top-level-global) derivers run EXACTLY ONCE over the full fleet,
   // after the per-chunk queries, in a dedicated paginated query.
-  const globalDerivers = SIGNAL_DERIVERS.filter((d) => d.kind === 'top-level-global');
+  const globalDerivers = enabledDerivers.filter((d) => d.kind === 'top-level-global');
   await runGlobalDerivers(globalDerivers, repos, viewerLogin, token, result, signal);
 
   if (!signal?.aborted) onProgress?.(cloneResult(result));
