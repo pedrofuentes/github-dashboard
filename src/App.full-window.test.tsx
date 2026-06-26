@@ -115,4 +115,22 @@ describe('App — full-window mode', () => {
     const overlay = screen.getByRole('region', { name: /deck.*full window/i });
     expect(within(overlay).getByRole('radiogroup', { name: /tile size/i })).toBeInTheDocument();
   });
+
+  it('restores focus to the Full window button after exiting', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticate(user, [repo('octo/a')]);
+
+    const opener = screen.getByRole('button', { name: /^full window/i });
+    opener.focus();
+    expect(opener).toHaveFocus();
+
+    await user.click(opener);
+    // Entering full-window unmounts the toolbar (and the opener button); exiting
+    // must return focus to it rather than dropping it to <body> (a11y).
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('button', { name: /^full window/i })).toHaveFocus();
+  });
 });
