@@ -6,7 +6,7 @@ import { validateToken } from './lib/validate-token';
 import { forgetToken } from './lib/token-storage';
 import { useRepos } from './hooks/useRepos';
 import { useRepoSignals } from './hooks/useRepoSignals';
-import type { GetRowData, Repo } from './types/fleet';
+import type { GetRowData, Repo, RepoSignalData } from './types/fleet';
 import { App } from './App';
 
 vi.mock('./lib/validate-token', () => ({
@@ -29,6 +29,14 @@ const mockValidate = vi.mocked(validateToken);
 const mockUseRepos = vi.mocked(useRepos);
 const mockUseRepoSignals = vi.mocked(useRepoSignals);
 const getRowData: GetRowData = () => ({});
+const erroredCiRowData: GetRowData = (): RepoSignalData => ({
+  ci: { status: 'error' },
+  security: { status: 'ready', grade: 'A' },
+  reviews: { status: 'ready', requestedCount: 0 },
+  pullRequests: { status: 'ready', openCount: 0 },
+  issues: { status: 'ready', openCount: 0 },
+  stale: { status: 'ready', staleCount: 0 },
+});
 
 function repo(nameWithOwner: string): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -162,5 +170,25 @@ describe('App — Deck per-tile customize wiring', () => {
     expect(screen.queryByRole('dialog', { name: /customize deck/i })).toBeNull();
     expect(screen.getByRole('button', { name: /customize tiles/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /remove ci tile for octo\/a/i })).toBeNull();
+  });
+});
+
+describe('App — Deck scoped retry wiring', () => {
+  it('retries one errored Deck tile through the scoped signal retry instead of reloading repos', async () => {
+    const user = userEvent.setup();
+    const repos = [repo('octo/a')];
+    const reload = vi.fn();
+    const retrySignal = vi.fn();
+    mockUseRepoSignals.mockReturnValue({ getRowData: erroredCiRowData, retrySignal });
+    mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload });
+
+    render(<App />);
+    await authenticateOnDeck(user, repos);
+
+    await user.click(screen.getByRole('button', { name: 'Retry CI for octo/a' }));
+
+    expect(retrySignal).toHaveBeenCalledTimes(1);
+    expect(retrySignal).toHaveBeenCalledWith(repos[0], 'ci');
+    expect(reload).not.toHaveBeenCalled();
   });
 });
