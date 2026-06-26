@@ -34,5 +34,18 @@ export default defineConfig({
     __BUILD_SHA__: JSON.stringify(sha),
     __BUILD_TIME__: JSON.stringify(builtAt),
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'emit-version-json',
+      apply: 'build',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ sha, builtAt }),
+        });
+      },
+    },
+  ],
 });

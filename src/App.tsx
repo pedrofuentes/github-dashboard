@@ -18,6 +18,7 @@ import { SavedViewsMenu } from './components/SavedViewsMenu';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { ShortcutsHelpOverlay } from './components/ShortcutsHelpOverlay';
 import { TokenInput } from './components/TokenInput';
+import { UpdateAvailableToast } from './components/UpdateAvailableToast';
 import { TriageView } from './components/TriageView';
 import { AuthProvider } from './hooks/AuthProvider';
 import { FleetUiStateProvider } from './hooks/FleetUiStateProvider';
@@ -35,6 +36,7 @@ import { useRepoSignals } from './hooks/useRepoSignals';
 import { useRepos } from './hooks/useRepos';
 import { useSavedViews } from './hooks/useSavedViews';
 import { useTheme } from './hooks/useTheme';
+import { useUpdateAvailable } from './hooks/useUpdateAvailable';
 import { addCommandRecent, createCommandRecentsStore } from './lib/command-recents';
 import { buildCommandRegistry } from './lib/commands';
 import { DECK_SIGNALS } from './lib/deck-visibility';
@@ -57,6 +59,7 @@ export function App(): ReactElement {
 function Shell(): ReactElement {
   const { status, user, token, forget } = useAuth();
   const authenticated = status === 'authenticated' && user !== null;
+  const { updateAvailable, deployedSha } = useUpdateAvailable();
 
   // Lifted here so the single header Settings overlay (Defaults section) and the
   // authenticated FleetPanel (ViewToggle + rendered surface) share ONE source of
@@ -89,6 +92,7 @@ function Shell(): ReactElement {
 
   return (
     <div className="min-h-screen bg-bg text-text">
+      <UpdateAvailableToast updateAvailable={updateAvailable} deployedSha={deployedSha} />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-surface focus:px-4 focus:py-2 focus:font-medium focus:text-text focus:shadow-lg focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-focus"
