@@ -14,7 +14,7 @@
  * data that went stale in the background with mostly-free `304`s — without
  * changing this hook's public return shape or any signal hook's logic.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TileSignalType } from '../types/dashboard';
 import type {
@@ -134,6 +134,22 @@ export function useRepoSignals(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revalidateNonce is an intentional trigger
     [repos, revalidateNonce],
   );
+
+  // A primary revalidation — the `repos` prop changing or the tab refocusing
+  // (which both mint a fresh `revalidatedRepos`) — refetches the whole fleet
+  // through the normal loaders. Drop any in-flight scoped retry so its slice
+  // can't keep shadowing the refreshed primary data: the scoped retry loaders
+  // exclude `revalidatedRepos`, so without this the retained retry overlay
+  // would freeze the retried tile at its retry-time value across every later
+  // background refresh (#507). Clearing here lets the fresh primary slice flow
+  // straight through `getRowData`, and `setRetryRequest(null)` is a no-op (React
+  // bails out) when no retry is active, so unrelated revalidations stay free.
+  const lastRevalidatedReposRef = useRef(revalidatedRepos);
+  useEffect(() => {
+    if (lastRevalidatedReposRef.current === revalidatedRepos) return;
+    lastRevalidatedReposRef.current = revalidatedRepos;
+    setRetryRequest(null);
+  }, [revalidatedRepos]);
 
   // One batched GraphQL query covers every GraphQL-enabled signal. For each
   // migrated signal, build an override with:
