@@ -1447,6 +1447,93 @@ describe('reviewsDeriver – executeFleetBatch (top-level-global search)', () =>
     });
   });
 
+  it('errors every repo when a later reviews page is malformed instead of returning truncated ready data', async () => {
+    let reviewsCalls = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        reviewsCalls += 1;
+        if (reviewsCalls === 1) {
+          return Promise.resolve(
+            mockJsonResponse(200, {
+              data: {
+                viewer: null,
+                rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+                reviews: {
+                  issueCount: 2,
+                  pageInfo: { hasNextPage: true, endCursor: 'CURSOR_1' },
+                  nodes: [reviewNode('o/a', 1)],
+                },
+              },
+            }),
+          );
+        }
+        return Promise.resolve(
+          mockJsonResponse(200, {
+            data: {
+              viewer: null,
+              rateLimit: { cost: 1, remaining: 4989, resetAt: futureIso() },
+              reviews: { unexpected: 'shape' },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch([repo('o/a'), repo('o/b')], null, TOKEN);
+    const reviewsMap = reviewsMapOf(result);
+
+    expect(reviewsCalls).toBe(2);
+    expect(reviewsSlice(reviewsMap, 'o/a')).toEqual({ status: 'error' });
+    expect(reviewsSlice(reviewsMap, 'o/b')).toEqual({ status: 'error' });
+  });
+
+  it('retains a reviews error from an earlier page when a later page is clean', async () => {
+    let reviewsCalls = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      if (isReviewsRequest(init as RequestInit)) {
+        reviewsCalls += 1;
+        if (reviewsCalls === 1) {
+          return Promise.resolve(
+            mockJsonResponse(200, {
+              data: {
+                viewer: null,
+                rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+                reviews: {
+                  issueCount: 1,
+                  pageInfo: { hasNextPage: true, endCursor: 'CURSOR_1' },
+                  nodes: [],
+                },
+              },
+              errors: [{ message: 'reviews failed', path: ['reviews'] }],
+            }),
+          );
+        }
+        return Promise.resolve(
+          mockJsonResponse(200, {
+            data: {
+              viewer: null,
+              rateLimit: { cost: 1, remaining: 4989, resetAt: futureIso() },
+              reviews: {
+                issueCount: 1,
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [reviewNode('o/a', 1)],
+              },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(chunkRepoNodes(init as RequestInit));
+    });
+
+    const result = await executeFleetBatch([repo('o/a')], null, TOKEN);
+
+    expect(reviewsCalls).toBe(2);
+    expect(reviewsSlice(reviewsMapOf(result), 'o/a')).toEqual({ status: 'error' });
+  });
+
   it('errors every repo when the reviews payload is malformed (never a false ready-zero)', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
       if (isReviewsRequest(init as RequestInit)) {
