@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Full-window mode** — a toolbar control opens the active view in an immersive,
+  chrome-less overlay that fills the browser window (the header and toolbar are
+  hidden). A thin top bar shows the view name and an Exit control; `Esc` also
+  exits. On the Deck the tile-size control is available in the bar, so keys can
+  be resized full-screen (handy on a wall display).
 - **Deck tile size** — a toolbar control (X-Small / Small / Medium / Large) to
   scale the Deck's keys; Medium reproduces the previous layout and the choice is
   remembered. Larger sizes suit full-screen wall displays; smaller sizes pack
