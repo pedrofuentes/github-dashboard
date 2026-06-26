@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { AppFooter } from './components/AppFooter';
 import { CommandPalette } from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
 import { BoardView } from './components/board/BoardView';
@@ -136,6 +137,7 @@ function Shell(): ReactElement {
           <TokenInput />
         )}
       </main>
+      <AppFooter />
       {settingsOpen ? (
         <SettingsOverlay
           defaultView={defaultView}
