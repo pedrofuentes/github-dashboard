@@ -1214,6 +1214,26 @@ describe('staleDeriver – executeFleetBatch', () => {
     expect(slice.staleItems).toBeUndefined();
   });
 
+  it('surfaces an error for a present malformed search payload while preserving well-formed empty results', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/a' },
+          r1: { nameWithOwner: 'o/b' },
+          stale_r0: { unexpected: 'shape' },
+          stale_r1: { issueCount: 0, nodes: [] },
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/a'), repo('o/b')], null, TOKEN);
+    const staleMap = staleMapOf(result);
+    expect(staleSlice(staleMap, 'o/a')).toEqual({ status: 'error' });
+    expect(staleSlice(staleMap, 'o/b')).toEqual({ status: 'ready', staleCount: 0, score: 0 });
+  });
+
   it('isolates a per-repo search error: only that repo errors, siblings stay ready', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockJsonResponse(200, {
