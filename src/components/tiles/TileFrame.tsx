@@ -49,6 +49,14 @@ export interface TileFrameProps {
   /** Opens the drill-down for the tile. */
   onActivate: () => void;
   /**
+   * When set (and NOT editing), the whole-tile activate overlay becomes a link
+   * to this GitHub URL (opened in a new tab) instead of the drill-down button —
+   * so a press jumps straight to the matching GitHub page. In edit mode the
+   * overlay stays a button so keyboard reorder/resize and focus management are
+   * unaffected. Omitted ⇒ the legacy drill-down button.
+   */
+  activateHref?: string;
+  /**
    * Whether this tile is the grid's single roving tab stop. When false the
    * tile's controls leave the tab order (`tabindex="-1"`); arrow keys on the
    * active tile move the roving focus. Standalone tiles default to active.
@@ -117,6 +125,7 @@ export function TileFrame({
   size,
   tileId,
   onActivate,
+  activateHref,
   active = true,
   editing = false,
   onTileFocus,
@@ -224,15 +233,28 @@ export function TileFrame({
           />
         ) : null}
       </div>
-      <button
-        type="button"
-        data-tile-activate={tileId}
-        tabIndex={rovingTabIndex}
-        onClick={onActivate}
-        onFocus={() => onTileFocus?.(tileId)}
-        aria-label={activateLabel}
-        className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      />
+      {activateHref !== undefined && !editing ? (
+        <a
+          data-tile-activate={tileId}
+          href={activateHref}
+          target="_blank"
+          rel="noreferrer noopener"
+          tabIndex={rovingTabIndex}
+          onFocus={() => onTileFocus?.(tileId)}
+          aria-label={activateLabel}
+          className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      ) : (
+        <button
+          type="button"
+          data-tile-activate={tileId}
+          tabIndex={rovingTabIndex}
+          onClick={onActivate}
+          onFocus={() => onTileFocus?.(tileId)}
+          aria-label={activateLabel}
+          className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      )}
     </article>
   );
 }
