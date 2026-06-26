@@ -502,6 +502,26 @@ describe('versioned layout migration (v1 → v2)', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(legacy);
   });
 
+  it('warns and still returns the migrated v2 layout when migration persistence fails', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key) => {
+      if (key === STORAGE_KEY_V2) {
+        throw new Error('quota exceeded');
+      }
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(loadDashboardLayout(repos)).toEqual(legacy);
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to persist migrated dashboard layout; legacy layout will be retried on next load.',
+      expect.any(Error),
+    );
+  });
+
   it('prefers the v2 envelope over the legacy key when both are present', () => {
     const repos = [makeRepo('octo/a')];
     const legacy = DEFAULT_LAYOUT(repos);
