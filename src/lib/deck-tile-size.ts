@@ -20,6 +20,19 @@ const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
 /** Medium reproduces the pre-existing Deck layout, so it stays the default. */
 const DEFAULT_DECK_TILE_SIZE: DeckTileSize = 'medium';
 
+/**
+ * Minimum key width (px) per size, fed to the Deck grid's
+ * `repeat(auto-fill, minmax(<px>, 1fr))`. `medium` (152px) reproduces the legacy
+ * ~6-keys-per-row layout at the default container width and across the old
+ * breakpoints; the other steps pack more (smaller) or fewer (larger) keys.
+ */
+export const DECK_TILE_MIN_PX: Record<DeckTileSize, number> = {
+  'x-small': 104,
+  small: 128,
+  medium: 152,
+  large: 192,
+};
+
 function safeGet(key: string): string | null {
   try {
     return localStorage.getItem(key);

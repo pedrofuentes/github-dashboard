@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Deck tile size** — a toolbar control (X-Small / Small / Medium / Large) to
+  scale the Deck's keys; Medium reproduces the previous layout and the choice is
+  remembered. Larger sizes suit full-screen wall displays; smaller sizes pack
+  more repositories per row.
 - **Deck view** — a Stream Deck–style board showing one key per repository ×
   signal (CI, security, reviews, pull requests, issues, stale). Reachable from
   the view switcher, the `g d` keyboard shortcut, and selectable as the default

@@ -6,6 +6,7 @@ import { CommandPalette } from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
 import { BoardView } from './components/board/BoardView';
 import { DeckCustomizePanel } from './components/board/DeckCustomizePanel';
+import { DeckSizeControl } from './components/board/DeckSizeControl';
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -28,6 +29,7 @@ import { useAuth } from './hooks/useAuth';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useDashboardLayout } from './hooks/useDashboardLayout';
 import { useDeckVisibility } from './hooks/useDeckVisibility';
+import { useDeckTileSize } from './hooks/useDeckTileSize';
 import { useDensity } from './hooks/useDensity';
 import { useRepoOwner } from './hooks/useRepoOwner';
 import { useInbox } from './hooks/useInbox';
@@ -244,6 +246,7 @@ function FleetPanel({
   const [editing, setEditing] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const deck = useDeckVisibility();
+  const { size: deckTileSize } = useDeckTileSize();
   const [deckEditing, setDeckEditing] = useState(false);
 
   // Power-user keyboard navigation: the `g …` sequences switch views, `?` opens
@@ -473,6 +476,7 @@ function FleetPanel({
               idleLabel="Customize tiles"
             />
           ) : null}
+          {view === 'deck' ? <DeckSizeControl /> : null}
           <SavedViewsMenu
             views={saved.views}
             presets={presets}
@@ -554,6 +558,7 @@ function FleetPanel({
               hiddenKeys={deck.hidden}
               editing={deckEditing}
               onToggleKey={handleDeckToggleKey}
+              size={deckTileSize}
             />
             {deckEditing ? (
               <DeckCustomizePanel
