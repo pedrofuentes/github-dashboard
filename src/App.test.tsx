@@ -883,10 +883,13 @@ describe('App', () => {
     const board = screen.getByRole('region', { name: /repository board/i });
     expect(board).toBeInTheDocument();
     // One repo contributes its six fixed signal keys (CI · Security · Reviews ·
-    // Pull requests · Issues · Stale), each an activation button carrying the repo.
-    const keys = within(board).getAllByRole('button');
+    // Pull requests · Issues · Stale), each a GitHub deep link carrying the repo.
+    const keys = within(board).getAllByRole('link');
     expect(keys).toHaveLength(6);
-    keys.forEach((key) => expect(key).toHaveAccessibleName(/octo\/hello-world/i));
+    keys.forEach((key) => {
+      expect(key).toHaveAccessibleName(/octo\/hello-world/i);
+      expect(key.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/hello-world\//);
+    });
     expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
   });
 
