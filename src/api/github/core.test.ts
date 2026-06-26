@@ -59,6 +59,7 @@ describe('fetchWithRetry', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('returns response on first success without retrying', async () => {
@@ -98,6 +99,7 @@ describe('fetchWithRetry', () => {
       .mockResolvedValueOnce(okResponse);
 
     const promise = fetchWithRetry('https://api.github.com/test');
+    promise.catch(() => {});
     await vi.advanceTimersByTimeAsync(2000);
     const result = await promise;
 
@@ -138,6 +140,7 @@ describe('fetchWithRetry', () => {
   // ── Retry-After header ──────────────────────────────────
 
   it('respects Retry-After header on 429', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(1);
     const headersWithRetryAfter = mockHeaders({ 'retry-after': '2' });
     const rateLimitResponse = mockFetchResponse(429, headersWithRetryAfter);
     const okResponse = mockFetchResponse(200);
@@ -153,6 +156,27 @@ describe('fetchWithRetry', () => {
 
     // At 2.5s the Retry-After delay has elapsed, retry happens
     await vi.advanceTimersByTimeAsync(1000);
+    const result = await promise;
+
+    expect(result).toBe(okResponse);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds deterministic jitter to retry backoff instead of retrying in lockstep', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const serverErrResponse = mockFetchResponse(503);
+    const okResponse = mockFetchResponse(200);
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(serverErrResponse)
+      .mockResolvedValueOnce(okResponse);
+
+    const promise = fetchWithRetry('https://api.github.com/test');
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     const result = await promise;
 
     expect(result).toBe(okResponse);
@@ -273,6 +297,7 @@ describe('fetchWithRetry', () => {
   // ── Non-retryable HTTP status codes pass through immediately ────
 
   it('uses exponential backoff delays: 1s, 2s, 4s', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(1);
     const serverErrResponse = mockFetchResponse(503);
     const okResponse = mockFetchResponse(200);
     vi.mocked(globalThis.fetch)
