@@ -419,3 +419,33 @@ describe('BoardView — edit mode (× remove overlay)', () => {
     expect(screen.queryByRole('button', { name: 'Remove CI tile for octo/repo-a' })).toBeNull();
   });
 });
+
+describe('BoardView — tile size', () => {
+  /** The grid container is the parent of the rendered keys. */
+  function grid(container: HTMLElement): HTMLElement {
+    const el = keys(container)[0]?.parentElement;
+    if (!el) {
+      throw new Error('BoardView grid container not found');
+    }
+    return el;
+  }
+
+  it('defaults to the medium (~152px) auto-fill grid', () => {
+    const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(152px, 1fr))');
+  });
+
+  it('widens the keys for the large size', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} size="large" />,
+    );
+    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(192px, 1fr))');
+  });
+
+  it('shrinks the keys for the x-small size', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} size="x-small" />,
+    );
+    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(104px, 1fr))');
+  });
+});
