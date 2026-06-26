@@ -65,7 +65,7 @@ describe('loadDefaultView', () => {
 
 describe('saveDefaultView', () => {
   it('persists the default under fleet:default-view', () => {
-    saveDefaultView('inbox');
+    expect(saveDefaultView('inbox')).toBe(true);
     expect(localStorage.getItem(DEFAULT_VIEW_KEY)).toBe('inbox');
   });
 
@@ -80,11 +80,13 @@ describe('saveDefaultView', () => {
     expect(loadDefaultView()).toBe('dashboard');
   });
 
-  it('swallows localStorage.setItem throwing', () => {
+  it('returns failure when localStorage.setItem throws', () => {
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded');
     });
-    expect(() => saveDefaultView('grid')).not.toThrow();
+
+    expect(saveDefaultView('grid')).toBe(false);
+    expect(loadDefaultView()).toBe('triage');
   });
 });
 

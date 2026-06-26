@@ -75,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   forgetToken();
   sessionStorage.clear();
   localStorage.clear();
@@ -521,6 +522,34 @@ describe('App', () => {
 
     expect(localStorage.getItem('fleet:default-view')).toBe('inbox');
     expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
+  });
+
+  it('does not show a failed default-view save as persisted', async () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    const defaultGroup = within(dialog).getByRole('radiogroup', { name: /default view/i });
+    await user.click(within(defaultGroup).getByRole('radio', { name: /inbox/i }));
+
+    expect(localStorage.getItem('fleet:default-view')).toBeNull();
+    expect(within(defaultGroup).getByRole('radio', { name: /triage/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(defaultGroup).getByRole('radio', { name: /inbox/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
   });
 
   it('resets the live view to the configured default after forget + re-auth (no reload)', async () => {
