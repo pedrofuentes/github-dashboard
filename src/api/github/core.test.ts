@@ -162,6 +162,27 @@ describe('fetchWithRetry', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('does not shorten Retry-After delays with jitter', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const headersWithRetryAfter = mockHeaders({ 'retry-after': '2' });
+    const rateLimitResponse = mockFetchResponse(429, headersWithRetryAfter);
+    const okResponse = mockFetchResponse(200);
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(okResponse);
+
+    const promise = fetchWithRetry('https://api.github.com/test');
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await promise;
+
+    expect(result).toBe(okResponse);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('adds deterministic jitter to retry backoff instead of retrying in lockstep', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const serverErrResponse = mockFetchResponse(503);

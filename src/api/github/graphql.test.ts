@@ -346,7 +346,7 @@ describe('GraphQLLimiter', () => {
     expect(task).toHaveBeenCalledTimes(2);
   });
 
-  it('adds deterministic jitter to secondary-limit Retry-After delays', async () => {
+  it('does not shorten secondary-limit Retry-After delays with jitter', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     let calls = 0;
     const task = vi.fn(async () => {
@@ -358,7 +358,7 @@ describe('GraphQLLimiter', () => {
     const p = limiter.schedule(task);
     p.catch(() => {});
 
-    await vi.advanceTimersByTimeAsync(1999);
+    await vi.advanceTimersByTimeAsync(3999);
     expect(task).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1);
