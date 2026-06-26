@@ -155,10 +155,12 @@ interface RepoAccumulator {
  *
  * @param repos - Repositories to resolve the signal for.
  * @param token - GitHub token; `null` yields an empty map and no requests.
+ * @param refreshKey - Optional nonce that forces a refetch for the same repo set.
  */
 export function useSecuritySignal(
   repos: Repo[],
   token: string | null,
+  refreshKey = 0,
 ): Map<string, SecuritySignalSlice> {
   const [slices, setSlices] = useState<Map<string, SecuritySignalSlice>>(EMPTY);
   const generationRef = useRef(0);
@@ -241,7 +243,7 @@ export function useSecuritySignal(
     );
 
     return () => controller.abort();
-  }, [repoSignature, token]);
+  }, [repoSignature, token, refreshKey]);
 
   return slices;
 }

@@ -14,7 +14,7 @@
  * data that went stale in the background with mostly-free `304`s — without
  * changing this hook's public return shape or any signal hook's logic.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type { TileSignalType } from '../types/dashboard';
 import type {
@@ -51,10 +51,18 @@ const EMPTY_OVERRIDE: Map<string, never> = new Map<string, never>();
  */
 const LOADING_SLICE: SignalSlice = { status: 'loading' };
 
+interface SignalRetryRequest {
+  repo: Repo;
+  signal: TileSignalType;
+  nonce: number;
+}
+
 /** Public shape returned by {@link useRepoSignals}. */
 export interface UseRepoSignalsResult {
   /** Resolves the composed signal payload for a single repo row. */
   getRowData: GetRowData;
+  /** Retries signal data without reloading the repository list. */
+  retrySignal?: (repo: Repo, signal: TileSignalType) => void;
   /** Batched GraphQL fleet progress surfaced to view-level loading affordances. */
   fleet?: {
     loading: boolean;
@@ -111,7 +119,11 @@ export function useRepoSignals(
   // Bumping this nonce on foreground hands the signal hooks a new `repos`
   // identity, re-running their conditional fetches without touching their logic.
   const [revalidateNonce, setRevalidateNonce] = useState(0);
+  const [retryRequest, setRetryRequest] = useState<SignalRetryRequest | null>(null);
   useVisibilityRevalidate(() => setRevalidateNonce((n) => n + 1));
+  const retrySignal = useCallback((repo: Repo, signal: TileSignalType) => {
+    setRetryRequest((current) => ({ repo, signal, nonce: (current?.nonce ?? 0) + 1 }));
+  }, []);
 
   // A fresh array reference per revalidation (but stable across unrelated
   // re-renders) so each signal hook's `[repos, token]` effect re-runs only when
@@ -131,7 +143,28 @@ export function useRepoSignals(
   // slices surfaced as they arrive, loading for the rest), the settled batch
   // result afterward — so the signal hook NEVER falls through to REST. When the
   // flag is OFF, undefined is returned and REST is used.
-  const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
+  const primaryBatch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
+  const retryRepos = useMemo(() => (retryRequest ? [retryRequest.repo] : []), [retryRequest]);
+  const retryGraphqlRepos = useMemo(
+    () => (retryRequest && graphqlSignalEnabled(retryRequest.signal) ? retryRepos : []),
+    [retryRepos, retryRequest],
+  );
+  const retryBatch = useFleetBatchLoader(retryGraphqlRepos, token, viewerLogin);
+  const batch = useMemo<UseFleetBatchLoaderResult>(() => {
+    if (!retryRequest) {
+      return primaryBatch;
+    }
+    const retrySlices = retryBatch.result.get(retryRequest.signal);
+    const retrySlice = retrySlices?.get(retryRequest.repo.nameWithOwner);
+    if (!retrySlice) {
+      return primaryBatch;
+    }
+    const mergedSignal = new Map(primaryBatch.result.get(retryRequest.signal));
+    mergedSignal.set(retryRequest.repo.nameWithOwner, retrySlice);
+    const result = new Map(primaryBatch.result);
+    result.set(retryRequest.signal, mergedSignal);
+    return { ...primaryBatch, result };
+  }, [primaryBatch, retryBatch.result, retryRequest]);
   const anyGraphqlSignalEnabled = GRAPHQL_ENABLED_SIGNALS.length > 0;
 
   const fleet = useMemo(() => {
@@ -210,7 +243,24 @@ export function useRepoSignals(
   );
 
   const ci = useCiSignal(revalidatedRepos, token, ciOverride);
-  const security = useSecuritySignal(revalidatedRepos, token);
+  const primarySecurity = useSecuritySignal(revalidatedRepos, token);
+  const retrySecurity = useSecuritySignal(
+    retryRequest?.signal === 'security' ? retryRepos : [],
+    token,
+    retryRequest?.nonce ?? 0,
+  );
+  const security = useMemo(() => {
+    if (retryRequest?.signal !== 'security') {
+      return primarySecurity;
+    }
+    const retrySlice = retrySecurity.get(retryRequest.repo.nameWithOwner);
+    if (!retrySlice) {
+      return primarySecurity;
+    }
+    const merged = new Map(primarySecurity);
+    merged.set(retryRequest.repo.nameWithOwner, retrySlice);
+    return merged;
+  }, [primarySecurity, retryRequest, retrySecurity]);
   const reviews = useReviewsSignal(revalidatedRepos, token, reviewsOverride);
   const pullRequests = usePullRequestsSignal(revalidatedRepos, token, pullRequestsOverride);
   const issues = useIssuesSignal(revalidatedRepos, token, viewerLogin, issuesOverride);
@@ -228,5 +278,5 @@ export function useRepoSignals(
     [ci, security, reviews, pullRequests, issues, stale],
   );
 
-  return { getRowData, fleet };
+  return { getRowData, retrySignal, fleet };
 }
