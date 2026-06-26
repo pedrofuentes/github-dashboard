@@ -103,11 +103,13 @@ function safeGet(key: string): string | null {
   }
 }
 
-function safeSet(key: string, value: string): void {
+function safeSet(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // Persistence is best-effort: ignore quota / disabled-storage failures.
+    return false;
   }
 }
 
@@ -201,7 +203,13 @@ function loadStoredTiles(): DashboardTile[] | null {
   }
   // Migrate v1 → v2 on read: write the versioned envelope (same tiles) and leave
   // the legacy key in place for rollback. This is a storage-format change only.
-  safeSet(STORAGE_KEY_V2, JSON.stringify({ version: LAYOUT_VERSION, tiles: legacy.data }));
+  const migrated = JSON.stringify({ version: LAYOUT_VERSION, tiles: legacy.data });
+  if (!safeSet(STORAGE_KEY_V2, migrated)) {
+    console.warn(
+      'Failed to persist migrated dashboard layout; legacy layout will be retried on next load.',
+      new Error('dashboard layout migration persistence failed'),
+    );
+  }
   return legacy.data;
 }
 
