@@ -22,11 +22,13 @@ function safeGet(key: string): string | null {
   }
 }
 
-function safeSet(key: string, value: string): void {
+function safeSet(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // Persistence is best-effort: ignore quota / disabled-storage failures.
+    return false;
   }
 }
 
@@ -37,6 +39,6 @@ export function loadDefaultView(): FleetView {
 }
 
 /** Persists the chosen default view (best-effort). */
-export function saveDefaultView(view: FleetView): void {
-  safeSet(DEFAULT_VIEW_KEY, view);
+export function saveDefaultView(view: FleetView): boolean {
+  return safeSet(DEFAULT_VIEW_KEY, view);
 }
