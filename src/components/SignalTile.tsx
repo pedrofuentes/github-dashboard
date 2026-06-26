@@ -19,6 +19,7 @@ import type { ReactElement } from 'react';
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { Density } from '../lib/density-preference';
+import { signalDeepLinkUrl } from '../lib/github-deep-link';
 import { resolveSalience } from '../lib/tile-salience';
 import type { TileSalience } from '../lib/tile-salience';
 import { signalHeroSummary } from '../lib/tile-summary';
@@ -197,6 +198,12 @@ export function SignalTile({
   // The frame measures its own box to pick a density tier (DESIGN-TILES §3.4).
   const { ref, tier } = useTileSize<HTMLElement>();
 
+  // Each tile is one (repo, signal) pair, so a press jumps straight to the
+  // matching GitHub page (in a new tab) instead of the in-app drill-down. The
+  // frame swaps the activate overlay to a link in display mode and keeps the
+  // drill-down button in edit mode (so keyboard reorder/resize is unaffected).
+  const activateHref = signalDeepLinkUrl(repo, tile.signal, data);
+
   return (
     <TileFrame
       containerRef={ref}
@@ -207,6 +214,7 @@ export function SignalTile({
       size={tier}
       tileId={tile.i}
       onActivate={() => onActivate(repo)}
+      activateHref={activateHref}
       active={active}
       editing={editing}
       onTileFocus={onTileFocus}
