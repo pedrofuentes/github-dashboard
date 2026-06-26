@@ -22,7 +22,6 @@ import {
   fetchWithRetry,
   GitHubApiError,
   GitHubErrorCode,
-  jitterRetryDelayMs,
   parseRetryAfter,
   type RateLimitInfo,
 } from './core';
@@ -323,7 +322,7 @@ export class GraphQLLimiter {
         const retryAfterSeconds = secondaryLimitRetryAfter(err);
         if (retryAfterSeconds === undefined || attempt >= GQL_MAX_RETRIES) throw err;
         attempt += 1;
-        await abortableSleep(jitterRetryDelayMs(retryAfterSeconds * 1000), signal);
+        await abortableSleep(retryAfterSeconds * 1000, signal);
       }
     }
   }
