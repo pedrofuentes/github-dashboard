@@ -148,11 +148,21 @@ export function CommandPalette({ open, onClose, commands, recents }: CommandPale
     }
     return { rows: builtRows, results: flat };
   }, [commands, recents, trimmed]);
+  const resultIdentity = useMemo(() => results.map((result) => result.id).join('\0'), [results]);
 
-  // Reset the highlight to the first option whenever the query changes.
+  // Reset the highlight to the first option whenever the actual result set changes.
   useEffect(() => {
     setActiveIndex(0);
-  }, [rawQuery]);
+  }, [resultIdentity]);
+
+  useEffect(() => {
+    setActiveIndex((current) => {
+      if (results.length === 0) {
+        return 0;
+      }
+      return Math.min(current, results.length - 1);
+    });
+  }, [results.length]);
 
   // Reset transient state and focus the search input each time the palette opens.
   useEffect(() => {
@@ -232,13 +242,13 @@ export function CommandPalette({ open, onClose, commands, recents }: CommandPale
       event.preventDefault();
       moveActive(-1);
     } else if (event.key === 'Home') {
-      event.preventDefault();
       if (count > 0) {
+        event.preventDefault();
         setActiveIndex(0);
       }
     } else if (event.key === 'End') {
-      event.preventDefault();
       if (count > 0) {
+        event.preventDefault();
         setActiveIndex(count - 1);
       }
     } else if (event.key === 'Enter') {
