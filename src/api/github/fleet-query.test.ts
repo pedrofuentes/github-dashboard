@@ -259,6 +259,36 @@ describe('buildFleetQuery', () => {
     expect(query).toContain('$owner0: String!');
     expect(query).toContain('$name0: String!');
   });
+
+  it('includes every enabled per-chunk fragment when all default GraphQL signal flags are on', () => {
+    const query = buildFleetQuery(repos, 'octocat');
+    expect(query).toContain('defaultBranchRef');
+    expect(query).toContain('openIssues: issues(states: OPEN) { totalCount }');
+    expect(query).toContain('myIssues: issues(states: OPEN, filterBy: { createdBy: $viewer })');
+    expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('stale_r0: search(type: ISSUE');
+    expect(query).toContain('stale_r1: search(type: ISSUE');
+  });
+
+  it('omits fragments and variables for disabled GraphQL signals while preserving enabled ones', async () => {
+    vi.resetModules();
+    vi.doMock('../../lib/graphql-flags', () => ({
+      graphqlSignalEnabled: (signal: string): boolean => signal !== 'issues',
+    }));
+
+    const { buildFleetQuery: buildFleetQueryWithFlags } = await import('./fleet-query');
+    const query = buildFleetQueryWithFlags(repos, 'octocat');
+
+    expect(query).not.toContain('openIssues');
+    expect(query).not.toContain('myIssues');
+    expect(query).not.toContain('$viewer: String');
+    expect(query).toContain('defaultBranchRef');
+    expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('stale_r0: search(type: ISSUE');
+
+    vi.doUnmock('../../lib/graphql-flags');
+    vi.resetModules();
+  });
 });
 
 describe('buildFleetVariables', () => {
