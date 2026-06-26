@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { AppFooter } from './components/AppFooter';
@@ -344,6 +344,19 @@ function FleetPanel({
     setFullWindow(true);
   }, []);
   const exitFullWindow = useCallback(() => setFullWindow(false), []);
+
+  // Entering full-window unmounts the toolbar (so the opener button is gone by
+  // the time the overlay mounts — its own restore would land on <body>). Own the
+  // restoration here: when we leave full-window, return focus to the re-mounted
+  // Full window button so keyboard/screen-reader users aren't dropped to <body>.
+  const fullWindowButtonRef = useRef<HTMLButtonElement>(null);
+  const wasFullWindowRef = useRef(false);
+  useEffect(() => {
+    if (wasFullWindowRef.current && !fullWindow) {
+      fullWindowButtonRef.current?.focus();
+    }
+    wasFullWindowRef.current = fullWindow;
+  }, [fullWindow]);
   // Full repos (not filteredRepos) so fleet-wide bulk ops cover every repo.
   const repoNames = useMemo(() => repos.map((r) => r.nameWithOwner), [repos]);
   // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
@@ -625,7 +638,7 @@ function FleetPanel({
               />
             ) : null}
             {view === 'deck' ? <DeckSizeControl /> : null}
-            <FullWindowButton onActivate={enterFullWindow} />
+            <FullWindowButton ref={fullWindowButtonRef} onActivate={enterFullWindow} />
             <SavedViewsMenu
               views={saved.views}
               presets={presets}
@@ -681,33 +694,36 @@ interface FullWindowButtonProps {
 }
 
 /** Toolbar control that enters the immersive full-window view (any view). */
-function FullWindowButton({ onActivate }: FullWindowButtonProps): ReactElement {
-  return (
-    <button
-      type="button"
-      onClick={onActivate}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-    >
-      <svg
-        width={16}
-        height={16}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
+const FullWindowButton = forwardRef<HTMLButtonElement, FullWindowButtonProps>(
+  function FullWindowButton({ onActivate }, ref): ReactElement {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        onClick={onActivate}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
-        <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-        <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-        <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-        <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-      </svg>
-      <span>Full window</span>
-    </button>
-  );
-}
+        <svg
+          width={16}
+          height={16}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+        <span>Full window</span>
+      </button>
+    );
+  },
+);
 
 interface ViewToggleProps {
   view: FleetView;
