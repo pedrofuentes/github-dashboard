@@ -100,3 +100,9 @@ describe('role tokens — AA contrast (WCAG 2.1)', () => {
     }
   }
 });
+
+describe('role tokens — semantic distinction', () => {
+  it('keeps dark attention visually distinct from warning', () => {
+    expect(dark['--color-attention']).not.toBe(dark['--color-warning']);
+  });
+});
