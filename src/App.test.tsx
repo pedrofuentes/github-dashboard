@@ -355,7 +355,7 @@ describe('App', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('opens the drill-down drawer from a dashboard tile', async () => {
+  it('navigates a dashboard tile to its GitHub page instead of the drawer', async () => {
     localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
@@ -363,13 +363,15 @@ describe('App', () => {
     await screen.findByRole('table');
 
     await user.click(screen.getByRole('button', { name: /boards/i }));
-    const tile = screen.getAllByRole('button', {
+    const tile = screen.getAllByRole('link', {
       name: /: .*\u2014 octo\/hello-world/i,
     })[0];
-    await user.click(tile);
-
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // Each Boards tile is an anchor to its signal's GitHub page (opened in a new
+    // tab), so a press jumps to GitHub rather than opening the in-app drill-down.
+    expect(tile.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/hello-world\//);
+    expect(tile).toHaveAttribute('target', '_blank');
+    expect(tile).toHaveAttribute('rel', 'noreferrer noopener');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('does not offer the customize-layout control in the grid view', async () => {
