@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 
+import { debounce } from '../lib/debounce';
 import { fuzzyRankBy } from '../lib/fuzzy-match';
 import { addRecentFilter, loadRecentFilters } from '../lib/recent-filters';
 import type { RepoFilterQueryV2 } from '../lib/repo-filter-query';
@@ -100,6 +101,7 @@ const FOCUS_RING =
 const CHECKBOX = `h-4 w-4 accent-text ${FOCUS_RING}`;
 const CHECKBOX_LABEL = `flex items-center gap-2 rounded px-1.5 py-1 text-sm text-text hover:bg-surface-raised ${FOCUS_RING}`;
 const BULK_BUTTON = `rounded border border-border-strong bg-surface px-2 py-0.5 text-xs font-medium text-text-muted hover:bg-surface-raised ${FOCUS_RING}`;
+const SEARCH_RANK_DEBOUNCE_MS = 150;
 
 /** One removable active filter, rendered as a chip in the chip row. */
 interface ActiveChip {
@@ -284,6 +286,7 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
   const [expanded, setExpanded] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [recentFilters, setRecentFilters] = useState<RepoFilterQueryV2[]>([]);
+  const [rankedText, setRankedText] = useState(query.text);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -307,9 +310,24 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
     previousIsActive.current = isActive;
   }, [isActive, query]);
 
+  const updateRankedText = useMemo(
+    () => debounce((text: string) => setRankedText(text), SEARCH_RANK_DEBOUNCE_MS),
+    [],
+  );
+
+  useEffect(() => {
+    if (query.text.trim() === '') {
+      updateRankedText.cancel();
+      setRankedText(query.text);
+      return updateRankedText.cancel;
+    }
+    updateRankedText(query.text);
+    return updateRankedText.cancel;
+  }, [query.text, updateRankedText]);
+
   const visibleRepos = useMemo(
-    () => fuzzyRankBy(query.text, repos, (r) => [r.nameWithOwner, r.owner, r.name]),
-    [query.text, repos],
+    () => fuzzyRankBy(rankedText, repos, (r) => [r.nameWithOwner, r.owner, r.name]),
+    [rankedText, repos],
   );
 
   // Mode-aware repo pin: the hook's `toggleRepoPin` only narrows in
@@ -425,17 +443,14 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
   }
 
   function selectAllOwners(): void {
-    for (const { owner } of availableOwners) {
-      if (!query.facets.owners.includes(owner)) {
-        toggleOwner(owner);
-      }
-    }
+    applyQuery({
+      ...query,
+      facets: { ...query.facets, owners: availableOwners.map(({ owner }) => owner) },
+    });
   }
 
   function clearOwners(): void {
-    for (const owner of query.facets.owners) {
-      toggleOwner(owner);
-    }
+    applyQuery({ ...query, facets: { ...query.facets, owners: [] } });
   }
 
   // Invert the pin selection across the currently visible (matching) repos:
