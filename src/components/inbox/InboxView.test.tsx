@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -193,6 +193,27 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
 
     await user.selectOptions(screen.getByLabelText(/filter by repository/i), 'octo/api');
     expect(setFilters).toHaveBeenCalledWith({ repos: ['octo/api'] });
+  });
+
+  it('prunes a selected repository when the available repo options no longer include it', async () => {
+    const setFilters = vi.fn();
+    const selectedFilters = { ...DEFAULT_FILTERS, repos: [REPOS[0].nameWithOwner] };
+    const { rerender } = render(
+      <InboxView inbox={inboxResult({ filters: selectedFilters, setFilters })} repos={REPOS} />,
+    );
+
+    expect(screen.getByLabelText(/filter by repository/i)).toHaveValue(REPOS[0].nameWithOwner);
+    expect(setFilters).not.toHaveBeenCalled();
+
+    rerender(
+      <InboxView
+        inbox={inboxResult({ filters: selectedFilters, setFilters })}
+        repos={[REPOS[1]]}
+      />,
+    );
+
+    expect(screen.getByLabelText(/filter by repository/i)).toHaveValue('');
+    await waitFor(() => expect(setFilters).toHaveBeenCalledWith({ repos: [] }));
   });
 
   it('narrows by kind', async () => {
