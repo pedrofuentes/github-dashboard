@@ -7,12 +7,13 @@
  *
  * Consumed by {@link useRepoSignals}, which picks per-signal slices from the
  * result and passes them as overrides to the relevant `useXSignal` hooks when
- * the corresponding {@link graphqlSignalEnabled} flag is on.
+ * the corresponding GraphQL signal flag is on.
  */
 import { useEffect, useRef, useState } from 'react';
 
 import { executeFleetBatch, type FleetBatchResult } from '../api/github/fleet-query';
 import { isAbortError } from '../lib/abort';
+import { GRAPHQL_ENABLED_SIGNALS } from '../lib/graphql-flags';
 import type { Repo } from '../types/fleet';
 
 /** Stable empty result returned whenever the hook is idle (no token / no repos). */
@@ -48,7 +49,7 @@ export function useFleetBatchLoader(
   const generationRef = useRef(0);
 
   useEffect(() => {
-    if (!token || repos.length === 0) {
+    if (!token || repos.length === 0 || GRAPHQL_ENABLED_SIGNALS.length === 0) {
       setState(IDLE);
       return;
     }
