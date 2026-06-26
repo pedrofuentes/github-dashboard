@@ -40,10 +40,11 @@ export function SecurityAccessNotice({ show }: SecurityAccessNoticeProps): React
         <div className="space-y-1">
           <p className="font-semibold text-text">Security grades are unavailable</p>
           <p className="text-text-muted">
-            Your token can&apos;t read Dependabot or Code-scanning alerts. Add the{' '}
-            <code className="font-mono text-text">security_events</code> scope (classic PAT) or{' '}
-            <em>Dependabot alerts: read</em> + <em>Code scanning alerts: read</em> (fine-grained),
-            then reconnect.
+            Your token may lack security-alert access, or Dependabot/Code-scanning may be disabled
+            on these repos. For a classic PAT, add the{' '}
+            <code className="font-mono text-text">security_events</code> scope; for a fine-grained
+            PAT, grant <em>Dependabot alerts: read</em> + <em>Code scanning alerts: read</em>, then
+            reconnect.
           </p>
           <a
             href={LEARN_MORE_URL}
