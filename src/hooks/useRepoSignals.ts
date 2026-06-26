@@ -61,6 +61,12 @@ const GRAPHQL_SIGNAL_KEYS: TileSignalType[] = ['ci', 'reviews', 'pullRequests', 
 export interface UseRepoSignalsResult {
   /** Resolves the composed signal payload for a single repo row. */
   getRowData: GetRowData;
+  /** Batched GraphQL fleet progress surfaced to view-level loading affordances. */
+  fleet?: {
+    loading: boolean;
+    ready: number;
+    total: number;
+  };
 }
 
 /**
@@ -132,6 +138,21 @@ export function useRepoSignals(
   // result afterward — so the signal hook NEVER falls through to REST. When the
   // flag is OFF, undefined is returned and REST is used.
   const batch = useFleetBatchLoader(revalidatedRepos, token, viewerLogin);
+
+  const fleet = useMemo(() => {
+    let ready = 0;
+    for (const repo of revalidatedRepos) {
+      const hasSettledSlice = GRAPHQL_SIGNAL_KEYS.some(
+        (sig) => batch.result.get(sig)?.get(repo.nameWithOwner)?.status === 'ready',
+      );
+      if (hasSettledSlice) ready += 1;
+    }
+    return {
+      loading: batch.loading,
+      ready,
+      total: revalidatedRepos.length,
+    };
+  }, [batch.loading, batch.result, revalidatedRepos]);
 
   // Per-signal merged loading maps for the progressive fill: repos that have a
   // settled batch slice show it immediately; the rest show LOADING_SLICE.
@@ -212,5 +233,5 @@ export function useRepoSignals(
     [ci, security, reviews, pullRequests, issues, stale],
   );
 
-  return { getRowData };
+  return { getRowData, fleet };
 }
