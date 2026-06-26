@@ -145,6 +145,10 @@ The app asks for a **fine-grained PAT** granting these **read-only** repository 
 
 Prefer a classic token? Grant the **`repo`** scope (it covers private repositories; `public_repo` alone limits the view to public repos).
 
+#### Security alert access
+
+Security grades require access to Dependabot and code-scanning alert feeds. Fine-grained PATs need **Dependabot alerts: read** and **Code scanning alerts: read**; classic PATs need the **`security_events`** scope. Without those permissions, the Security column shows **n/a**.
+
 <div align="center">
   <img src="docs/screenshots/token-entry.png" alt="Sign-in screen: a personal access token field, three persistence options (Don't remember / This session / This device), a Connect to GitHub button, and the list of seven read-only fine-grained permissions to grant" width="760">
 </div>
