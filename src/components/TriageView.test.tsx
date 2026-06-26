@@ -217,6 +217,15 @@ describe('TriageView states', () => {
     expect(screen.queryByRole('heading', { name: /needs attention/i })).not.toBeInTheDocument();
   });
 
+  it('does not show All clear while loaded repos are still resolving triage signals', () => {
+    const repos = [repo('octo/a'), repo('octo/b')];
+
+    render(<TriageView repos={repos} getRowData={() => ({})} loading />);
+
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+  });
+
   it('lists repos under the correct band with their owner/repo name', () => {
     render(<TriageView repos={[repo('octo/needy')]} getRowData={() => FAILING_CI} />);
     const region = screen.getByRole('region', { name: /needs attention/i });
