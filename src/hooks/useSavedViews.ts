@@ -4,10 +4,8 @@
  * on every change via {@link createSavedViewsStore}; the underlying ops are pure
  * and immutable, so this hook only owns the React state + persistence wiring.
  *
- * It also closes the consumer-side gap from the lib's unvalidated mutation ops
- * (#436): `create`/`rename` validate the name (non-empty, within
- * {@link MAX_VIEW_NAME_LENGTH}) BEFORE touching the store and reject invalid
- * input with a returned error rather than silently failing persistence.
+ * It also mirrors the lib's name validation for user-facing error messages and
+ * reports storage failures instead of announcing success for dropped writes.
  */
 import { useCallback, useRef, useState } from 'react';
 
@@ -19,10 +17,10 @@ import {
   createSavedViewsStore,
   findSavedView,
   MAX_SAVED_VIEWS,
-  MAX_VIEW_NAME_LENGTH,
   removeSavedView,
   renameSavedView,
   updateSavedView,
+  validateSavedViewName,
   type SavedView,
   type SavedViewsState,
 } from '../lib/saved-views';
@@ -52,9 +50,12 @@ export interface UseSavedViewsResult {
   /** Validates the name, then renames + persists a view (#436 boundary). */
   rename: (id: string, name: string) => SavedViewMutationResult;
   /** Removes + persists the view with the given id (no-op if absent). */
-  remove: (id: string) => void;
+  remove: (id: string) => SavedViewMutationResult;
   /** Merges a patch into the view with the given id, then persists. */
-  update: (id: string, patch: Partial<Omit<SavedView, 'id' | 'createdAt'>>) => void;
+  update: (
+    id: string,
+    patch: Partial<Omit<SavedView, 'id' | 'createdAt'>>,
+  ) => SavedViewMutationResult;
   /** Finds the view with the given id (or undefined). */
   find: (id: string) => SavedView | undefined;
 }
@@ -64,14 +65,7 @@ export interface UseSavedViewsResult {
  * #436). Returns a human-readable error message, or null when the name is valid.
  */
 export function validateViewName(name: string): string | null {
-  const trimmed = name.trim();
-  if (trimmed.length === 0) {
-    return 'Enter a name for this view.';
-  }
-  if (trimmed.length > MAX_VIEW_NAME_LENGTH) {
-    return `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`;
-  }
-  return null;
+  return validateSavedViewName(name);
 }
 
 /**
@@ -88,9 +82,10 @@ export function useSavedViews(): UseSavedViewsResult {
   const [state, setState] = useState<SavedViewsState>(() => store.load());
 
   const commit = useCallback(
-    (next: SavedViewsState) => {
-      store.save(next);
+    (next: SavedViewsState): boolean => {
+      if (!store.save(next)) return false;
       setState(next);
+      return true;
     },
     [store],
   );
@@ -103,10 +98,12 @@ export function useSavedViews(): UseSavedViewsResult {
       }
       const view = createSavedView({ ...input, name: input.name.trim() });
       const next = addSavedView(state, view);
-      if (next === state) {
+      if (next === null) {
         return { ok: false, error: `You can save at most ${MAX_SAVED_VIEWS} views.` };
       }
-      commit(next);
+      if (!commit(next)) {
+        return { ok: false, error: 'Could not save this view. Check browser storage.' };
+      }
       return { ok: true, view };
     },
     [state, commit],
@@ -119,31 +116,47 @@ export function useSavedViews(): UseSavedViewsResult {
         return { ok: false, error };
       }
       const next = renameSavedView(state, id, name.trim());
-      if (next === state) {
+      if (next === null) {
         return { ok: false, error: 'That view no longer exists.' };
       }
-      commit(next);
+      if (!commit(next)) {
+        return { ok: false, error: 'Could not save this view. Check browser storage.' };
+      }
       return { ok: true, view: findSavedView(next, id) };
     },
     [state, commit],
   );
 
   const remove = useCallback(
-    (id: string) => {
+    (id: string): SavedViewMutationResult => {
       const next = removeSavedView(state, id);
-      if (next !== state) {
-        commit(next);
+      if (next === null) {
+        return { ok: false, error: 'That view no longer exists.' };
       }
+      if (!commit(next)) {
+        return { ok: false, error: 'Could not save this view. Check browser storage.' };
+      }
+      return { ok: true };
     },
     [state, commit],
   );
 
   const update = useCallback(
-    (id: string, patch: Partial<Omit<SavedView, 'id' | 'createdAt'>>) => {
-      const next = updateSavedView(state, id, patch);
-      if (next !== state) {
-        commit(next);
+    (id: string, patch: Partial<Omit<SavedView, 'id' | 'createdAt'>>): SavedViewMutationResult => {
+      if (patch.name !== undefined) {
+        const error = validateViewName(patch.name);
+        if (error !== null) {
+          return { ok: false, error };
+        }
       }
+      const next = updateSavedView(state, id, patch);
+      if (next === null) {
+        return { ok: false, error: 'That view no longer exists.' };
+      }
+      if (!commit(next)) {
+        return { ok: false, error: 'Could not save this view. Check browser storage.' };
+      }
+      return { ok: true, view: findSavedView(next, id) };
     },
     [state, commit],
   );

@@ -31,8 +31,8 @@ export interface VersionedStoreConfig<T> {
 export interface VersionedStore<T> {
   /** Reads, (optionally) migrates and validates the value; never throws. */
   load(): T;
-  /** Validates then persists the value (best-effort); never throws. */
-  save(value: T): void;
+  /** Validates then persists the value; returns false on validation/storage failure. */
+  save(value: T): boolean;
   /** Removes the persisted key (best-effort); never throws. */
   clear(): void;
 }
@@ -45,11 +45,13 @@ function safeGet(key: string): string | null {
   }
 }
 
-function safeSet(key: string, value: string): void {
+function safeSet(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // Persistence is best-effort: ignore quota / disabled-storage failures.
+    return false;
   }
 }
 
@@ -91,9 +93,9 @@ export function createVersionedStore<T>(config: VersionedStoreConfig<T>): Versio
       }
     },
 
-    save(value: T): void {
-      if (!schema.safeParse(value).success) return;
-      safeSet(key, JSON.stringify(value));
+    save(value: T): boolean {
+      if (!schema.safeParse(value).success) return false;
+      return safeSet(key, JSON.stringify(value));
     },
 
     clear(): void {

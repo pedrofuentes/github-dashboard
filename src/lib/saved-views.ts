@@ -18,7 +18,7 @@ import { z } from 'zod';
 
 import type { RepoFilterQueryV2 } from './repo-filter-query';
 import { RepoFilterQueryV2Schema } from './repo-filter-query';
-import type { FleetView } from './view-preference';
+import { FLEET_VIEWS, type FleetView } from './view-preference';
 import { MAX_STRING_LENGTH } from './dashboard-layout';
 import { createVersionedStore, type VersionedStore } from './versioned-storage';
 
@@ -36,7 +36,7 @@ export const MAX_SAVED_VIEWS = 50;
 /** Cap on the length of a saved view's name. */
 export const MAX_VIEW_NAME_LENGTH = 128;
 
-const FleetViewSchema = z.enum(['triage', 'matrix', 'grid', 'dashboard', 'inbox', 'deck']);
+const FleetViewSchema = z.enum(FLEET_VIEWS);
 
 const SortSchema = z.object({
   columnId: z.string().min(1).max(MAX_STRING_LENGTH),
@@ -70,6 +70,17 @@ export const SavedViewsStateSchema = z.object({
 
 /** The top-level persisted state holding all saved views. */
 export type SavedViewsState = z.infer<typeof SavedViewsStateSchema>;
+
+export function validateSavedViewName(name: string): string | null {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return 'Enter a name for this view.';
+  }
+  if (trimmed.length > MAX_VIEW_NAME_LENGTH) {
+    return `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`;
+  }
+  return null;
+}
 
 /** ID generator signature (default: crypto.randomUUID). */
 type IdGenerator = () => string;
@@ -112,50 +123,65 @@ export function createSavedView(
 }
 
 /**
- * Adds a view to the state, enforcing the {@link MAX_SAVED_VIEWS} cap and
- * rejecting duplicates (by id). Returns a new state; the original is unchanged.
+ * Adds a view to the state, enforcing the {@link MAX_SAVED_VIEWS} cap,
+ * validating the view, and rejecting duplicates (by id). Returns a new state or
+ * null on rejection; the original is unchanged.
  */
-export function addSavedView(state: SavedViewsState, view: SavedView): SavedViewsState {
-  if (state.views.length >= MAX_SAVED_VIEWS) return state;
-  if (state.views.some((v) => v.id === view.id)) return state;
+export function addSavedView(state: SavedViewsState, view: SavedView): SavedViewsState | null {
+  if (!SavedViewSchema.safeParse(view).success) return null;
+  if (state.views.length >= MAX_SAVED_VIEWS) return null;
+  if (state.views.some((v) => v.id === view.id)) return null;
   return { ...state, views: [...state.views, view] };
 }
 
 /**
- * Removes the view with the given id. Returns a new state; the original is
- * unchanged. If the id is not found, returns the state unchanged.
+ * Removes the view with the given id. Returns a new state or null when the id is
+ * not found; the original is unchanged.
  */
-export function removeSavedView(state: SavedViewsState, id: string): SavedViewsState {
+export function removeSavedView(state: SavedViewsState, id: string): SavedViewsState | null {
   const filtered = state.views.filter((v) => v.id !== id);
-  if (filtered.length === state.views.length) return state;
+  if (filtered.length === state.views.length) return null;
   return { ...state, views: filtered };
 }
 
 /**
- * Renames the view with the given id. Returns a new state; the original is
- * unchanged. If the id is not found, returns the state unchanged.
+ * Renames the view with the given id. Returns a new state or null when the id is
+ * not found / name is invalid; the original is unchanged.
  */
-export function renameSavedView(state: SavedViewsState, id: string, name: string): SavedViewsState {
+export function renameSavedView(
+  state: SavedViewsState,
+  id: string,
+  name: string,
+): SavedViewsState | null {
+  if (validateSavedViewName(name) !== null) return null;
   const index = state.views.findIndex((v) => v.id === id);
-  if (index === -1) return state;
+  if (index === -1) return null;
   const updated = [...state.views];
-  updated[index] = { ...updated[index], name };
+  updated[index] = { ...updated[index], name: name.trim() };
   return { ...state, views: updated };
 }
 
 /**
- * Updates the view with the given id by merging the patch. Returns a new state;
- * the original is unchanged. If the id is not found, returns the state unchanged.
+ * Updates the view with the given id by merging the patch. Returns a new state
+ * or null when the id is not found / patch is invalid; the original is unchanged.
  */
 export function updateSavedView(
   state: SavedViewsState,
   id: string,
   patch: Partial<Omit<SavedView, 'id' | 'createdAt'>>,
-): SavedViewsState {
+): SavedViewsState | null {
+  if (patch.name !== undefined && validateSavedViewName(patch.name) !== null) return null;
   const index = state.views.findIndex((v) => v.id === id);
-  if (index === -1) return state;
+  if (index === -1) return null;
   const updated = [...state.views];
-  updated[index] = { ...updated[index], ...patch };
+  const candidate = {
+    ...updated[index],
+    ...patch,
+    ...(patch.name !== undefined && { name: patch.name.trim() }),
+  };
+  const parsed = SavedViewSchema.safeParse(candidate);
+  if (!parsed.success) return null;
+  updated[index] = parsed.data;
   return { ...state, views: updated };
 }
 
