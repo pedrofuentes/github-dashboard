@@ -15,6 +15,7 @@ import { FleetLoadingBanner } from './components/FleetLoadingBanner';
 import { FleetMatrix } from './components/FleetMatrix';
 import { InboxView } from './components/inbox/InboxView';
 import { SavedViewsMenu } from './components/SavedViewsMenu';
+import { SecurityAccessNotice } from './components/SecurityAccessNotice';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { ShortcutsHelpOverlay } from './components/ShortcutsHelpOverlay';
 import { TokenInput } from './components/TokenInput';
@@ -42,6 +43,7 @@ import { buildCommandRegistry } from './lib/commands';
 import { DECK_SIGNALS } from './lib/deck-visibility';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
 import type { SavedView } from './lib/saved-views';
+import { hasNoSecurityAccess } from './lib/security-access';
 import type { VersionedStore } from './lib/versioned-storage';
 import { buildViewPresets } from './lib/view-presets';
 import type { FleetView } from './lib/view-preference';
@@ -288,6 +290,10 @@ function FleetPanel({
         : repos,
     [repos, filter.isActive, filter.derivedSelected],
   );
+  const securityNoAccess = useMemo(
+    () => hasNoSecurityAccess(repos.map((repo) => getRowData(repo).security)),
+    [repos, getRowData],
+  );
 
   // Advance the "last visited" watermark once per Inbox visit, but only after the
   // signals have settled so the hook's triage GC runs against the real live ids
@@ -474,6 +480,7 @@ function FleetPanel({
           />
         </div>
         <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
+        <SecurityAccessNotice show={securityNoAccess} />
         {view === 'triage' ? (
           <TriageView
             repos={filteredRepos}
