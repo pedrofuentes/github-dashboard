@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MAX_VIEW_NAME_LENGTH,
@@ -44,10 +44,12 @@ const ALT_QUERY: RepoFilterQueryV2 = {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('validateViewName', () => {
@@ -87,6 +89,23 @@ describe('useSavedViews', () => {
     expect(stored?.views).toHaveLength(1);
     expect(stored?.views[0].name).toBe('Broken CI');
     expect(stored?.views[0].view).toBe('triage');
+  });
+
+  it('reports create failure when persistence is unavailable', () => {
+    const { result } = renderHook(() => useSavedViews());
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    let outcome!: ReturnType<typeof result.current.create>;
+    act(() => {
+      outcome = result.current.create({ name: 'Broken CI', view: 'triage', filter: EMPTY_QUERY });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views).toEqual([]);
+    expect(persisted()).toBeNull();
   });
 
   it('trims the name before persisting', () => {
@@ -147,6 +166,29 @@ describe('useSavedViews', () => {
     expect(persisted()?.views[0].name).toBe('New');
   });
 
+  it('reports rename failure when persistence is unavailable', () => {
+    const { result } = renderHook(() => useSavedViews());
+    let created!: SavedView;
+    act(() => {
+      created = expectView(
+        result.current.create({ name: 'Old', view: 'grid', filter: EMPTY_QUERY }),
+      );
+    });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    let outcome!: ReturnType<typeof result.current.rename>;
+    act(() => {
+      outcome = result.current.rename(created.id, 'New');
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views[0].name).toBe('Old');
+    expect(persisted()?.views[0].name).toBe('Old');
+  });
+
   it('rejects an invalid rename without persisting', () => {
     const { result } = renderHook(() => useSavedViews());
     let created!: SavedView;
@@ -175,12 +217,37 @@ describe('useSavedViews', () => {
       );
     });
 
+    let outcome!: ReturnType<typeof result.current.remove>;
     act(() => {
-      result.current.remove(created.id);
+      outcome = result.current.remove(created.id);
     });
 
+    expect(outcome.ok).toBe(true);
     expect(result.current.views).toEqual([]);
     expect(persisted()?.views).toEqual([]);
+  });
+
+  it('reports remove failure when persistence is unavailable', () => {
+    const { result } = renderHook(() => useSavedViews());
+    let created!: SavedView;
+    act(() => {
+      created = expectView(
+        result.current.create({ name: 'Keep', view: 'inbox', filter: EMPTY_QUERY }),
+      );
+    });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    let outcome!: ReturnType<typeof result.current.remove>;
+    act(() => {
+      outcome = result.current.remove(created.id);
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views).toHaveLength(1);
+    expect(persisted()?.views).toHaveLength(1);
   });
 
   it('updates a view via patch and persists', () => {
@@ -192,12 +259,34 @@ describe('useSavedViews', () => {
       );
     });
 
+    let outcome!: ReturnType<typeof result.current.update>;
     act(() => {
-      result.current.update(created.id, { filter: ALT_QUERY, view: 'matrix' });
+      outcome = result.current.update(created.id, { filter: ALT_QUERY, view: 'matrix' });
     });
 
+    expect(outcome.ok).toBe(true);
     expect(result.current.find(created.id)?.view).toBe('matrix');
     expect(persisted()?.views[0].filter).toEqual(ALT_QUERY);
+  });
+
+  it('rejects an invalid update name without persisting and returns an error', () => {
+    const { result } = renderHook(() => useSavedViews());
+    let created!: SavedView;
+    act(() => {
+      created = expectView(
+        result.current.create({ name: 'Keep', view: 'grid', filter: EMPTY_QUERY }),
+      );
+    });
+
+    let outcome!: ReturnType<typeof result.current.update>;
+    act(() => {
+      outcome = result.current.update(created.id, { name: '' });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views[0].name).toBe('Keep');
+    expect(persisted()?.views[0].name).toBe('Keep');
   });
 
   it('loads a previously persisted state on mount', () => {

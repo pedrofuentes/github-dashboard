@@ -16,6 +16,15 @@ import {
   MAX_VIEW_NAME_LENGTH,
 } from './saved-views';
 import { EMPTY_QUERY } from './repo-filter-query';
+import { FLEET_VIEWS } from './view-preference';
+
+function expectState<T>(state: T | null): T {
+  expect(state).not.toBeNull();
+  if (state === null) {
+    throw new Error('expected saved-views operation to return state');
+  }
+  return state;
+}
 
 describe('SavedView schema validation', () => {
   it('accepts a valid SavedView', () => {
@@ -62,6 +71,20 @@ describe('SavedView schema validation', () => {
       createdAt: '2026-06-22T00:00:00.000Z',
     };
     expect(SavedViewSchema.safeParse(deckView).success).toBe(true);
+  });
+
+  it('accepts every FleetView value from the single source of truth', () => {
+    for (const view of FLEET_VIEWS) {
+      expect(
+        SavedViewSchema.safeParse({
+          id: `test-id-${view}`,
+          name: `${view} view`,
+          view,
+          filter: EMPTY_QUERY,
+          createdAt: '2026-06-22T00:00:00.000Z',
+        }).success,
+      ).toBe(true);
+    }
   });
 
   it('rejects SavedView with invalid view', () => {
@@ -246,7 +269,7 @@ describe('addSavedView', () => {
   };
 
   it('adds a view to empty state', () => {
-    const newState = addSavedView(baseState, mockView);
+    const newState = expectState(addSavedView(baseState, mockView));
     expect(newState.views).toHaveLength(1);
     expect(newState.views[0]).toEqual(mockView);
     expect(baseState.views).toHaveLength(0); // immutable
@@ -255,7 +278,7 @@ describe('addSavedView', () => {
   it('adds a view to non-empty state', () => {
     const stateWithOne = { version: 1 as const, views: [mockView] };
     const newView = { ...mockView, id: 'view-2', name: 'View 2' };
-    const newState = addSavedView(stateWithOne, newView);
+    const newState = expectState(addSavedView(stateWithOne, newView));
     expect(newState.views).toHaveLength(2);
     expect(stateWithOne.views).toHaveLength(1); // immutable
   });
@@ -273,16 +296,16 @@ describe('addSavedView', () => {
     };
     const newView = { ...mockView, id: 'overflow' };
     const newState = addSavedView(fullState, newView);
-    expect(newState.views).toHaveLength(MAX_SAVED_VIEWS);
-    expect(newState.views.find((v) => v.id === 'overflow')).toBeUndefined();
+    expect(newState).toBeNull();
+    expect(fullState.views.find((v) => v.id === 'overflow')).toBeUndefined();
   });
 
   it('does not add duplicate id', () => {
     const stateWithOne = { version: 1 as const, views: [mockView] };
     const duplicate = { ...mockView, name: 'Different Name' };
     const newState = addSavedView(stateWithOne, duplicate);
-    expect(newState.views).toHaveLength(1);
-    expect(newState.views[0].name).toBe('View 1'); // unchanged
+    expect(newState).toBeNull();
+    expect(stateWithOne.views[0].name).toBe('View 1'); // unchanged
   });
 });
 
@@ -304,7 +327,7 @@ describe('removeSavedView', () => {
   const state = { version: 1 as const, views: [view1, view2] };
 
   it('removes a view by id', () => {
-    const newState = removeSavedView(state, 'view-1');
+    const newState = expectState(removeSavedView(state, 'view-1'));
     expect(newState.views).toHaveLength(1);
     expect(newState.views[0].id).toBe('view-2');
     expect(state.views).toHaveLength(2); // immutable
@@ -312,12 +335,13 @@ describe('removeSavedView', () => {
 
   it('returns unchanged state when id not found', () => {
     const newState = removeSavedView(state, 'nonexistent');
-    expect(newState.views).toHaveLength(2);
+    expect(newState).toBeNull();
+    expect(state.views).toHaveLength(2);
   });
 
   it('handles removing from single-view state', () => {
     const singleState = { version: 1 as const, views: [view1] };
-    const newState = removeSavedView(singleState, 'view-1');
+    const newState = expectState(removeSavedView(singleState, 'view-1'));
     expect(newState.views).toHaveLength(0);
   });
 });
@@ -333,20 +357,27 @@ describe('renameSavedView', () => {
   const state = { version: 1 as const, views: [view1] };
 
   it('renames a view by id', () => {
-    const newState = renameSavedView(state, 'view-1', 'New Name');
+    const newState = expectState(renameSavedView(state, 'view-1', 'New Name'));
     expect(newState.views[0].name).toBe('New Name');
     expect(state.views[0].name).toBe('Old Name'); // immutable
   });
 
   it('returns unchanged state when id not found', () => {
     const newState = renameSavedView(state, 'nonexistent', 'New Name');
-    expect(newState.views[0].name).toBe('Old Name');
+    expect(newState).toBeNull();
+    expect(state.views[0].name).toBe('Old Name');
+  });
+
+  it('rejects an invalid name without producing invalid state', () => {
+    const newState = renameSavedView(state, 'view-1', '');
+    expect(newState).toBeNull();
+    expect(state.views[0].name).toBe('Old Name');
   });
 
   it('handles renaming among multiple views', () => {
     const view2 = { ...view1, id: 'view-2', name: 'Another View' };
     const multiState = { version: 1 as const, views: [view1, view2] };
-    const newState = renameSavedView(multiState, 'view-2', 'Renamed');
+    const newState = expectState(renameSavedView(multiState, 'view-2', 'Renamed'));
     expect(newState.views[0].name).toBe('Old Name');
     expect(newState.views[1].name).toBe('Renamed');
   });
@@ -363,10 +394,12 @@ describe('updateSavedView', () => {
   const state = { version: 1 as const, views: [view1] };
 
   it('updates view with patch', () => {
-    const newState = updateSavedView(state, 'view-1', {
-      view: 'grid',
-      sort: { columnId: 'owner', direction: 'asc' },
-    });
+    const newState = expectState(
+      updateSavedView(state, 'view-1', {
+        view: 'grid',
+        sort: { columnId: 'owner', direction: 'asc' },
+      }),
+    );
     expect(newState.views[0].view).toBe('grid');
     expect(newState.views[0].sort).toEqual({ columnId: 'owner', direction: 'asc' });
     expect(newState.views[0].name).toBe('View 1'); // unchanged
@@ -375,17 +408,24 @@ describe('updateSavedView', () => {
 
   it('returns unchanged state when id not found', () => {
     const newState = updateSavedView(state, 'nonexistent', { view: 'grid' });
-    expect(newState.views[0]).toEqual(view1);
+    expect(newState).toBeNull();
+    expect(state.views[0]).toEqual(view1);
+  });
+
+  it('rejects an invalid name patch without producing invalid state', () => {
+    const newState = updateSavedView(state, 'view-1', { name: '' });
+    expect(newState).toBeNull();
+    expect(state.views[0].name).toBe('View 1');
   });
 
   it('can update filter', () => {
     const newFilter = { ...EMPTY_QUERY, text: 'search-term' };
-    const newState = updateSavedView(state, 'view-1', { filter: newFilter });
+    const newState = expectState(updateSavedView(state, 'view-1', { filter: newFilter }));
     expect(newState.views[0].filter.text).toBe('search-term');
   });
 
   it('can update density', () => {
-    const newState = updateSavedView(state, 'view-1', { density: 'glanceable' });
+    const newState = expectState(updateSavedView(state, 'view-1', { density: 'glanceable' }));
     expect(newState.views[0].density).toBe('glanceable');
   });
 });
@@ -444,7 +484,7 @@ describe('persistence via createSavedViewsStore', () => {
       createdAt: '2026-06-22T00:00:00.000Z',
     };
     const state = { version: 1 as const, views: [view] };
-    store.save(state);
+    expect(store.save(state)).toBe(true);
     const loaded = store.load();
     expect(loaded).toEqual(state);
   });
@@ -482,7 +522,7 @@ describe('persistence via createSavedViewsStore', () => {
     const store = createSavedViewsStore();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const invalid = { version: 1 as const, views: [{ id: 'bad', name: '' }] } as any;
-    store.save(invalid);
+    expect(store.save(invalid)).toBe(false);
     const loaded = store.load();
     expect(loaded).toEqual({ version: 1, views: [] }); // fallback, not saved
   });

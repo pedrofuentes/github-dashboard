@@ -100,24 +100,23 @@ describe('createVersionedStore — migrate', () => {
 describe('createVersionedStore — save', () => {
   it('writes a valid value as JSON', () => {
     const value: Value = { version: 1, items: ['a'] };
-    makeStore().save(value);
+    expect(makeStore().save(value)).toBe(true);
     expect(JSON.parse(localStorage.getItem(KEY) ?? 'null')).toEqual(value);
   });
 
   it('skips the write when the value fails schema validation', () => {
     const store = makeStore();
     // Bypass the type system to feed an invalid value, as a corrupt caller might.
-    store.save({ version: 1, items: [123] } as unknown as Value);
+    expect(store.save({ version: 1, items: [123] } as unknown as Value)).toBe(false);
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it('attempts the write but persists nothing when localStorage.setItem throws', () => {
-    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+  it('reports failure and persists nothing when localStorage.setItem throws', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded');
     });
     const value: Value = { version: 1, items: ['a'] };
-    expect(() => makeStore().save(value)).not.toThrow();
-    expect(setItem).toHaveBeenCalledWith(KEY, JSON.stringify(value));
+    expect(makeStore().save(value)).toBe(false);
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 });
