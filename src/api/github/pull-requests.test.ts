@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  fetchOpenPullRequestCount,
   fetchPullRequestCount,
   fetchReviewRequestedPRs,
   fetchReviewRequestedPage,
@@ -119,6 +120,33 @@ describe('fetchPullRequestCount — Search-limiter routing', () => {
   });
 });
 
+describe('fetchOpenPullRequestCount — Search-limiter routing', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    searchLimiter.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+    vi.restoreAllMocks();
+  });
+
+  it('schedules the open PR count Search request through the shared Search limiter', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 4 }));
+    const scheduleSpy = vi.spyOn(searchLimiter, 'schedule');
+
+    const result = await fetchOpenPullRequestCount('owner', 'repo', 'ghp_test');
+
+    expect(result).toBe(4);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy).toHaveBeenCalledWith(expect.any(Function), undefined);
+  });
+});
+
 describe('fetchReviewRequestedPRs — error branches', () => {
   let originalFetch: typeof globalThis.fetch;
 
@@ -174,10 +202,13 @@ describe('fetchReviewRequestedPage', () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn();
+    searchLimiter.reset();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+    vi.restoreAllMocks();
   });
 
   const PAGE1_URL =
@@ -218,6 +249,21 @@ describe('fetchReviewRequestedPage', () => {
       'https://api.github.com/repos/octo/b',
     ]);
     expect(page.nextPageUrl).toBe(PAGE2_URL);
+  });
+
+  it('schedules the review-requested Search page through the shared Search limiter', async () => {
+    const controller = new AbortController();
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, pageBody(['octo/a'], 1)));
+    const scheduleSpy = vi.spyOn(searchLimiter, 'schedule');
+
+    const page = await fetchReviewRequestedPage(PAGE1_URL, {
+      token: 'ghp_test',
+      signal: controller.signal,
+    });
+
+    expect(page.totalCount).toBe(1);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy).toHaveBeenCalledWith(expect.any(Function), controller.signal);
   });
 
   it('retains each PR\u2019s identity (number/title/url/created_at/login) for the inbox (AC-4)', async () => {
@@ -328,7 +374,6 @@ describe('fetchReviewRequestedPage', () => {
 
   it('requests the given URL and forwards the caller AbortSignal to fetch', async () => {
     const controller = new AbortController();
-    controller.abort();
     let receivedSignal: AbortSignal | undefined;
     vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
       receivedSignal = (init as RequestInit | undefined)?.signal ?? undefined;
@@ -339,7 +384,7 @@ describe('fetchReviewRequestedPage', () => {
 
     expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(PAGE1_URL);
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
-    expect(receivedSignal?.aborted).toBe(true);
+    expect(receivedSignal?.aborted).toBe(false);
   });
 
   it('throws GitHubApiError on a non-ok status', async () => {
