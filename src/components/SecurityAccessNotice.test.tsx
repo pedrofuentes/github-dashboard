@@ -21,6 +21,8 @@ describe('SecurityAccessNotice', () => {
     render(<SecurityAccessNotice show />);
 
     expect(screen.getByRole('status')).toHaveTextContent(/security grades are unavailable/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/token.*security-alert access/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/disabled/i);
     expect(screen.getByRole('status')).toHaveTextContent(/security_events/i);
     expect(screen.getByRole('status')).toHaveTextContent(/dependabot alerts: read/i);
     expect(screen.getByRole('status')).toHaveTextContent(/code scanning alerts: read/i);
