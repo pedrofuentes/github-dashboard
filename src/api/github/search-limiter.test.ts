@@ -90,6 +90,55 @@ describe('SearchLimiter', () => {
     expect(task).toHaveBeenCalledTimes(2);
   });
 
+  it('re-acquires a token before retrying after a secondary-limit Retry-After', async () => {
+    limiter = new SearchLimiter(1, 1000);
+    let active = 0;
+    let maxActive = 0;
+    let firstTaskAttempts = 0;
+    const enterRequest = (): void => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+    };
+    const exitRequest = (): void => {
+      active -= 1;
+    };
+
+    const firstTask = vi.fn(async () => {
+      firstTaskAttempts += 1;
+      if (firstTaskAttempts === 1) throw rateLimitError(1);
+      enterRequest();
+      await Promise.resolve();
+      exitRequest();
+      return 'first';
+    });
+    const secondTask = vi.fn(async () => {
+      enterRequest();
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 1);
+      });
+      exitRequest();
+      return 'second';
+    });
+
+    const first = limiter.schedule(firstTask);
+    first.catch(() => {});
+    const second = limiter.schedule(secondTask);
+    second.catch(() => {});
+
+    await Promise.resolve();
+    expect(firstTask).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(secondTask).toHaveBeenCalledTimes(1);
+    expect(firstTask).toHaveBeenCalledTimes(1);
+    expect(maxActive).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1001);
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(firstTask).toHaveBeenCalledTimes(2);
+  });
+
   it('gives up after SEARCH_MAX_RETRIES persistent secondary limits', async () => {
     const task = vi.fn(async () => {
       throw rateLimitError(1);
@@ -137,6 +186,30 @@ describe('SearchLimiter', () => {
 
     await expect(p).rejects.toHaveProperty('name', 'AbortError');
     expect(parked).not.toHaveBeenCalled();
+  });
+
+  it('keeps refilling after the last queued waiter aborts while the bucket is below capacity', async () => {
+    limiter = new SearchLimiter(1, 1000);
+    void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+
+    const controller = new AbortController();
+    const abortedTask = vi.fn(async () => 'aborted');
+    const aborted = limiter.schedule(abortedTask, controller.signal);
+    aborted.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(900);
+    controller.abort();
+
+    await expect(aborted).rejects.toHaveProperty('name', 'AbortError');
+    expect(abortedTask).not.toHaveBeenCalled();
+
+    const servedTask = vi.fn(async () => 'served');
+    const served = limiter.schedule(servedTask);
+    served.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(servedTask).toHaveBeenCalledTimes(1);
+    await expect(served).resolves.toBe('served');
   });
 
   it('reset() refills the bucket and clears the queue', async () => {
