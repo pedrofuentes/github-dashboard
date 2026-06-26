@@ -10,6 +10,10 @@ export interface FuzzyMatchResult {
   indices: number[];
 }
 
+function toChars(value: string): string[] {
+  return Array.from(value);
+}
+
 /**
  * Performs a fuzzy subsequence match of query against target.
  *
@@ -37,19 +41,19 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
     return { matched: false, score: 0, indices: [] };
   }
 
-  const queryLower = query.toLowerCase();
-  const targetLower = target.toLowerCase();
+  const queryChars = toChars(query).map((char) => char.toLowerCase());
+  const targetChars = toChars(target);
+  const targetLowerChars = targetChars.map((char) => char.toLowerCase());
 
   // Find subsequence match and collect indices
   const indices: number[] = [];
   let targetIdx = 0;
 
-  for (let queryIdx = 0; queryIdx < queryLower.length; queryIdx++) {
-    const queryChar = queryLower[queryIdx];
+  for (const queryChar of queryChars) {
     let found = false;
 
-    while (targetIdx < targetLower.length) {
-      if (targetLower[targetIdx] === queryChar) {
+    while (targetIdx < targetLowerChars.length) {
+      if (targetLowerChars[targetIdx] === queryChar) {
         indices.push(targetIdx);
         targetIdx++;
         found = true;
@@ -80,8 +84,8 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
 
     // Boundary bonuses (word boundary, separator, camelCase)
     if (idx > 0) {
-      const prevChar = target[idx - 1];
-      const currChar = target[idx];
+      const prevChar = targetChars[idx - 1];
+      const currChar = targetChars[idx];
 
       // After separator: space, -, _, ., /
       if (/[\s\-_./]/.test(prevChar)) {
@@ -118,7 +122,7 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
   }
 
   // Target length penalty (lightly penalize longer strings)
-  score -= target.length * 0.1;
+  score -= targetChars.length * 0.1;
 
   return { matched: true, score: Math.max(0, score), indices };
 }
@@ -203,9 +207,15 @@ export function fuzzyRankBy<T>(
         if (key.length === 0) continue;
 
         const result = fuzzyMatch(query, key);
-        if (result.matched && result.score > bestResult.score) {
+        const keyLength = toChars(key).length;
+        if (
+          result.matched &&
+          (!bestResult.matched ||
+            result.score > bestResult.score ||
+            (result.score === bestResult.score && keyLength < bestKeyLength))
+        ) {
           bestResult = result;
-          bestKeyLength = key.length;
+          bestKeyLength = keyLength;
         }
       }
 
