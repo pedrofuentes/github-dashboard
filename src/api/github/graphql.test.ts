@@ -293,6 +293,7 @@ describe('GraphQLLimiter', () => {
   afterEach(() => {
     limiter.reset();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('returns the task result', async () => {
@@ -341,6 +342,27 @@ describe('GraphQLLimiter', () => {
     p.catch(() => {});
 
     await vi.advanceTimersByTimeAsync(5000);
+    await expect(p).resolves.toBe('ok');
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds deterministic jitter to secondary-limit Retry-After delays', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    let calls = 0;
+    const task = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw rateLimitError(4);
+      return 'ok';
+    });
+
+    const p = limiter.schedule(task);
+    p.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(task).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(task).toHaveBeenCalledTimes(2);
     await expect(p).resolves.toBe('ok');
     expect(task).toHaveBeenCalledTimes(2);
   });
