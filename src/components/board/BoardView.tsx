@@ -64,10 +64,14 @@ export interface BoardViewProps {
   error?: string | null;
   /**
    * Retry handler. Powers both the board-level error alert's Retry control and
-   * each key's in-place retry: an errored key becomes a retry button that calls
-   * this to re-fetch (instead of drilling down).
+   * the legacy key retry fallback.
    */
   onRetry?: () => void;
+  /**
+   * Scoped retry handler for a failed key. When supplied, an errored key retries
+   * its own repo/signal instead of invoking the board-level reload.
+   */
+  onRetrySignal?: (repo: Repo, signal: TileSignalType) => void;
   /**
    * Active repo-scope selection (`undefined` ⇒ whole fleet). A narrowing filter:
    * when a Set is provided only repos whose `nameWithOwner` is in it are shown
@@ -97,6 +101,7 @@ export function BoardView({
   loading = false,
   error = null,
   onRetry,
+  onRetrySignal,
   repoFilter,
   hiddenKeys = EMPTY_HIDDEN,
   editing = false,
@@ -206,7 +211,9 @@ export function BoardView({
                   signal={signal}
                   data={data}
                   onActivate={onRepoActivate}
-                  onRetry={onRetry}
+                  onRetry={
+                    onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry
+                  }
                 />
               );
               return editing && onToggleKey ? (

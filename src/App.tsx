@@ -224,8 +224,11 @@ function FleetPanel({
   onOpenSettings,
 }: FleetPanelProps): ReactElement {
   const { repos, status, error, reload } = useRepos(token);
-  const { getRowData, fleet = { loading: false, ready: repos.length, total: repos.length } } =
-    useRepoSignals(repos, token, viewerLogin);
+  const {
+    getRowData,
+    retrySignal,
+    fleet = { loading: false, ready: repos.length, total: repos.length },
+  } = useRepoSignals(repos, token, viewerLogin);
   const viewLoading = status === 'loading' || fleet.loading;
   // Lifted ONCE here (red-team B-1): the SAME layout instance drives both the
   // DashboardView grid and the sibling CustomizePanel, so the tile picker and
@@ -547,6 +550,7 @@ function FleetPanel({
               loading={viewLoading}
               error={status === 'error' ? error : null}
               onRetry={reload}
+              onRetrySignal={retrySignal}
               hiddenKeys={deck.hidden}
               editing={deckEditing}
               onToggleKey={handleDeckToggleKey}
