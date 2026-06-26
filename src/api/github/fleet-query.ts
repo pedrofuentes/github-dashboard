@@ -646,7 +646,7 @@ function deriveStaleSlice(alias: string, ctx: FleetChunkContext): StaleSignalSli
   if (raw === null || raw === undefined) return staleReadySlice(0);
 
   const parsed = StaleSearchPayloadSchema.safeParse(raw);
-  if (!parsed.success) return staleReadySlice(0);
+  if (!parsed.success) return { status: 'error' };
 
   const staleItems: StaleItem[] = parsed.data.nodes.map((node) => ({
     number: node.number,
