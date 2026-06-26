@@ -81,8 +81,8 @@ export interface BoardViewProps {
    */
   hiddenKeys?: Set<string>;
   /**
-   * Customize mode. When true, every still-visible key gains an accessible ×
-   * remove overlay (calling {@link BoardViewProps.onToggleKey}); otherwise keys
+   * Customize mode. When true and paired with {@link BoardViewProps.onToggleKey},
+   * every still-visible key gains an accessible × remove overlay; otherwise keys
    * render exactly as normal.
    */
   editing?: boolean;
@@ -209,12 +209,12 @@ export function BoardView({
                   onRetry={onRetry}
                 />
               );
-              return editing ? (
+              return editing && onToggleKey ? (
                 <div key={id} className="relative">
                   {boardKey}
                   <button
                     type="button"
-                    onClick={() => onToggleKey?.(repo, signal)}
+                    onClick={() => onToggleKey(repo, signal)}
                     aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
                     className={REMOVE_BUTTON_CLASS}
                   >
