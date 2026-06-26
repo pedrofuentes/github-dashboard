@@ -70,4 +70,16 @@ describe('App fleet signal wiring', () => {
 
     expect(fleetGridSpy).toHaveBeenCalledWith(expect.objectContaining({ getRowData }));
   });
+
+  it('shows the security-access notice when every repo security slice is settled without access', async () => {
+    mockUseRepoSignals.mockReturnValue({
+      getRowData: () => ({
+        security: { status: 'ready' },
+      }),
+    });
+
+    await signIn();
+
+    expect(screen.getByText(/security grades are unavailable/i)).toBeInTheDocument();
+  });
 });

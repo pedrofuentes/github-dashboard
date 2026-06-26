@@ -71,6 +71,13 @@ describe('TokenInput', () => {
     }
   });
 
+  it('explains the Security grade permission requirements', () => {
+    renderWithAuth();
+
+    expect(screen.getByText(/security grade/i)).toHaveTextContent(/security_events/i);
+    expect(screen.getByText(/security grade/i)).toHaveTextContent(/security shows n\/a/i);
+  });
+
   it('shows an alert and does not call signIn when the token is empty', async () => {
     const value = renderWithAuth();
     const user = userEvent.setup();
