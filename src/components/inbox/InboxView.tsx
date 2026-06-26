@@ -176,24 +176,27 @@ export function InboxView({
 
   const handleBulkMarkRead = useCallback(() => {
     const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => !item.read).length;
     markReadMany(ids);
-    announce(`Marked ${ids.length} as read`);
+    announce(`Marked ${changedCount} as read`);
     setSelected(new Set());
-  }, [selected, markReadMany, announce]);
+  }, [selected, selectedVisible, markReadMany, announce]);
 
   const handleBulkDismiss = useCallback(() => {
     const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => !item.dismissed).length;
     dismissMany(ids);
-    announce(`Dismissed ${ids.length} items`);
+    announce(`Dismissed ${changedCount} items`);
     setSelected(new Set());
-  }, [selected, dismissMany, announce]);
+  }, [selected, selectedVisible, dismissMany, announce]);
 
   const handleBulkRestore = useCallback(() => {
     const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => item.dismissed).length;
     restoreMany(ids);
-    announce(`Restored ${ids.length} items`);
+    announce(`Restored ${changedCount} items`);
     setSelected(new Set());
-  }, [selected, restoreMany, announce]);
+  }, [selected, selectedVisible, restoreMany, announce]);
 
   const handleMarkRead = useCallback(
     (id: string) => {
@@ -234,7 +237,10 @@ export function InboxView({
   // `show dismissed` widens the view, so it never triggers the empty-filtered
   // state — only the narrowing filters do (§4.2).
   const narrowingActive =
-    filters.repos.length > 0 || filters.kinds.length > 0 || filters.unreadOnly;
+    repoScope !== undefined ||
+    filters.repos.length > 0 ||
+    filters.kinds.length > 0 ||
+    filters.unreadOnly;
 
   if (error !== null) {
     return (
