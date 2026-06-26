@@ -1,10 +1,23 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
+const fuzzyRankByMock = vi.hoisted(() => ({
+  actual: undefined as typeof import('../lib/fuzzy-match').fuzzyRankBy | undefined,
+  spy: vi.fn(),
+}));
+
+vi.mock('../lib/fuzzy-match', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/fuzzy-match')>();
+  fuzzyRankByMock.actual = actual.fuzzyRankBy;
+  fuzzyRankByMock.spy.mockImplementation(actual.fuzzyRankBy);
+  return { ...actual, fuzzyRankBy: fuzzyRankByMock.spy };
+});
+
 import { FacetedRepoFilter } from './FacetedRepoFilter';
-import { useRepoFilterQuery } from '../hooks/useRepoFilterQuery';
+import { useRepoFilterQuery, type UseRepoFilterQueryResult } from '../hooks/useRepoFilterQuery';
+import { EMPTY_QUERY } from '../lib/repo-filter-query';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
@@ -41,8 +54,42 @@ function disclosure(): HTMLElement {
   return screen.getByRole('button', { name: /filter repositories/i });
 }
 
+function filterDouble(overrides: Partial<UseRepoFilterQueryResult> = {}): UseRepoFilterQueryResult {
+  return {
+    query: EMPTY_QUERY,
+    derivedSelected: new Set(REPOS.map((r) => r.nameWithOwner)),
+    isActive: false,
+    setText: vi.fn(),
+    toggleOwner: vi.fn(),
+    toggleHealth: vi.fn(),
+    toggleCi: vi.fn(),
+    toggleSecurityGrade: vi.fn(),
+    setSecurityMaxGrade: vi.fn(),
+    toggleSecuritySeverity: vi.fn(),
+    togglePullRequests: vi.fn(),
+    toggleReviewsAwaitingMe: vi.fn(),
+    toggleIssues: vi.fn(),
+    toggleStale: vi.fn(),
+    toggleVisibility: vi.fn(),
+    setRepoSelection: vi.fn(),
+    toggleRepoPin: vi.fn(),
+    clearAll: vi.fn(),
+    applyQuery: vi.fn(),
+    availableOwners: [
+      { owner: 'acme', count: 1 },
+      { owner: 'octo', count: 2 },
+    ],
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   localStorage.clear();
+  if (fuzzyRankByMock.actual === undefined) {
+    throw new Error('fuzzyRankBy mock was not initialized');
+  }
+  fuzzyRankByMock.spy.mockImplementation(fuzzyRankByMock.actual);
+  fuzzyRankByMock.spy.mockClear();
 });
 
 afterEach(() => {
@@ -92,9 +139,8 @@ describe('FacetedRepoFilter', () => {
 
     await user.type(screen.getByRole('combobox', { name: /search repositories/i }), 'gamma');
 
-    const options = within(listbox).getAllByRole('option');
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent('acme/gamma');
+    await waitFor(() => expect(within(listbox).getAllByRole('option')).toHaveLength(1));
+    expect(within(listbox).getAllByRole('option')[0]).toHaveTextContent('acme/gamma');
   });
 
   it('toggles a repository pin from the search list with the keyboard', async () => {
@@ -170,7 +216,7 @@ describe('FacetedRepoFilter', () => {
 
     await user.type(screen.getByRole('combobox', { name: /search repositories/i }), 'gamma');
 
-    expect(live).toHaveTextContent(/1 repository/i);
+    await waitFor(() => expect(live).toHaveTextContent(/1 repository/i));
   });
 
   it('shows an empty-state option when no repository matches the search', async () => {
@@ -181,7 +227,9 @@ describe('FacetedRepoFilter', () => {
     await user.type(screen.getByRole('combobox', { name: /search repositories/i }), 'zzzznope');
 
     const listbox = screen.getByRole('listbox', { name: /matching repositories/i });
-    expect(within(listbox).getByText(/no repositories match/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(listbox).getByText(/no repositories match/i)).toBeInTheDocument(),
+    );
     expect(screen.getByTestId('repo-filter-live')).toHaveTextContent(/0 repositories/i);
   });
 
@@ -209,6 +257,72 @@ describe('FacetedRepoFilter', () => {
 
     await user.click(screen.getByRole('button', { name: /no owners/i }));
     expect(screen.getByText('All repositories')).toBeInTheDocument();
+  });
+
+  it('applies Select all owners as one bulk query update', async () => {
+    const user = userEvent.setup();
+    const filter = filterDouble();
+    render(<FacetedRepoFilter repos={REPOS} filter={filter} />);
+    await user.click(disclosure());
+
+    await user.click(screen.getByRole('button', { name: /select all owners/i }));
+
+    expect(filter.toggleOwner).not.toHaveBeenCalled();
+    expect(filter.applyQuery).toHaveBeenCalledTimes(1);
+    expect(filter.applyQuery).toHaveBeenCalledWith({
+      ...EMPTY_QUERY,
+      facets: { ...EMPTY_QUERY.facets, owners: ['acme', 'octo'] },
+    });
+  });
+
+  it('applies No owners as one bulk query update', async () => {
+    const user = userEvent.setup();
+    const filter = filterDouble({
+      query: {
+        ...EMPTY_QUERY,
+        facets: { ...EMPTY_QUERY.facets, owners: ['acme', 'octo'] },
+      },
+      isActive: true,
+    });
+    render(<FacetedRepoFilter repos={REPOS} filter={filter} />);
+    await user.click(disclosure());
+
+    await user.click(screen.getByRole('button', { name: /no owners/i }));
+
+    expect(filter.toggleOwner).not.toHaveBeenCalled();
+    expect(filter.applyQuery).toHaveBeenCalledTimes(1);
+    expect(filter.applyQuery).toHaveBeenCalledWith({
+      ...EMPTY_QUERY,
+      facets: { ...EMPTY_QUERY.facets, owners: [] },
+    });
+  });
+
+  it('debounces fuzzy ranking while search text changes', () => {
+    vi.useFakeTimers();
+    try {
+      render(<Harness />);
+      fireEvent.click(disclosure());
+      const search = screen.getByRole('combobox', { name: /search repositories/i });
+      const listbox = screen.getByRole('listbox', { name: /matching repositories/i });
+      fuzzyRankByMock.spy.mockClear();
+
+      fireEvent.change(search, { target: { value: 'g' } });
+      fireEvent.change(search, { target: { value: 'ga' } });
+      fireEvent.change(search, { target: { value: 'gam' } });
+
+      expect(fuzzyRankByMock.spy).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      expect(fuzzyRankByMock.spy).toHaveBeenCalledTimes(1);
+      const options = within(listbox).getAllByRole('option');
+      expect(options).toHaveLength(1);
+      expect(options[0]).toHaveTextContent('acme/gamma');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('inverts the visible selection into an include pin set', async () => {
