@@ -94,6 +94,22 @@ export function InboxView({
 }: InboxViewProps): ReactElement {
   const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
   const { markReadMany, dismissMany, restoreMany } = inbox;
+  const availableRepoNames = useMemo(
+    () => new Set(repos.map((repo) => repo.nameWithOwner)),
+    [repos],
+  );
+  const selectedRepoFilter = filters.repos.find((repoName) => availableRepoNames.has(repoName));
+
+  useEffect(() => {
+    if (filters.repos.length === 0) {
+      return;
+    }
+
+    const availableSelection = filters.repos.filter((repoName) => availableRepoNames.has(repoName));
+    if (availableSelection.length !== filters.repos.length) {
+      setFilters({ repos: availableSelection });
+    }
+  }, [availableRepoNames, filters.repos, setFilters]);
 
   // Apply the global repo scope on top of the inbox's own session filters: it is
   // a presentation-only narrowing, so the hook's triage GC and fleet-wide unread
@@ -303,7 +319,7 @@ export function InboxView({
             </label>
             <select
               id={repoFilterId}
-              value={filters.repos[0] ?? ''}
+              value={selectedRepoFilter ?? ''}
               onChange={handleRepoChange}
               className={SELECT_CLASS}
             >
