@@ -1,8 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadDeckTileSize, saveDeckTileSize } from './deck-tile-size';
+import { DECK_TILE_MIN_PX, loadDeckTileSize, saveDeckTileSize } from './deck-tile-size';
+import type { DeckTileSize } from './deck-tile-size';
 
 const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
+
+describe('DECK_TILE_MIN_PX', () => {
+  const ORDER: readonly DeckTileSize[] = ['x-small', 'small', 'medium', 'large'];
+
+  it('maps every size to a positive minimum tile width', () => {
+    for (const size of ORDER) {
+      expect(DECK_TILE_MIN_PX[size]).toBeGreaterThan(0);
+    }
+  });
+
+  it('grows strictly from x-small up to large', () => {
+    for (let i = 1; i < ORDER.length; i += 1) {
+      expect(DECK_TILE_MIN_PX[ORDER[i]]).toBeGreaterThan(DECK_TILE_MIN_PX[ORDER[i - 1]]);
+    }
+  });
+
+  it('keeps medium at the ~6-per-row width that reproduces the legacy layout', () => {
+    // The pre-existing deck rendered six keys per row at the ~960px container
+    // width; medium reproduces that, so it stays the default.
+    expect(DECK_TILE_MIN_PX.medium).toBe(152);
+  });
+});
 
 beforeEach(() => {
   localStorage.clear();
