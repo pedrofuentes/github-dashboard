@@ -7,6 +7,7 @@ import type { CommandItem } from './components/CommandPalette';
 import { BoardView } from './components/board/BoardView';
 import { DeckCustomizePanel } from './components/board/DeckCustomizePanel';
 import { DeckSizeControl } from './components/board/DeckSizeControl';
+import { FullWindowOverlay } from './components/FullWindowOverlay';
 import { CustomizePanel } from './components/CustomizePanel';
 import { DashboardView } from './components/DashboardView';
 import { DrillDownDrawer } from './components/DrillDownDrawer';
@@ -248,6 +249,7 @@ function FleetPanel({
   const deck = useDeckVisibility();
   const { size: deckTileSize } = useDeckTileSize();
   const [deckEditing, setDeckEditing] = useState(false);
+  const [fullWindow, setFullWindow] = useState(false);
 
   // Power-user keyboard navigation: the `g …` sequences switch views, `?` opens
   // the shortcuts help overlay, and `,` opens Settings. The hook installs ONE
@@ -332,6 +334,16 @@ function FleetPanel({
   // Deck customize: mirrors the dashboard editing/CustomizePanel pattern.
   const handleToggleDeckEditing = useCallback(() => setDeckEditing((c) => !c), []);
   const handleCloseDeckCustomize = useCallback(() => setDeckEditing(false), []);
+
+  // Full-window (immersive) mode shows only the active view full-bleed. Entering
+  // drops both edit modes — full-window is for reading, not arranging — so the
+  // view renders calm; the bar's Exit control and Esc leave it.
+  const enterFullWindow = useCallback(() => {
+    setEditing(false);
+    setDeckEditing(false);
+    setFullWindow(true);
+  }, []);
+  const exitFullWindow = useCallback(() => setFullWindow(false), []);
   // Full repos (not filteredRepos) so fleet-wide bulk ops cover every repo.
   const repoNames = useMemo(() => repos.map((r) => r.nameWithOwner), [repos]);
   // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
@@ -460,145 +472,177 @@ function FleetPanel({
     recordCommandRecent,
   ]);
 
-  return (
-    <FleetUiStateProvider>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
-          <FacetedRepoFilter repos={repos} filter={filter} />
-          {view === 'dashboard' ? (
-            <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
-          ) : null}
-          {view === 'deck' ? (
-            <CustomizeLayoutToggle
-              editing={deckEditing}
-              onToggle={handleToggleDeckEditing}
-              idleLabel="Customize tiles"
-            />
-          ) : null}
-          {view === 'deck' ? <DeckSizeControl /> : null}
-          <SavedViewsMenu
-            views={saved.views}
-            presets={presets}
-            currentFilter={filter.query}
-            currentView={view}
-            onApply={handleApplySavedView}
-            onCreate={saved.create}
-            onRename={saved.rename}
-            onRemove={saved.remove}
-          />
-        </div>
-        <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
-        <SecurityAccessNotice show={securityNoAccess} />
-        {view === 'triage' ? (
-          <TriageView
-            repos={filteredRepos}
-            getRowData={getRowData}
-            onRepoActivate={handleRepoActivate}
-            loading={viewLoading}
-            error={status === 'error' ? error : null}
-            onRetry={reload}
-          />
-        ) : view === 'matrix' ? (
-          <FleetMatrix
-            repos={filteredRepos}
-            getRowData={getRowData}
-            onRepoActivate={handleRepoActivate}
-            loading={viewLoading}
-            error={status === 'error' ? error : null}
-            onRetry={reload}
-          />
-        ) : view === 'dashboard' ? (
-          <>
-            <DashboardView
-              repos={repos}
-              getRowData={getRowData}
-              onRepoActivate={handleRepoActivate}
-              editing={editing}
-              layout={layout}
-              onLayoutChange={setLayout}
-              repoFilter={filter.isActive ? filter.derivedSelected : undefined}
-              onClearFilter={filter.clearAll}
-              aliases={aliases.aliases}
-              loading={viewLoading}
-              error={status === 'error' ? error : null}
-              onRetry={reload}
-            />
-            {editing ? (
-              <CustomizePanel
-                layout={layout}
-                onLayoutChange={setLayout}
-                onReset={reset}
-                aliases={aliases.aliases}
-                onSetAlias={aliases.setAlias}
-                onClearAlias={aliases.clearAlias}
-                onClose={handleCloseCustomize}
-              />
-            ) : null}
-          </>
-        ) : view === 'inbox' ? (
-          <InboxView
-            inbox={inbox}
-            repos={filteredRepos}
-            repoScope={filter.isActive ? filter.derivedSelected : undefined}
-            loading={viewLoading}
-            error={status === 'error' ? error : null}
-            onRetry={reload}
-          />
-        ) : view === 'deck' ? (
-          <>
-            <BoardView
-              repos={filteredRepos}
-              getRowData={getRowData}
-              onRepoActivate={handleRepoActivate}
-              loading={viewLoading}
-              error={status === 'error' ? error : null}
-              onRetry={reload}
-              onRetrySignal={retrySignal}
-              hiddenKeys={deck.hidden}
-              editing={deckEditing}
-              onToggleKey={handleDeckToggleKey}
-              size={deckTileSize}
-            />
-            {deckEditing ? (
-              <DeckCustomizePanel
-                repos={repos}
-                hidden={deck.hidden}
-                onToggleKey={deck.toggleKey}
-                onSetSignal={handleDeckSetSignal}
-                onSetRepo={handleDeckSetRepo}
-                onSetAll={handleDeckSetAll}
-                onShowOnly={handleDeckShowOnly}
-                onReset={deck.reset}
-                onClose={handleCloseDeckCustomize}
-              />
-            ) : null}
-          </>
-        ) : (
-          <FleetGrid
-            repos={filteredRepos}
-            getRowData={getRowData}
-            loading={viewLoading}
-            error={status === 'error' ? error : null}
-            onRetry={reload}
-            onRepoActivate={handleRepoActivate}
-          />
-        )}
-        {selectedRepo !== null ? (
-          <DrillDownDrawer
-            repo={selectedRepo}
-            data={getRowData(selectedRepo)}
-            onClose={handleCloseDrawer}
+  // The active view's label, used for the full-window bar + region name.
+  const viewLabel = VIEW_OPTIONS.find((option) => option.value === view)?.label ?? 'Fleet';
+
+  // The active view surface — rendered either in the normal layout or, in
+  // full-window mode, inside the immersive overlay (the SAME element, so it is
+  // never mounted twice). Edit panels ride along but are null in full-window
+  // (entering it drops both edit modes).
+  const viewSurface =
+    view === 'triage' ? (
+      <TriageView
+        repos={filteredRepos}
+        getRowData={getRowData}
+        onRepoActivate={handleRepoActivate}
+        loading={viewLoading}
+        error={status === 'error' ? error : null}
+        onRetry={reload}
+      />
+    ) : view === 'matrix' ? (
+      <FleetMatrix
+        repos={filteredRepos}
+        getRowData={getRowData}
+        onRepoActivate={handleRepoActivate}
+        loading={viewLoading}
+        error={status === 'error' ? error : null}
+        onRetry={reload}
+      />
+    ) : view === 'dashboard' ? (
+      <>
+        <DashboardView
+          repos={repos}
+          getRowData={getRowData}
+          onRepoActivate={handleRepoActivate}
+          editing={editing}
+          layout={layout}
+          onLayoutChange={setLayout}
+          repoFilter={filter.isActive ? filter.derivedSelected : undefined}
+          onClearFilter={filter.clearAll}
+          aliases={aliases.aliases}
+          loading={viewLoading}
+          error={status === 'error' ? error : null}
+          onRetry={reload}
+        />
+        {editing ? (
+          <CustomizePanel
+            layout={layout}
+            onLayoutChange={setLayout}
+            onReset={reset}
+            aliases={aliases.aliases}
+            onSetAlias={aliases.setAlias}
+            onClearAlias={aliases.clearAlias}
+            onClose={handleCloseCustomize}
           />
         ) : null}
-        <CommandPalette
-          open={paletteOpen}
-          onClose={closePalette}
-          commands={commands}
-          recents={commandRecents}
+      </>
+    ) : view === 'inbox' ? (
+      <InboxView
+        inbox={inbox}
+        repos={filteredRepos}
+        repoScope={filter.isActive ? filter.derivedSelected : undefined}
+        loading={viewLoading}
+        error={status === 'error' ? error : null}
+        onRetry={reload}
+      />
+    ) : view === 'deck' ? (
+      <>
+        <BoardView
+          repos={filteredRepos}
+          getRowData={getRowData}
+          onRepoActivate={handleRepoActivate}
+          loading={viewLoading}
+          error={status === 'error' ? error : null}
+          onRetry={reload}
+          onRetrySignal={retrySignal}
+          hiddenKeys={deck.hidden}
+          editing={deckEditing}
+          onToggleKey={handleDeckToggleKey}
+          size={deckTileSize}
         />
-        {helpOpen ? <ShortcutsHelpOverlay onClose={closeHelp} /> : null}
-      </div>
+        {deckEditing ? (
+          <DeckCustomizePanel
+            repos={repos}
+            hidden={deck.hidden}
+            onToggleKey={deck.toggleKey}
+            onSetSignal={handleDeckSetSignal}
+            onSetRepo={handleDeckSetRepo}
+            onSetAll={handleDeckSetAll}
+            onShowOnly={handleDeckShowOnly}
+            onReset={deck.reset}
+            onClose={handleCloseDeckCustomize}
+          />
+        ) : null}
+      </>
+    ) : (
+      <FleetGrid
+        repos={filteredRepos}
+        getRowData={getRowData}
+        loading={viewLoading}
+        error={status === 'error' ? error : null}
+        onRetry={reload}
+        onRepoActivate={handleRepoActivate}
+      />
+    );
+
+  // App-wide overlays that stay reachable in both layouts (they sit above the
+  // full-window surface), so drilling down / the palette / help still work.
+  const sharedOverlays = (
+    <>
+      {selectedRepo !== null ? (
+        <DrillDownDrawer
+          repo={selectedRepo}
+          data={getRowData(selectedRepo)}
+          onClose={handleCloseDrawer}
+        />
+      ) : null}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        commands={commands}
+        recents={commandRecents}
+      />
+      {helpOpen ? <ShortcutsHelpOverlay onClose={closeHelp} /> : null}
+    </>
+  );
+
+  return (
+    <FleetUiStateProvider>
+      {fullWindow ? (
+        <>
+          <FullWindowOverlay
+            label={viewLabel}
+            onExit={exitFullWindow}
+            controls={view === 'deck' ? <DeckSizeControl /> : undefined}
+          >
+            {viewSurface}
+          </FullWindowOverlay>
+          {sharedOverlays}
+        </>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
+            <FacetedRepoFilter repos={repos} filter={filter} />
+            {view === 'dashboard' ? (
+              <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+            ) : null}
+            {view === 'deck' ? (
+              <CustomizeLayoutToggle
+                editing={deckEditing}
+                onToggle={handleToggleDeckEditing}
+                idleLabel="Customize tiles"
+              />
+            ) : null}
+            {view === 'deck' ? <DeckSizeControl /> : null}
+            <FullWindowButton onActivate={enterFullWindow} />
+            <SavedViewsMenu
+              views={saved.views}
+              presets={presets}
+              currentFilter={filter.query}
+              currentView={view}
+              onApply={handleApplySavedView}
+              onCreate={saved.create}
+              onRename={saved.rename}
+              onRemove={saved.remove}
+            />
+          </div>
+          <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
+          <SecurityAccessNotice show={securityNoAccess} />
+          {viewSurface}
+          {sharedOverlays}
+        </div>
+      )}
     </FleetUiStateProvider>
   );
 }
@@ -628,6 +672,39 @@ function CustomizeLayoutToggle({
       }
     >
       {editing ? activeLabel : idleLabel}
+    </button>
+  );
+}
+
+interface FullWindowButtonProps {
+  onActivate: () => void;
+}
+
+/** Toolbar control that enters the immersive full-window view (any view). */
+function FullWindowButton({ onActivate }: FullWindowButtonProps): ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onActivate}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1 text-sm font-medium text-text-muted hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+    >
+      <svg
+        width={16}
+        height={16}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+        <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+        <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+        <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+      </svg>
+      <span>Full window</span>
     </button>
   );
 }
