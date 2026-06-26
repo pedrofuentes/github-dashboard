@@ -212,6 +212,26 @@ describe('BoardView — per-key retry threading', () => {
     expect(onRepoActivate).not.toHaveBeenCalled();
   });
 
+  it('uses the scoped retry seam for the failed repo and signal instead of board reload', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRetrySignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={() => ERRORED_DATA}
+        onRetry={onRetry}
+        onRetrySignal={onRetrySignal}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Retry CI for octo/repo-a' }));
+
+    expect(onRetrySignal).toHaveBeenCalledTimes(1);
+    expect(onRetrySignal).toHaveBeenCalledWith(repoA, 'ci');
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
   it('still drills down on a ready key when onRetry is also provided', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
