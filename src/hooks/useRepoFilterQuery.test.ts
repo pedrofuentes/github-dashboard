@@ -260,6 +260,38 @@ describe('immutability', () => {
   });
 });
 
+describe('derivedSelected memoization', () => {
+  it('keeps the same Set when only getRowData identity changes, then updates for real signal changes', () => {
+    const signalData = { ...rowData };
+    const sameSignalData = { ...signalData };
+    const changedSignalData: Record<string, RepoSignalData> = {
+      ...signalData,
+      'octo/a': {
+        ...signalData['octo/a'],
+        ci: { status: 'ready', conclusion: 'success' },
+      },
+    };
+    const makeGetRowData =
+      (data: Record<string, RepoSignalData>): GetRowData =>
+      (repo) =>
+        data[repo.nameWithOwner] ?? {};
+
+    const { result, rerender } = renderHook(({ getData }) => useRepoFilterQuery(fleet, getData), {
+      initialProps: { getData: makeGetRowData(signalData) },
+    });
+    act(() => result.current.toggleCi('failure'));
+    expect([...result.current.derivedSelected]).toEqual(['octo/a']);
+    const selectedBeforeAccessorChange = result.current.derivedSelected;
+
+    rerender({ getData: makeGetRowData(sameSignalData) });
+    expect(result.current.derivedSelected).toBe(selectedBeforeAccessorChange);
+
+    rerender({ getData: makeGetRowData(changedSignalData) });
+    expect(result.current.derivedSelected).not.toBe(selectedBeforeAccessorChange);
+    expect([...result.current.derivedSelected]).toEqual([]);
+  });
+});
+
 describe('applyQuery', () => {
   it('replaces the entire query atomically', () => {
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
