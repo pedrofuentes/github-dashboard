@@ -84,10 +84,10 @@ function Harness(overrides: Partial<React.ComponentProps<typeof DeckCustomizePan
 }
 
 describe('DeckCustomizePanel', () => {
-  it('is a labelled modal dialog', () => {
+  it('is a labelled non-modal drawer (does not block the deck)', () => {
     setup();
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     expect(dialog).toHaveAccessibleName();
   });
 
@@ -224,10 +224,9 @@ describe('DeckCustomizePanel', () => {
     expect(props.onClose).toHaveBeenCalled();
   });
 
-  it('closes when the backdrop is clicked', async () => {
-    const props = setup();
-    await userEvent.click(screen.getByTestId('deck-customize-backdrop'));
-    expect(props.onClose).toHaveBeenCalledTimes(1);
+  it('renders no full-screen backdrop (the deck stays interactive)', () => {
+    setup();
+    expect(screen.queryByTestId('deck-customize-backdrop')).toBeNull();
   });
 
   it('moves focus onto the close control when it opens', async () => {
@@ -255,19 +254,15 @@ describe('DeckCustomizePanel', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('traps Tab focus within the dialog (wraps at both ends)', async () => {
+  it('does not trap Tab focus (Tab from the last control leaves the drawer)', async () => {
     const user = userEvent.setup();
     setup();
     const close = screen.getByRole('button', { name: /close customize panel/i });
     const reset = screen.getByRole('button', { name: /reset to default/i });
 
-    // Tab from the last focusable wraps to the first.
+    // Tab from the last focusable does NOT wrap back to the first (no trap).
     reset.focus();
     await user.tab();
-    expect(close).toHaveFocus();
-
-    // Shift+Tab from the first focusable wraps to the last.
-    await user.tab({ shift: true });
-    expect(reset).toHaveFocus();
+    expect(close).not.toHaveFocus();
   });
 });
