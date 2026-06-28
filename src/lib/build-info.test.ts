@@ -5,7 +5,6 @@ import { buildInfo, formatBuiltAt } from './build-info';
 describe('buildInfo', () => {
   it('falls back to development values when Vite globals are unavailable', () => {
     expect(buildInfo).toEqual({
-      version: 'dev',
       sha: 'dev',
       builtAt: '',
     });
