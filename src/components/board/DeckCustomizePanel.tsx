@@ -12,10 +12,10 @@
  * panel itself holds no state beyond local UI (the "Show only…" selection and
  * the repo-search query). Tri-state counts come from the pure transforms in
  * {@link deck-visibility} ({@link signalVisibilitySummary} /
- * {@link repoVisibilitySummary} / {@link isHidden}). Accessibility mirrors
- * {@link CustomizePanel}: `role="dialog"` / `aria-modal`, an `aria-labelledby`
- * title, focus moves inside on open, Tab is trapped, `Esc` or a backdrop click
- * closes, and focus returns to the opener on unmount.
+ * {@link repoVisibilitySummary} / {@link isHidden}). Accessibility: a labelled
+ * `role="dialog"` non-modal drawer (the deck stays interactive beside it — no
+ * backdrop, no focus trap), `Esc` or the close control closes it, and focus
+ * moves inside on open and returns to the opener on unmount.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
@@ -29,6 +29,7 @@ import {
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { Repo } from '../../types/fleet';
+import { DeckSignalOrderList } from './DeckSignalOrderList';
 
 export interface DeckCustomizePanelProps {
   /** The repositories whose keys the Deck renders (already adapted by `useRepos`). */
@@ -49,6 +50,10 @@ export interface DeckCustomizePanelProps {
   onReset: () => void;
   /** Restores the default repo-row and signal-column order. */
   onResetOrder: () => void;
+  /** Signal columns in their current order (drives the reorder list). */
+  signalOrder: readonly TileSignalType[];
+  /** Reorders the signal column at `from` to `to` (drawer drag list). */
+  onMoveSignal: (from: number, to: number) => void;
   /** Closes the panel and returns focus to the opener. */
   onClose: () => void;
 }
@@ -69,6 +74,8 @@ export function DeckCustomizePanel({
   onShowOnly,
   onReset,
   onResetOrder,
+  signalOrder,
+  onMoveSignal,
   onClose,
 }: DeckCustomizePanelProps) {
   const titleId = useId();
@@ -173,6 +180,16 @@ export function DeckCustomizePanel({
             Hide all keys
           </button>
         </div>
+
+        <fieldset className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
+          <legend className="px-1 text-sm font-semibold text-text">Signal order</legend>
+          <p className="px-1 text-xs text-text-muted">
+            Drag to reorder the signal columns across every repository.
+          </p>
+          <div className="px-1">
+            <DeckSignalOrderList signalOrder={signalOrder} onMoveSignal={onMoveSignal} />
+          </div>
+        </fieldset>
 
         <fieldset className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
           <legend className="px-1 text-sm font-semibold text-text">Signal rules</legend>

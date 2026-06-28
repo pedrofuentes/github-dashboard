@@ -30,7 +30,6 @@ import {
 import type { DragEndEvent } from '@dnd-kit/core';
 import {
   SortableContext,
-  horizontalListSortingStrategy,
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
@@ -38,13 +37,12 @@ import {
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
 import { DECK_TILE_MIN_PX } from '../../lib/deck-tile-size';
 import type { DeckTileSize } from '../../lib/deck-tile-size';
-import { resolveDeckMove, deckColumnId } from '../../lib/deck-reorder';
+import { reorderIndices } from '../../lib/deck-reorder';
 import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
 import { BoardKey } from './BoardKey';
-import { DeckColumnHeader } from './DeckColumnHeader';
 import { SortableRepoRow } from './SortableRepoRow';
 
 /**
@@ -148,13 +146,6 @@ export interface BoardViewProps {
    */
   onMoveRepo?: (from: number, to: number) => void;
   /**
-   * Reorders the signal column at `from` to `to` (drag/keyboard). When supplied
-   * AND `editing`, a draggable column-header strip appears and sets a global
-   * column order applied across every repo row. Not filter-gated — columns are
-   * fleet-wide, independent of which repos are shown.
-   */
-  onMoveSignal?: (from: number, to: number) => void;
-  /**
    * Removes (hides) a whole repo row. When supplied AND `editing` AND the rows
    * are reorderable, each row's grip is joined by a remove (✕) control that calls
    * this with the row's repo. Add the row back via the Customize panel.
@@ -178,7 +169,6 @@ export function BoardView({
   repoOrder,
   signalOrder,
   onMoveRepo,
-  onMoveSignal,
   onRemoveRepo,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
@@ -250,24 +240,17 @@ export function BoardView({
   // Column order is fleet-wide, so it is NOT filter-gated.
   const filterActive = repoFilter !== undefined;
   const rowsReorderable = editing && onMoveRepo !== undefined && !filterActive;
-  const columnsReorderable = editing && onMoveSignal !== undefined;
-  const dndActive = rowsReorderable || columnsReorderable;
+  const dndActive = rowsReorderable;
   const showReorderFilterHint = editing && onMoveRepo !== undefined && filterActive;
 
   const orderedRepoIds = useMemo(
     () => orderedRepos.map((repo) => repo.nameWithOwner),
     [orderedRepos],
   );
-  const columnIds = useMemo(() => columns.map((signal) => deckColumnId(signal)), [columns]);
 
   const handleDeckDragEnd = (event: DragEndEvent): void => {
-    const move = resolveDeckMove(orderedRepoIds, columnIds, event.active.id, event.over?.id);
-    if (move === null) {
-      return;
-    }
-    if (move.kind === 'column') {
-      onMoveSignal?.(move.from, move.to);
-    } else {
+    const move = reorderIndices(orderedRepoIds, event.active.id, event.over?.id);
+    if (move !== null) {
       onMoveRepo?.(move.from, move.to);
     }
   };
@@ -398,15 +381,6 @@ export function BoardView({
               collisionDetection={closestCenter}
               onDragEnd={handleDeckDragEnd}
             >
-              {columnsReorderable ? (
-                <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
-                  <DeckColumnHeader
-                    signals={columns}
-                    rowStyle={rowStyle}
-                    gutter={rowsReorderable}
-                  />
-                </SortableContext>
-              ) : null}
               {rowsReorderable ? (
                 <SortableContext items={orderedRepoIds} strategy={rectSortingStrategy}>
                   <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
