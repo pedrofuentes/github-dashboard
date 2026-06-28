@@ -2,10 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/). This
+project is deployed continuously and is **not** semantically versioned: each
+build is identified by its deploy date and short commit SHA (shown in the app
+footer, e.g. `2026-06-28 · 532d67f`). Entries are grouped by deploy date, newest
+first.
 
-## [Unreleased]
+## 2026-06-28
+
+### Changed
+
+- **Versioning: dropped SemVer in favor of a date + short-SHA build identity.**
+  The frozen `1.0.0` semantic version (only ever shown in the footer) was
+  removed; the footer now reads `<deploy date> · <short SHA>` (the SHA links to
+  the commit). Update detection already keyed on the SHA, so nothing functional
+  changed — this just makes the displayed identity honest for a continuously
+  deployed, client-only app with no release cadence or external consumers.
+  `package.json` version is now `0.0.0` (read by nothing in-app).
 
 ### Security
 

@@ -22,6 +22,14 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-031: Drop SemVer; the build identity is deploy date + short SHA
+**Date**: 2026-06-28
+**Status**: Accepted
+**Context**: The app carried a semantic version in `package.json` that sat frozen at `1.0.0` for the entire post-1.0 development period (~15+ deployed PRs). It was injected via Vite `define` (`__APP_VERSION__`) and surfaced in exactly one place — the footer (`v{buildInfo.version}`). Meanwhile the only functional version check, `useUpdateAvailable`, already keys purely on the commit SHA (`version.json.sha !== buildInfo.sha`). For a private, client-only, continuously-deployed app (every merge to `main` auto-deploys to Pages) with no public API, no installable artifact, and a single stakeholder, SemVer's compatibility-contract semantics are vacuous, and a static `1.0.0` actively misrepresents that nothing has changed.
+**Decision**: Stop using SemVer. The canonical, displayed build identity becomes `<deploy date> · <short SHA>` (e.g. `2026-06-28 · 532d67f`), both already captured in `version.json`/`buildInfo`. Remove `version` from `BuildInfo`, drop the `__APP_VERSION__` define and its `vite-env.d.ts` declaration, set `package.json` version to `0.0.0` (read by nothing in-app; npm-valid, `private: true`), and the footer renders the date and the commit-linked SHA. `CHANGELOG.md` switches from SemVer-bucketed to date-grouped (`## YYYY-MM-DD`).
+**Alternatives considered**: (a) Keep SemVer and actually bump it per feature batch (e.g. cut 1.1.0) — rejected: requires ongoing discipline/automation for a contract no consumer reads; the bump is ceremony without an audience. (b) Automate SemVer from conventional commits in CI — rejected: same "no consumer" objection, plus added release tooling. (c) Bare short SHA only — rejected: a hash is not human-orderable; pairing it with the build date keeps it readable and monotonic (CalVer-flavored). 
+**Consequences**: The displayed identity is now honest and always reflects the live build; update detection is unaffected (already SHA-based). No git tags or GitHub Releases are produced — the deploy *is* the release. Trade-off: no human-named release notes ("v1.1.0 — Deck reorg"); commit history plus the date-grouped CHANGELOG cover this. Going forward, CHANGELOG entries land under a dated `## YYYY-MM-DD` heading.
+
 ### ADR-030: Triage becomes the default home, absorbing Inbox as a "new/unread" layer
 **Date**: 2026-06-22
 **Status**: Accepted
