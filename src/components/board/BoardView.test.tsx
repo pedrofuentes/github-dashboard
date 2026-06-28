@@ -618,3 +618,18 @@ describe('BoardView — repo row remove', () => {
     expect(screen.queryByRole('button', { name: /remove repository octo\/repo-a/i })).toBeNull();
   });
 });
+
+describe('BoardView — repo-block packing layout', () => {
+  it('places repo blocks in a wrapping (flex-wrap) container so they pack per line', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    const rowA = document.querySelector('[data-repo-row="octo/repo-a"]') as HTMLElement;
+    const rowB = document.querySelector('[data-repo-row="octo/repo-b"]') as HTMLElement;
+    expect(rowA).not.toBeNull();
+    expect(rowB).not.toBeNull();
+    const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
+    expect(blocks).not.toBeNull();
+    expect(blocks.className).toContain('flex-wrap');
+    expect(blocks.contains(rowA)).toBe(true);
+    expect(blocks.contains(rowB)).toBe(true);
+  });
+});
