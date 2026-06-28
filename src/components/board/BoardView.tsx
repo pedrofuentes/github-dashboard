@@ -31,8 +31,8 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import {
   SortableContext,
   horizontalListSortingStrategy,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
@@ -55,6 +55,15 @@ import { SortableRepoRow } from './SortableRepoRow';
  * supplies the per-size minimum.
  */
 const GRID_CLASS = 'grid gap-3';
+
+/**
+ * Outer wrap for the repo blocks: each repo is an intact block (its signal
+ * tiles), and blocks pack left-to-right and wrap, so several repos share a line
+ * when they fit (filling full-window width). Leftover line width stays a gap —
+ * tiles never stretch beyond their chosen size. `items-start` keeps blocks
+ * top-aligned regardless of per-block height.
+ */
+const BLOCKS_CLASS = 'flex flex-wrap items-start gap-3';
 
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
@@ -399,44 +408,50 @@ export function BoardView({
                 </SortableContext>
               ) : null}
               {rowsReorderable ? (
-                <SortableContext items={orderedRepoIds} strategy={verticalListSortingStrategy}>
-                  {visibleKeysByRepo.map(({ repo, signals }) => (
-                    <SortableRepoRow
-                      key={repo.nameWithOwner}
-                      id={repo.nameWithOwner}
-                      label={repo.nameWithOwner}
-                      rowStyle={rowStyle}
-                      onRemove={onRemoveRepo !== undefined ? () => onRemoveRepo(repo) : undefined}
-                      removeLabel={`Remove repository ${repo.nameWithOwner}`}
-                    >
-                      {renderRepoCells(repo, signals)}
-                    </SortableRepoRow>
-                  ))}
+                <SortableContext items={orderedRepoIds} strategy={rectSortingStrategy}>
+                  <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
+                    {visibleKeysByRepo.map(({ repo, signals }) => (
+                      <SortableRepoRow
+                        key={repo.nameWithOwner}
+                        id={repo.nameWithOwner}
+                        label={repo.nameWithOwner}
+                        rowStyle={rowStyle}
+                        onRemove={onRemoveRepo !== undefined ? () => onRemoveRepo(repo) : undefined}
+                        removeLabel={`Remove repository ${repo.nameWithOwner}`}
+                      >
+                        {renderRepoCells(repo, signals)}
+                      </SortableRepoRow>
+                    ))}
+                  </div>
                 </SortableContext>
               ) : (
-                visibleKeysByRepo.map(({ repo, signals }) => (
-                  <div
-                    key={repo.nameWithOwner}
-                    data-repo-row={repo.nameWithOwner}
-                    className={GRID_CLASS}
-                    style={rowStyle}
-                  >
-                    {renderRepoCells(repo, signals)}
-                  </div>
-                ))
+                <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
+                  {visibleKeysByRepo.map(({ repo, signals }) => (
+                    <div
+                      key={repo.nameWithOwner}
+                      data-repo-row={repo.nameWithOwner}
+                      className={GRID_CLASS}
+                      style={rowStyle}
+                    >
+                      {renderRepoCells(repo, signals)}
+                    </div>
+                  ))}
+                </div>
               )}
             </DndContext>
           ) : (
-            visibleKeysByRepo.map(({ repo, signals }) => (
-              <div
-                key={repo.nameWithOwner}
-                data-repo-row={repo.nameWithOwner}
-                className={GRID_CLASS}
-                style={rowStyle}
-              >
-                {renderRepoCells(repo, signals)}
-              </div>
-            ))
+            <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
+              {visibleKeysByRepo.map(({ repo, signals }) => (
+                <div
+                  key={repo.nameWithOwner}
+                  data-repo-row={repo.nameWithOwner}
+                  className={GRID_CLASS}
+                  style={rowStyle}
+                >
+                  {renderRepoCells(repo, signals)}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
