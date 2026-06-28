@@ -12,6 +12,14 @@ first.
 
 ### Changed
 
+- **Deck packs repositories full-width.** The Deck now flows each repo as an
+  intact block of signal tiles and packs as many per line as fit (filling the
+  full window in full-window mode), instead of one repo per line. Drag-reorder a
+  repo to any 2D position.
+- **Customize is now a non-blocking drawer.** "Customize tiles" no longer opens a
+  modal that covered the deck — it's a side drawer, so you can drag/remove tiles
+  while it's open. Signal-column reordering moved into the drawer as a
+  drag-to-reorder list.
 - **Versioning: dropped SemVer in favor of a date + short-SHA build identity.**
   The frozen `1.0.0` semantic version (only ever shown in the footer) was
   removed; the footer now reads `<deploy date> · <short SHA>` (the SHA links to

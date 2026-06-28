@@ -581,7 +581,6 @@ function FleetPanel({
             repoOrder={deckRepoOrder}
             signalOrder={deckSignalOrder}
             onMoveRepo={deckMoveRepo}
-            onMoveSignal={deckMoveSignal}
             onRemoveRepo={handleDeckRemoveRepo}
           />
         </div>
@@ -596,6 +595,8 @@ function FleetPanel({
             onShowOnly={handleDeckShowOnly}
             onReset={deck.reset}
             onResetOrder={deckResetOrder}
+            signalOrder={deckSignalOrder}
+            onMoveSignal={deckMoveSignal}
             onClose={handleCloseDeckCustomize}
           />
         ) : null}
