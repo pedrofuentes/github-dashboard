@@ -7,8 +7,12 @@ export function AppFooter(): ReactElement {
 
   return (
     <footer className="mx-auto max-w-5xl px-6 pb-6 text-xs text-text-muted">
-      <span>v{buildInfo.version}</span>
-      <span aria-hidden="true"> · </span>
+      {builtAt ? (
+        <>
+          <span>{builtAt}</span>
+          <span aria-hidden="true"> · </span>
+        </>
+      ) : null}
       {buildInfo.sha === 'dev' ? (
         <span>{buildInfo.sha}</span>
       ) : (
@@ -21,8 +25,6 @@ export function AppFooter(): ReactElement {
           {buildInfo.sha}
         </a>
       )}
-      <span aria-hidden="true"> · </span>
-      <span>{builtAt}</span>
     </footer>
   );
 }
