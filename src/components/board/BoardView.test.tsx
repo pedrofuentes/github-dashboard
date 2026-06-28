@@ -586,3 +586,35 @@ describe('BoardView — signal column reorder', () => {
     expect(screen.getByRole('group', { name: /reorder signal columns/i })).toBeInTheDocument();
   });
 });
+
+describe('BoardView — repo row remove', () => {
+  it('shows a per-row remove control when editing with onRemoveRepo, calling it with the repo', async () => {
+    const user = userEvent.setup();
+    const onRemoveRepo = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={vi.fn()}
+        onRemoveRepo={onRemoveRepo}
+      />,
+    );
+    const removeA = screen.getByRole('button', { name: /remove repository octo\/repo-a/i });
+    await user.click(removeA);
+    expect(onRemoveRepo).toHaveBeenCalledTimes(1);
+    expect(onRemoveRepo).toHaveBeenCalledWith(repoA);
+  });
+
+  it('renders no row remove control in read mode', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        onMoveRepo={vi.fn()}
+        onRemoveRepo={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /remove repository octo\/repo-a/i })).toBeNull();
+  });
+});

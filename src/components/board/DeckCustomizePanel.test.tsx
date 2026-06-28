@@ -25,6 +25,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
   const onSetAll = vi.fn();
   const onShowOnly = vi.fn();
   const onReset = vi.fn();
+  const onResetOrder = vi.fn();
   const onClose = vi.fn();
   const props = {
     repos,
@@ -35,11 +36,22 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
     onSetAll,
     onShowOnly,
     onReset,
+    onResetOrder,
     onClose,
     ...overrides,
   };
   render(<DeckCustomizePanel {...props} />);
-  return { ...props, onToggleKey, onSetSignal, onSetRepo, onSetAll, onShowOnly, onReset, onClose };
+  return {
+    ...props,
+    onToggleKey,
+    onSetSignal,
+    onSetRepo,
+    onSetAll,
+    onShowOnly,
+    onReset,
+    onResetOrder,
+    onClose,
+  };
 }
 
 // Mirrors CustomizePanel.test.tsx's harness: an opener button that mounts the
@@ -62,6 +74,7 @@ function Harness(overrides: Partial<React.ComponentProps<typeof DeckCustomizePan
           onSetAll={vi.fn()}
           onShowOnly={vi.fn()}
           onReset={vi.fn()}
+          onResetOrder={vi.fn()}
           onClose={() => setOpen(false)}
           {...overrides}
         />
@@ -189,8 +202,14 @@ describe('DeckCustomizePanel', () => {
 
   it('invokes onReset when the reset button is clicked', async () => {
     const props = setup();
-    await userEvent.click(screen.getByRole('button', { name: /reset/i }));
+    await userEvent.click(screen.getByRole('button', { name: /reset to default/i }));
     expect(props.onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('invokes onResetOrder when the Reset order button is clicked', async () => {
+    const props = setup();
+    await userEvent.click(screen.getByRole('button', { name: /reset order/i }));
+    expect(props.onResetOrder).toHaveBeenCalledTimes(1);
   });
 
   it('invokes onClose from the close control', async () => {
@@ -240,7 +259,7 @@ describe('DeckCustomizePanel', () => {
     const user = userEvent.setup();
     setup();
     const close = screen.getByRole('button', { name: /close customize panel/i });
-    const reset = screen.getByRole('button', { name: /reset/i });
+    const reset = screen.getByRole('button', { name: /reset to default/i });
 
     // Tab from the last focusable wraps to the first.
     reset.focus();
