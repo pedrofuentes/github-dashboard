@@ -499,3 +499,39 @@ describe('BoardView — matrix layout', () => {
     expect(signals).toEqual(['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']);
   });
 });
+
+describe('BoardView — repo row reorder', () => {
+  it('shows an accessible drag handle per repo row when editing and reorderable', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: /reorder octo\/repo-a/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reorder octo\/repo-b/i })).toBeInTheDocument();
+  });
+
+  it('renders no drag handles in read mode (not editing)', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} onMoveRepo={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+  });
+
+  it('disables reordering and shows a hint while a repo filter is active', () => {
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={vi.fn()}
+        repoFilter={new Set(['octo/repo-a'])}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+    expect(screen.getByText(/clear the filter to reorder/i)).toBeInTheDocument();
+  });
+
+  it('renders no drag handles when onMoveRepo is omitted', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onToggleKey={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+  });
+});
