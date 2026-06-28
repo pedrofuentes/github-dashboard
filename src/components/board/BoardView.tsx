@@ -145,6 +145,12 @@ export interface BoardViewProps {
    * fleet-wide, independent of which repos are shown.
    */
   onMoveSignal?: (from: number, to: number) => void;
+  /**
+   * Removes (hides) a whole repo row. When supplied AND `editing` AND the rows
+   * are reorderable, each row's grip is joined by a remove (✕) control that calls
+   * this with the row's repo. Add the row back via the Customize panel.
+   */
+  onRemoveRepo?: (repo: Repo) => void;
 }
 
 export function BoardView({
@@ -164,6 +170,7 @@ export function BoardView({
   signalOrder,
   onMoveRepo,
   onMoveSignal,
+  onRemoveRepo,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -399,6 +406,8 @@ export function BoardView({
                       id={repo.nameWithOwner}
                       label={repo.nameWithOwner}
                       rowStyle={rowStyle}
+                      onRemove={onRemoveRepo !== undefined ? () => onRemoveRepo(repo) : undefined}
+                      removeLabel={`Remove repository ${repo.nameWithOwner}`}
                     >
                       {renderRepoCells(repo, signals)}
                     </SortableRepoRow>

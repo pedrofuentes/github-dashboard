@@ -366,6 +366,7 @@ function FleetPanel({
     signalOrder: deckSignalOrder,
     moveRepo: deckMoveRepo,
     moveSignal: deckMoveSignal,
+    reset: deckResetOrder,
   } = useDeckOrder(repoNames);
   // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
   const {
@@ -387,6 +388,11 @@ function FleetPanel({
   );
   const handleDeckSetRepo = useCallback(
     (repo: string, hide: boolean) => deckSetRepo(repo, DECK_SIGNALS, hide),
+    [deckSetRepo],
+  );
+  // On-grid row remove: hide every signal for the repo (add back via Customize).
+  const handleDeckRemoveRepo = useCallback(
+    (repo: Repo) => deckSetRepo(repo.nameWithOwner, DECK_SIGNALS, true),
     [deckSetRepo],
   );
   const handleDeckSetAll = useCallback(
@@ -575,6 +581,7 @@ function FleetPanel({
           signalOrder={deckSignalOrder}
           onMoveRepo={deckMoveRepo}
           onMoveSignal={deckMoveSignal}
+          onRemoveRepo={handleDeckRemoveRepo}
         />
         {deckEditing ? (
           <DeckCustomizePanel
@@ -586,6 +593,7 @@ function FleetPanel({
             onSetAll={handleDeckSetAll}
             onShowOnly={handleDeckShowOnly}
             onReset={deck.reset}
+            onResetOrder={deckResetOrder}
             onClose={handleCloseDeckCustomize}
           />
         ) : null}
