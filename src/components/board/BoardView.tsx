@@ -29,9 +29,6 @@ import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
 import { BoardKey } from './BoardKey';
 
-/** Placeholder keys shown while the fleet loads (two board rows of six). */
-const SKELETON_KEYS = 12;
-
 /**
  * Responsive Stream Deck grid: square keys flow via `auto-fill`, so the column
  * count follows the container width and the chosen {@link DeckTileSize} (its
@@ -98,12 +95,23 @@ export interface BoardViewProps {
   /** Toggles one (repo, signal) key's visibility — wired to the × remove overlay. */
   onToggleKey?: (repo: Repo, signal: TileSignalType) => void;
   /**
-   * How large to render each key. Drives the responsive `auto-fill` grid's
-   * minimum column width (see {@link DECK_TILE_MIN_PX}). `medium` (the default)
-   * reproduces the legacy ~6-per-row layout; smaller/larger sizes pack more or
-   * fewer keys per row — handy full-screen on a wall display.
+   * How large to render each key. In the repo×signal matrix this is the
+   * per-column **target/max** width (see {@link DECK_TILE_MIN_PX}); each repo's
+   * signals always stay on one line (columns shrink to fit narrow viewports and
+   * cap at the target on wide / full-window displays), so repos never mix.
    */
   size?: DeckTileSize;
+  /**
+   * Row order — repo `nameWithOwner` ids. Visible repos are rendered in this
+   * order (ids not present are appended in their natural order). Omitted ⇒ the
+   * incoming `repos` order.
+   */
+  repoOrder?: readonly string[];
+  /**
+   * Column order — the signal sequence each repo row renders left-to-right.
+   * Omitted ⇒ {@link DECK_SIGNALS}.
+   */
+  signalOrder?: readonly TileSignalType[];
 }
 
 export function BoardView({
@@ -119,6 +127,8 @@ export function BoardView({
   editing = false,
   onToggleKey,
   size = 'medium',
+  repoOrder,
+  signalOrder,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -128,15 +138,47 @@ export function BoardView({
     [repos, repoFilter],
   );
 
-  // The signals each visible repo still shows, after removing its hidden keys —
-  // memoised so both the key count and the grid render the same filtered list.
+  // The signal columns each repo row renders, left-to-right. Defaults to the
+  // canonical DECK_SIGNALS order when no explicit column order is supplied.
+  const columns = useMemo<readonly TileSignalType[]>(
+    () => signalOrder ?? DECK_SIGNALS,
+    [signalOrder],
+  );
+
+  // Visible repos ordered by `repoOrder` (ids first, in that order; any visible
+  // repo missing from the order appended in its natural position) so the matrix
+  // rows follow the user's row order while new/unordered repos still appear.
+  const orderedRepos = useMemo(() => {
+    if (repoOrder === undefined) {
+      return visibleRepos;
+    }
+    const byId = new Map(visibleRepos.map((repo) => [repo.nameWithOwner, repo]));
+    const ordered: Repo[] = [];
+    const seen = new Set<string>();
+    for (const id of repoOrder) {
+      const repo = byId.get(id);
+      if (repo !== undefined && !seen.has(id)) {
+        seen.add(id);
+        ordered.push(repo);
+      }
+    }
+    for (const repo of visibleRepos) {
+      if (!seen.has(repo.nameWithOwner)) {
+        ordered.push(repo);
+      }
+    }
+    return ordered;
+  }, [visibleRepos, repoOrder]);
+
+  // Each repo's visible signal keys, in column order, after removing hidden keys
+  // — memoised so the count and the matrix render the same filtered list.
   const visibleKeysByRepo = useMemo(
     () =>
-      visibleRepos.map((repo) => ({
+      orderedRepos.map((repo) => ({
         repo,
-        signals: DECK_SIGNALS.filter((signal) => !isHidden(hiddenKeys, repo.nameWithOwner, signal)),
+        signals: columns.filter((signal) => !isHidden(hiddenKeys, repo.nameWithOwner, signal)),
       })),
-    [visibleRepos, hiddenKeys],
+    [orderedRepos, columns, hiddenKeys],
   );
 
   const visibleKeyCount = useMemo(
@@ -187,11 +229,12 @@ export function BoardView({
       ? `${repoCount} ${repoNoun} · ${visibleKeyCount} ${tileNoun}`
       : `${repoCount} ${repoNoun}`;
 
-  // The chosen size sets the grid's minimum key width; `auto-fill` then derives
-  // the column count from the container width (so full-window decks get more
-  // columns at the same key size).
-  const gridStyle = {
-    gridTemplateColumns: `repeat(auto-fill, minmax(${DECK_TILE_MIN_PX[size]}px, 1fr))`,
+  // Model C: each repo row is a grid of fixed signal columns. The size sets the
+  // per-column target/max width; columns shrink to fit narrow viewports and cap
+  // at the target on wide displays, so a repo's signals always stay on one line
+  // (one row per repo) and never reflow into another repo's row.
+  const rowStyle = {
+    gridTemplateColumns: `repeat(${columns.length}, minmax(0, ${DECK_TILE_MIN_PX[size]}px))`,
   };
 
   return (
@@ -201,13 +244,17 @@ export function BoardView({
       </p>
 
       {showSkeleton ? (
-        <div aria-busy="true" aria-hidden="true" className={GRID_CLASS} style={gridStyle}>
-          {Array.from({ length: SKELETON_KEYS }, (_, index) => (
-            <span
-              key={`skeleton-${index}`}
-              data-part="skeleton"
-              className="block aspect-square w-full animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none"
-            />
+        <div aria-busy="true" aria-hidden="true" className="flex flex-col gap-3">
+          {Array.from({ length: 2 }, (_, row) => (
+            <div key={`skeleton-row-${row}`} className={GRID_CLASS} style={rowStyle}>
+              {Array.from({ length: DECK_SIGNALS.length }, (_, index) => (
+                <span
+                  key={`skeleton-${row}-${index}`}
+                  data-part="skeleton"
+                  className="block aspect-square w-full animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none"
+                />
+              ))}
+            </div>
           ))}
         </div>
       ) : noRepos ? (
@@ -220,39 +267,48 @@ export function BoardView({
           <p className="text-sm text-text-muted">Use Customize to bring tiles back.</p>
         </div>
       ) : (
-        <div aria-busy={loading} className={GRID_CLASS} style={gridStyle}>
-          {visibleKeysByRepo.flatMap(({ repo, signals }) => {
+        <div aria-busy={loading} className="flex flex-col gap-3">
+          {visibleKeysByRepo.map(({ repo, signals }) => {
             const data = getRowData(repo);
-            return signals.map((signal) => {
-              const id = `${repo.nameWithOwner}:${signal}`;
-              const boardKey = (
-                <BoardKey
-                  repo={repo}
-                  signal={signal}
-                  data={data}
-                  href={signalDeepLinkUrl(repo, signal, data)}
-                  onActivate={onRepoActivate}
-                  onRetry={
-                    onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry
-                  }
-                />
-              );
-              return editing && onToggleKey ? (
-                <div key={id} className="relative">
-                  {boardKey}
-                  <button
-                    type="button"
-                    onClick={() => onToggleKey(repo, signal)}
-                    aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
-                    className={REMOVE_BUTTON_CLASS}
-                  >
-                    <span aria-hidden="true">✕</span>
-                  </button>
-                </div>
-              ) : (
-                <Fragment key={id}>{boardKey}</Fragment>
-              );
-            });
+            return (
+              <div
+                key={repo.nameWithOwner}
+                data-repo-row={repo.nameWithOwner}
+                className={GRID_CLASS}
+                style={rowStyle}
+              >
+                {signals.map((signal) => {
+                  const id = `${repo.nameWithOwner}:${signal}`;
+                  const boardKey = (
+                    <BoardKey
+                      repo={repo}
+                      signal={signal}
+                      data={data}
+                      href={signalDeepLinkUrl(repo, signal, data)}
+                      onActivate={onRepoActivate}
+                      onRetry={
+                        onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry
+                      }
+                    />
+                  );
+                  return editing && onToggleKey ? (
+                    <div key={id} className="relative">
+                      {boardKey}
+                      <button
+                        type="button"
+                        onClick={() => onToggleKey(repo, signal)}
+                        aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
+                        className={REMOVE_BUTTON_CLASS}
+                      >
+                        <span aria-hidden="true">✕</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <Fragment key={id}>{boardKey}</Fragment>
+                  );
+                })}
+              </div>
+            );
           })}
         </div>
       )}

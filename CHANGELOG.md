@@ -287,6 +287,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Deck is now a repo × signal matrix** — the Stream Deck keys lay out as **one
+  row per repository** (signals across, in a consistent column order) at every
+  tile size. Previously the responsive grid only kept one row per repo at the
+  Medium size; X-Small/Large reflowed keys so repos visually "mixed". Each repo's
+  signals now always stay on one line (columns shrink to fit narrow viewports and
+  cap at the chosen size on wide / full-window displays). Foundation for the
+  upcoming drag-to-reorder + per-row/column add/remove.
+
 - **Fleet signals (CI, Pull Requests, Issues, Stale, Reviews) now fetched via one batched GraphQL query** (chunked at ~10–15 repos per request) instead of per-repo REST calls — dramatically fewer API requests and no more GitHub Search secondary-rate-limit (30 req/min) bursts on large fleets. **CI now reflects the default-branch HEAD check rollup** (`statusCheckRollup`) rather than "the latest workflow run on any branch", giving a more accurate and consistent fleet-health signal. **Security (code-scanning) and commit-activity remain on REST** — no GraphQL equivalent is available for those signals.
 
 - **Dashboard view renamed to "Boards" and demoted**: the free-form,
