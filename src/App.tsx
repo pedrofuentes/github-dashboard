@@ -365,6 +365,7 @@ function FleetPanel({
     repoOrder: deckRepoOrder,
     signalOrder: deckSignalOrder,
     moveRepo: deckMoveRepo,
+    moveSignal: deckMoveSignal,
   } = useDeckOrder(repoNames);
   // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
   const {
@@ -573,6 +574,7 @@ function FleetPanel({
           repoOrder={deckRepoOrder}
           signalOrder={deckSignalOrder}
           onMoveRepo={deckMoveRepo}
+          onMoveSignal={deckMoveSignal}
         />
         {deckEditing ? (
           <DeckCustomizePanel
