@@ -21,10 +21,11 @@ const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
 const DEFAULT_DECK_TILE_SIZE: DeckTileSize = 'medium';
 
 /**
- * Minimum key width (px) per size, fed to the Deck grid's
- * `repeat(auto-fill, minmax(<px>, 1fr))`. `medium` (152px) reproduces the legacy
- * ~6-keys-per-row layout at the default container width and across the old
- * breakpoints; the other steps pack more (smaller) or fewer (larger) keys.
+ * Per-size key width (px) for the Deck's repo × signal matrix, fed to each repo
+ * row's `repeat(<columns>, minmax(0, <px>px))` as the per-column **target/max**.
+ * Columns shrink below this to fit narrow viewports (so a repo's signals always
+ * stay on one line) and cap at it on wide / full-window displays. `medium`
+ * (152px) reproduces the legacy ~6-keys-per-row look at the default width.
  */
 export const DECK_TILE_MIN_PX: Record<DeckTileSize, number> = {
   'x-small': 104,
