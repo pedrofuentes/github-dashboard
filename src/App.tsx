@@ -558,13 +558,14 @@ function FleetPanel({
     ) : view === 'deck' ? (
       <>
         <BoardView
-          repos={filteredRepos}
+          repos={repos}
           getRowData={getRowData}
           onRepoActivate={handleRepoActivate}
           loading={viewLoading}
           error={status === 'error' ? error : null}
           onRetry={reload}
           onRetrySignal={retrySignal}
+          repoFilter={filter.isActive ? filter.derivedSelected : undefined}
           hiddenKeys={deck.hidden}
           editing={deckEditing}
           onToggleKey={handleDeckToggleKey}
