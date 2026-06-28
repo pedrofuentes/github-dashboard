@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Remove a Deck repository row from the grid + reset order** — in the Deck's
+  Customize mode each repo row's drag grip is joined by a remove (✕) control that
+  hides the whole repository (bring it back from the Customize panel). The panel
+  also gains a **Reset order** button that restores the default repo-row and
+  signal-column order.
 - **Reorder Deck repositories and signal columns by drag** — in the Deck's
   Customize mode each repo row gains a drag grip (reorder rows) and a draggable
   signal-column header strip (reorder the signal columns globally, across all

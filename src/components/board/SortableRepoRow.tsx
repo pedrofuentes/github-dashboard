@@ -17,6 +17,8 @@ const FOCUS_RING =
 
 const GRIP_CLASS = `inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded text-text-muted hover:text-text active:cursor-grabbing ${FOCUS_RING}`;
 
+const REMOVE_CLASS = `inline-flex h-7 w-5 shrink-0 items-center justify-center rounded text-text-muted hover:text-text ${FOCUS_RING}`;
+
 export interface SortableRepoRowProps {
   /** Sortable id — the repo's `nameWithOwner`. */
   id: string;
@@ -26,9 +28,24 @@ export interface SortableRepoRowProps {
   rowStyle: CSSProperties;
   /** The repo's signal-key cells. */
   children: ReactNode;
+  /**
+   * When supplied, renders a remove (✕) control after the drag grip that hides
+   * the whole repo row. The control is a plain sibling button — it never carries
+   * the sortable drag listeners, so removing and dragging stay independent.
+   */
+  onRemove?: () => void;
+  /** Accessible name for the remove control (required when `onRemove` is set). */
+  removeLabel?: string;
 }
 
-export function SortableRepoRow({ id, label, rowStyle, children }: SortableRepoRowProps) {
+export function SortableRepoRow({
+  id,
+  label,
+  rowStyle,
+  children,
+  onRemove,
+  removeLabel,
+}: SortableRepoRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
@@ -60,6 +77,11 @@ export function SortableRepoRow({ id, label, rowStyle, children }: SortableRepoR
           <circle cx="15" cy="18" r="1.6" />
         </svg>
       </button>
+      {onRemove !== undefined ? (
+        <button type="button" aria-label={removeLabel} onClick={onRemove} className={REMOVE_CLASS}>
+          <span aria-hidden="true">✕</span>
+        </button>
+      ) : null}
       <div data-repo-row={id} className="grid flex-1 gap-3" style={rowStyle}>
         {children}
       </div>

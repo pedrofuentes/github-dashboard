@@ -47,6 +47,8 @@ export interface DeckCustomizePanelProps {
   onShowOnly: (keep: Set<TileSignalType>) => void;
   /** Restores the default (all-visible) Deck. */
   onReset: () => void;
+  /** Restores the default repo-row and signal-column order. */
+  onResetOrder: () => void;
   /** Closes the panel and returns focus to the opener. */
   onClose: () => void;
 }
@@ -78,6 +80,7 @@ export function DeckCustomizePanel({
   onSetAll,
   onShowOnly,
   onReset,
+  onResetOrder,
   onClose,
 }: DeckCustomizePanelProps) {
   const titleId = useId();
@@ -317,7 +320,14 @@ export function DeckCustomizePanel({
           })}
         </fieldset>
 
-        <div className="mt-6 flex justify-end border-t border-border pt-4">
+        <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
+          <button
+            type="button"
+            onClick={onResetOrder}
+            className="rounded border border-border px-4 py-2 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Reset order
+          </button>
           <button
             type="button"
             onClick={onReset}
