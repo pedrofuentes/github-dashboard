@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -536,57 +536,6 @@ describe('BoardView — repo row reorder', () => {
   });
 });
 
-describe('BoardView — signal column reorder', () => {
-  it('renders a draggable header per signal column when editing with onMoveSignal', () => {
-    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onMoveSignal={vi.fn()} />);
-    const group = screen.getByRole('group', { name: /reorder signal columns/i });
-    expect(group).toBeInTheDocument();
-    expect(within(group).getByRole('button', { name: /reorder ci column/i })).toBeInTheDocument();
-    expect(
-      within(group).getByRole('button', { name: /reorder stale column/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('orders the column headers by signalOrder', () => {
-    render(
-      <BoardView
-        repos={[repoA]}
-        getRowData={getRowData}
-        editing
-        onMoveSignal={vi.fn()}
-        signalOrder={['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']}
-      />,
-    );
-    const group = screen.getByRole('group', { name: /reorder signal columns/i });
-    const headers = within(group)
-      .getAllByRole('button', { name: /reorder .* column/i })
-      .map((b) => b.getAttribute('aria-label'));
-    expect(headers[0]).toMatch(/reorder stale column/i);
-    expect(headers[1]).toMatch(/reorder ci column/i);
-  });
-
-  it('renders no column headers in read mode', () => {
-    render(<BoardView repos={[repoA]} getRowData={getRowData} onMoveSignal={vi.fn()} />);
-    expect(screen.queryByRole('group', { name: /reorder signal columns/i })).toBeNull();
-  });
-
-  it('still allows column reordering while a repo filter is active (columns are global)', () => {
-    render(
-      <BoardView
-        repos={[repoA, repoB]}
-        getRowData={getRowData}
-        editing
-        onMoveSignal={vi.fn()}
-        onMoveRepo={vi.fn()}
-        repoFilter={new Set(['octo/repo-a'])}
-      />,
-    );
-    // Row reorder is gated by the filter, but column headers remain.
-    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
-    expect(screen.getByRole('group', { name: /reorder signal columns/i })).toBeInTheDocument();
-  });
-});
-
 describe('BoardView — repo row remove', () => {
   it('shows a per-row remove control when editing with onRemoveRepo, calling it with the repo', async () => {
     const user = userEvent.setup();
@@ -631,5 +580,23 @@ describe('BoardView — repo-block packing layout', () => {
     expect(blocks.className).toContain('flex-wrap');
     expect(blocks.contains(rowA)).toBe(true);
     expect(blocks.contains(rowB)).toBe(true);
+  });
+});
+
+describe('BoardView — signal columns reorder via drawer (no on-grid header)', () => {
+  it('renders no on-grid signal-column header group in edit mode', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    expect(screen.queryByRole('group', { name: /reorder signal columns/i })).toBeNull();
+  });
+
+  it('keeps packing repos into the deck-blocks container while editing', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
+    expect(blocks.className).toContain('flex-wrap');
+    expect(blocks.querySelectorAll('[data-repo-row]').length).toBe(2);
   });
 });

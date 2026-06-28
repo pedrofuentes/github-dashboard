@@ -26,6 +26,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
   const onShowOnly = vi.fn();
   const onReset = vi.fn();
   const onResetOrder = vi.fn();
+  const onMoveSignal = vi.fn();
   const onClose = vi.fn();
   const props = {
     repos,
@@ -37,6 +38,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
     onShowOnly,
     onReset,
     onResetOrder,
+    signalOrder: DECK_SIGNALS,
+    onMoveSignal,
     onClose,
     ...overrides,
   };
@@ -50,6 +53,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
     onShowOnly,
     onReset,
     onResetOrder,
+    onMoveSignal,
     onClose,
   };
 }
@@ -75,6 +79,8 @@ function Harness(overrides: Partial<React.ComponentProps<typeof DeckCustomizePan
           onShowOnly={vi.fn()}
           onReset={vi.fn()}
           onResetOrder={vi.fn()}
+          signalOrder={DECK_SIGNALS}
+          onMoveSignal={vi.fn()}
           onClose={() => setOpen(false)}
           {...overrides}
         />
@@ -93,7 +99,7 @@ describe('DeckCustomizePanel', () => {
 
   it('renders one global toggle per Deck signal and one row per matching repo', async () => {
     setup();
-    const rules = screen.getByRole('group', { name: /signal/i });
+    const rules = screen.getByRole('group', { name: /signal rules/i });
     const toggles = within(rules).getAllByRole('button', { name: /all .+ keys$/i });
     expect(toggles).toHaveLength(DECK_SIGNALS.length);
 
@@ -264,5 +270,30 @@ describe('DeckCustomizePanel', () => {
     reset.focus();
     await user.tab();
     expect(close).not.toHaveFocus();
+  });
+});
+
+describe('DeckCustomizePanel — signal order list', () => {
+  it('renders a Signal order group with a reorder grip per signal', () => {
+    setup();
+    const group = screen.getByRole('group', { name: /signal order/i });
+    expect(group).toBeInTheDocument();
+    const grips = within(group).getAllByRole('button', { name: /^reorder /i });
+    expect(grips).toHaveLength(DECK_SIGNALS.length);
+  });
+
+  it('lists signals in the provided order', () => {
+    const order: TileSignalType[] = [
+      'stale',
+      'ci',
+      'security',
+      'reviews',
+      'pullRequests',
+      'issues',
+    ];
+    setup({ signalOrder: order });
+    const group = screen.getByRole('group', { name: /signal order/i });
+    const grips = within(group).getAllByRole('button', { name: /^reorder /i });
+    expect(grips[0]).toHaveAccessibleName(/reorder stale/i);
   });
 });
