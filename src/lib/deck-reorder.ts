@@ -6,6 +6,16 @@
  * without simulating real pointer/keyboard drag (which is unreliable in jsdom).
  */
 
+import type { TileSignalType } from '../types/dashboard';
+
+/** Namespace prefix for a column's sortable id, keeping it disjoint from repo ids. */
+export const DECK_COLUMN_ID_PREFIX = 'col:';
+
+/** The sortable id for a signal column (e.g. `col:ci`). */
+export function deckColumnId(signal: TileSignalType): string {
+  return `${DECK_COLUMN_ID_PREFIX}${signal}`;
+}
+
 /** A drag's resolved source + destination indices within an ordered id list. */
 export interface ReorderIndices {
   from: number;
@@ -39,4 +49,32 @@ export function reorderIndices(
     return null;
   }
   return { from, to };
+}
+
+/** What a Deck drag resolved to: a row (`repo`) move or a column (`column`) move. */
+export interface DeckMove extends ReorderIndices {
+  kind: 'repo' | 'column';
+}
+
+/**
+ * Resolves a Deck drag end to a row or column move. The Deck's single
+ * `DndContext` hosts two sortable axes — repo rows (ids = `nameWithOwner`) and
+ * signal columns (ids namespaced, e.g. `col:ci`). The dragged id's membership
+ * picks the axis: a `columnIds` member ⇒ a `column` move (indices within
+ * `columnIds`), otherwise a `repo` move (indices within `repoIds`). Returns
+ * `null` for any no-op (see {@link reorderIndices}).
+ */
+export function resolveDeckMove(
+  repoIds: readonly string[],
+  columnIds: readonly string[],
+  activeId: string | number | null | undefined,
+  overId: string | number | null | undefined,
+): DeckMove | null {
+  const active = activeId == null ? null : String(activeId);
+  if (active !== null && columnIds.includes(active)) {
+    const move = reorderIndices(columnIds, activeId, overId);
+    return move === null ? null : { kind: 'column', ...move };
+  }
+  const move = reorderIndices(repoIds, activeId, overId);
+  return move === null ? null : { kind: 'repo', ...move };
 }
