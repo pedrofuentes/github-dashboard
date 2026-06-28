@@ -191,4 +191,25 @@ describe('App — Deck scoped retry wiring', () => {
     expect(retrySignal).toHaveBeenCalledWith(repos[0], 'ci');
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it('gates Deck row reordering when a repo filter is active (no grips, hint shown)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a'), repo('octo/b')]);
+
+    // Enter Customize: both repo rows expose a reorder grip.
+    await user.click(screen.getByRole('button', { name: /customize tiles/i }));
+    expect(screen.getByRole('button', { name: /reorder octo\/a/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reorder octo\/b/i })).toBeInTheDocument();
+
+    // Activate a repo filter narrowing the fleet to octo/a.
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    await user.click(screen.getByRole('option', { name: /octo\/a/i }));
+
+    // Reordering must be gated while filtered (a subset cannot persist into the
+    // full-fleet order): no grips, and the hint explains how to re-enable it.
+    expect(screen.queryByRole('button', { name: /reorder octo\/a/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /reorder octo\/b/i })).toBeNull();
+    expect(screen.getByText(/clear the filter to reorder/i)).toBeInTheDocument();
+  });
 });
