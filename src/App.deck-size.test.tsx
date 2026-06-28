@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -93,20 +93,19 @@ describe('App — Deck tile-size wiring', () => {
 
     const board = screen.getByRole('region', { name: /repository board/i });
     const gridOf = (): HTMLElement => {
-      const key = within(board).getAllByRole('link')[0];
-      const grid = key.parentElement;
-      if (!grid) {
-        throw new Error('deck grid not found');
+      const row = board.querySelector<HTMLElement>('[data-repo-row]');
+      if (!row) {
+        throw new Error('deck repo row not found');
       }
-      return grid;
+      return row;
     };
 
     // Default medium.
-    expect(gridOf().style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(152px, 1fr))');
+    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, minmax(0, 152px))');
 
     await user.click(screen.getByRole('radio', { name: /large/i }));
 
-    expect(gridOf().style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(192px, 1fr))');
+    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, minmax(0, 192px))');
     expect(localStorage.getItem('fleet:deck-tile-size')).toBe('large');
   });
 });

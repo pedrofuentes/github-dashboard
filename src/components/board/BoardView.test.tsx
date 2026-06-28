@@ -421,31 +421,81 @@ describe('BoardView — edit mode (× remove overlay)', () => {
 });
 
 describe('BoardView — tile size', () => {
-  /** The grid container is the parent of the rendered keys. */
-  function grid(container: HTMLElement): HTMLElement {
-    const el = keys(container)[0]?.parentElement;
+  /** The first repo-row grid carries the per-column matrix template. */
+  function row(container: HTMLElement): HTMLElement {
+    const el = container.querySelector<HTMLElement>('[data-repo-row]');
     if (!el) {
-      throw new Error('BoardView grid container not found');
+      throw new Error('BoardView repo row not found');
     }
     return el;
   }
 
-  it('defaults to the medium (~152px) auto-fill grid', () => {
+  it('defaults to the medium (152px) per-column matrix template', () => {
     const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
-    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(152px, 1fr))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 152px))');
   });
 
-  it('widens the keys for the large size', () => {
+  it('widens the columns for the large size', () => {
     const { container } = render(
       <BoardView repos={[repoA]} getRowData={getRowData} size="large" />,
     );
-    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(192px, 1fr))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 192px))');
   });
 
-  it('shrinks the keys for the x-small size', () => {
+  it('shrinks the columns for the x-small size', () => {
     const { container } = render(
       <BoardView repos={[repoA]} getRowData={getRowData} size="x-small" />,
     );
-    expect(grid(container).style.gridTemplateColumns).toBe('repeat(auto-fill, minmax(104px, 1fr))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 104px))');
+  });
+});
+
+describe('BoardView — matrix layout', () => {
+  /** Repo-row ids in DOM order. */
+  function repoRows(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-repo-row]')).map(
+      (el) => el.getAttribute('data-repo-row') ?? '',
+    );
+  }
+
+  it('renders exactly one row per repo (one row per repo, never mixing)', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    expect(repoRows(container)).toEqual(['octo/repo-a', 'octo/repo-b']);
+  });
+
+  it("groups each repo's six signal keys inside its own row", () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    const rowA = container.querySelector<HTMLElement>('[data-repo-row="octo/repo-a"]');
+    expect(keys(rowA as HTMLElement)).toHaveLength(6);
+  });
+
+  it('orders the repo rows by the repoOrder prop', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        repoOrder={['octo/repo-b', 'octo/repo-a']}
+      />,
+    );
+    expect(repoRows(container)).toEqual(['octo/repo-b', 'octo/repo-a']);
+  });
+
+  it('appends visible repos missing from repoOrder after the ordered ones', () => {
+    const { container } = render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} repoOrder={['octo/repo-b']} />,
+    );
+    expect(repoRows(container)).toEqual(['octo/repo-b', 'octo/repo-a']);
+  });
+
+  it('orders the signal columns within a row by the signalOrder prop', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        signalOrder={['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']}
+      />,
+    );
+    const signals = keys(container).map((key) => key.getAttribute('data-signal'));
+    expect(signals).toEqual(['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']);
   });
 });
