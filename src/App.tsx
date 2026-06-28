@@ -361,7 +361,11 @@ function FleetPanel({
   // Full repos (not filteredRepos) so fleet-wide bulk ops cover every repo.
   const repoNames = useMemo(() => repos.map((r) => r.nameWithOwner), [repos]);
   // Deck matrix row/column order (persisted, reconciled against the fleet).
-  const { repoOrder: deckRepoOrder, signalOrder: deckSignalOrder } = useDeckOrder(repoNames);
+  const {
+    repoOrder: deckRepoOrder,
+    signalOrder: deckSignalOrder,
+    moveRepo: deckMoveRepo,
+  } = useDeckOrder(repoNames);
   // Destructure stable callbacks from `deck` so exhaustive-deps sees direct refs.
   const {
     toggleKey: deckToggleKey,
@@ -567,6 +571,7 @@ function FleetPanel({
           size={deckTileSize}
           repoOrder={deckRepoOrder}
           signalOrder={deckSignalOrder}
+          onMoveRepo={deckMoveRepo}
         />
         {deckEditing ? (
           <DeckCustomizePanel
