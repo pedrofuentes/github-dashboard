@@ -564,25 +564,27 @@ function FleetPanel({
       />
     ) : view === 'deck' ? (
       <>
-        <BoardView
-          repos={repos}
-          getRowData={getRowData}
-          onRepoActivate={handleRepoActivate}
-          loading={viewLoading}
-          error={status === 'error' ? error : null}
-          onRetry={reload}
-          onRetrySignal={retrySignal}
-          repoFilter={filter.isActive ? filter.derivedSelected : undefined}
-          hiddenKeys={deck.hidden}
-          editing={deckEditing}
-          onToggleKey={handleDeckToggleKey}
-          size={deckTileSize}
-          repoOrder={deckRepoOrder}
-          signalOrder={deckSignalOrder}
-          onMoveRepo={deckMoveRepo}
-          onMoveSignal={deckMoveSignal}
-          onRemoveRepo={handleDeckRemoveRepo}
-        />
+        <div className={deckEditing ? 'lg:pr-[28rem]' : undefined}>
+          <BoardView
+            repos={repos}
+            getRowData={getRowData}
+            onRepoActivate={handleRepoActivate}
+            loading={viewLoading}
+            error={status === 'error' ? error : null}
+            onRetry={reload}
+            onRetrySignal={retrySignal}
+            repoFilter={filter.isActive ? filter.derivedSelected : undefined}
+            hiddenKeys={deck.hidden}
+            editing={deckEditing}
+            onToggleKey={handleDeckToggleKey}
+            size={deckTileSize}
+            repoOrder={deckRepoOrder}
+            signalOrder={deckSignalOrder}
+            onMoveRepo={deckMoveRepo}
+            onMoveSignal={deckMoveSignal}
+            onRemoveRepo={handleDeckRemoveRepo}
+          />
+        </div>
         {deckEditing ? (
           <DeckCustomizePanel
             repos={repos}
