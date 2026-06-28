@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Reorder Deck repositories by drag** — in the Deck's Customize mode each repo
+  row gains a drag grip; drag (pointer or keyboard) to reorder the rows. The
+  order is remembered. Reordering is disabled while a repository filter is active
+  (it would only see a subset) — a hint explains how to re-enable it.
 - **Full-window mode** — a toolbar control opens the active view in an immersive,
   chrome-less overlay that fills the browser window (the header and toolbar are
   hidden). A thin top bar shows the view name and an Exit control; `Esc` also

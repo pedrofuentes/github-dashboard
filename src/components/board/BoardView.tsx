@@ -18,16 +18,32 @@
  * {@link BoardKey}, so the grid itself stays a plain styled container.
  */
 import { Fragment, useMemo } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
 import { DECK_TILE_MIN_PX } from '../../lib/deck-tile-size';
 import type { DeckTileSize } from '../../lib/deck-tile-size';
+import { reorderIndices } from '../../lib/deck-reorder';
 import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
 import { BoardKey } from './BoardKey';
+import { SortableRepoRow } from './SortableRepoRow';
 
 /**
  * Responsive Stream Deck grid: square keys flow via `auto-fill`, so the column
@@ -112,6 +128,14 @@ export interface BoardViewProps {
    * Omitted ⇒ {@link DECK_SIGNALS}.
    */
   signalOrder?: readonly TileSignalType[];
+  /**
+   * Reorders the repo row at `from` to `to` (drag/keyboard). When supplied AND
+   * `editing` AND no repo filter is active, each row gains a drag grip and the
+   * rows become a sortable list. A repo filter renders only a subset, so
+   * reordering is disabled then (persisting a partial order would corrupt it);
+   * a hint is shown instead.
+   */
+  onMoveRepo?: (from: number, to: number) => void;
 }
 
 export function BoardView({
@@ -129,6 +153,7 @@ export function BoardView({
   size = 'medium',
   repoOrder,
   signalOrder,
+  onMoveRepo,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -186,6 +211,32 @@ export function BoardView({
     [visibleKeysByRepo],
   );
 
+  // Pointer + keyboard drag (the keyboard sensor gives Space-pickup / arrow-move
+  // / Space-drop with announcements, satisfying the WAI-ARIA drag contract).
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Reordering rows persists into the full-fleet order, so it is only safe when
+  // the rendered set is the whole fleet: gate it off whenever a repo filter is
+  // active (the rendered subset's indices wouldn't map to the saved order).
+  const filterActive = repoFilter !== undefined;
+  const rowsReorderable = editing && onMoveRepo !== undefined && !filterActive;
+  const showReorderFilterHint = editing && onMoveRepo !== undefined && filterActive;
+
+  const orderedRepoIds = useMemo(
+    () => orderedRepos.map((repo) => repo.nameWithOwner),
+    [orderedRepos],
+  );
+
+  const handleRowDragEnd = (event: DragEndEvent): void => {
+    const move = reorderIndices(orderedRepoIds, event.active.id, event.over?.id);
+    if (move !== null) {
+      onMoveRepo?.(move.from, move.to);
+    }
+  };
+
   if (error !== null) {
     return (
       <section aria-label="Repository board" className="flex flex-col gap-3">
@@ -237,6 +288,39 @@ export function BoardView({
     gridTemplateColumns: `repeat(${columns.length}, minmax(0, ${DECK_TILE_MIN_PX[size]}px))`,
   };
 
+  // One repo's signal-key cells, shared by the plain and sortable row variants.
+  const renderRepoCells = (repo: Repo, signals: readonly TileSignalType[]): ReactNode => {
+    const data = getRowData(repo);
+    return signals.map((signal) => {
+      const id = `${repo.nameWithOwner}:${signal}`;
+      const boardKey = (
+        <BoardKey
+          repo={repo}
+          signal={signal}
+          data={data}
+          href={signalDeepLinkUrl(repo, signal, data)}
+          onActivate={onRepoActivate}
+          onRetry={onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry}
+        />
+      );
+      return editing && onToggleKey ? (
+        <div key={id} className="relative">
+          {boardKey}
+          <button
+            type="button"
+            onClick={() => onToggleKey(repo, signal)}
+            aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
+            className={REMOVE_BUTTON_CLASS}
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      ) : (
+        <Fragment key={id}>{boardKey}</Fragment>
+      );
+    });
+  };
+
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
       <p role="status" aria-live="polite" className="text-sm text-text-muted">
@@ -268,48 +352,42 @@ export function BoardView({
         </div>
       ) : (
         <div aria-busy={loading} className="flex flex-col gap-3">
-          {visibleKeysByRepo.map(({ repo, signals }) => {
-            const data = getRowData(repo);
-            return (
+          {showReorderFilterHint ? (
+            <p className="rounded-md border border-border bg-surface-raised px-4 py-2 text-sm text-text-muted">
+              Clear the filter to reorder repositories.
+            </p>
+          ) : null}
+          {rowsReorderable ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleRowDragEnd}
+            >
+              <SortableContext items={orderedRepoIds} strategy={verticalListSortingStrategy}>
+                {visibleKeysByRepo.map(({ repo, signals }) => (
+                  <SortableRepoRow
+                    key={repo.nameWithOwner}
+                    id={repo.nameWithOwner}
+                    label={repo.nameWithOwner}
+                    rowStyle={rowStyle}
+                  >
+                    {renderRepoCells(repo, signals)}
+                  </SortableRepoRow>
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            visibleKeysByRepo.map(({ repo, signals }) => (
               <div
                 key={repo.nameWithOwner}
                 data-repo-row={repo.nameWithOwner}
                 className={GRID_CLASS}
                 style={rowStyle}
               >
-                {signals.map((signal) => {
-                  const id = `${repo.nameWithOwner}:${signal}`;
-                  const boardKey = (
-                    <BoardKey
-                      repo={repo}
-                      signal={signal}
-                      data={data}
-                      href={signalDeepLinkUrl(repo, signal, data)}
-                      onActivate={onRepoActivate}
-                      onRetry={
-                        onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry
-                      }
-                    />
-                  );
-                  return editing && onToggleKey ? (
-                    <div key={id} className="relative">
-                      {boardKey}
-                      <button
-                        type="button"
-                        onClick={() => onToggleKey(repo, signal)}
-                        aria-label={`Remove ${SIGNAL_LABELS[signal]} tile for ${repo.nameWithOwner}`}
-                        className={REMOVE_BUTTON_CLASS}
-                      >
-                        <span aria-hidden="true">✕</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <Fragment key={id}>{boardKey}</Fragment>
-                  );
-                })}
+                {renderRepoCells(repo, signals)}
               </div>
-            );
-          })}
+            ))
+          )}
         </div>
       )}
     </section>
