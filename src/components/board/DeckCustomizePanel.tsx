@@ -53,19 +53,7 @@ export interface DeckCustomizePanelProps {
   onClose: () => void;
 }
 
-// Mirrors CustomizePanel's trap selector: interactive elements plus form
-// controls so the toggles, checkboxes and search input join the Tab cycle.
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function getFocusableElements(root: HTMLElement | null): HTMLElement[] {
-  if (root === null) {
-    return [];
-  }
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-}
-
-/** Classifies a `{ shown, total }` tally as the tri-state the UI renders. */
+// Classifies a `{ shown, total }` tally as the tri-state the UI renders.
 function visibilityState(shown: number, total: number): 'all' | 'some' | 'none' {
   if (shown === 0) return 'none';
   return shown === total ? 'all' : 'some';
@@ -103,25 +91,6 @@ export function DeckCustomizePanel({
     if (event.key === 'Escape') {
       event.stopPropagation();
       onClose();
-      return;
-    }
-    if (event.key !== 'Tab') {
-      return;
-    }
-    const focusables = getFocusableElements(dialogRef.current);
-    if (focusables.length === 0) {
-      event.preventDefault();
-      return;
-    }
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
     }
   }
 
@@ -160,20 +129,13 @@ export function DeckCustomizePanel({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div
-        data-testid="deck-customize-backdrop"
-        aria-hidden="true"
-        onClick={onClose}
-        className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-bg)_70%,transparent)]"
-      />
+    <div className="fixed inset-y-0 right-0 z-40 flex">
       <div
         ref={dialogRef}
         role="dialog"
-        aria-modal="true"
         aria-labelledby={titleId}
         onKeyDown={handleKeyDown}
-        className="relative ml-auto flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface p-6 text-text shadow-xl"
+        className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface p-6 text-text shadow-xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
