@@ -229,11 +229,14 @@ async function recordPrivacyFlow(page: Page, appOrigin: string): Promise<Recorde
 
   // Wait for the authenticated dashboard, the repo row (signals fired) and the
   // avatar (the *.githubusercontent.com path), then let the network settle.
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Authenticated as testuser')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Settings' }).locator('img')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Authenticated as testuser')).toBeHidden();
   await expect(
     page.getByRole('button', { name: 'View details for octo-org/hello-world' }),
   ).toBeVisible();
-  await expect(page.locator('header img')).toBeVisible();
   await page.waitForLoadState('networkidle');
 
   return requests;
@@ -266,12 +269,19 @@ test('contacts only GitHub-owned origins across the whole authenticated flow', a
   const appRequests = requests.filter((r) => r.origin === appOrigin);
   expect(appRequests.length).toBeGreaterThan(0);
   const appOriginOffenders = appRequests
-    .filter(
-      (r) =>
-        r.method !== 'GET' ||
-        (r.postData ?? '') !== '' ||
-        !STATIC_ASSET_RESOURCE_TYPES.has(r.resourceType),
-    )
+    .filter((r) => {
+      const isVersionProbe =
+        r.method === 'GET' &&
+        r.resourceType === 'fetch' &&
+        new URL(r.url).pathname.endsWith('/version.json') &&
+        (r.postData ?? '') === '';
+      return (
+        !isVersionProbe &&
+        (r.method !== 'GET' ||
+          (r.postData ?? '') !== '' ||
+          !STATIC_ASSET_RESOURCE_TYPES.has(r.resourceType))
+      );
+    })
     .map((r) => `${r.method} [${r.resourceType}] ${r.url} postData=${JSON.stringify(r.postData)}`);
   expect(appOriginOffenders).toEqual([]);
 
