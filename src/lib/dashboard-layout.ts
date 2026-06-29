@@ -258,7 +258,12 @@ export function saveDashboardLayout(tiles: DashboardTile[]): void {
   if (!DashboardLayoutSchema.safeParse(tiles).success) {
     return;
   }
-  safeSet(STORAGE_KEY_V2, JSON.stringify({ version: LAYOUT_VERSION, tiles }));
+  if (!safeSet(STORAGE_KEY_V2, JSON.stringify({ version: LAYOUT_VERSION, tiles }))) {
+    console.warn(
+      'Failed to persist dashboard layout; changes will be lost on next load.',
+      new Error('dashboard layout save failed'),
+    );
+  }
 }
 
 /**
