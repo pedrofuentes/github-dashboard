@@ -150,15 +150,24 @@ describe('RepoOwnerToggle — keyboard (WAI-ARIA radiogroup roving tabindex)', (
     expect(nameOnly).toHaveFocus();
   });
 
-  it('treats ArrowDown/ArrowUp as forward/backward movement', async () => {
+  it('treats ArrowDown/ArrowUp as forward/backward movement, selecting and persisting the choice (#489)', async () => {
     const user = userEvent.setup();
     render(<RepoOwnerToggle />);
 
     screen.getByRole('radio', { name: /show owner/i }).focus();
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('radio', { name: /name only/i })).toHaveFocus();
+
+    const nameOnly = screen.getByRole('radio', { name: /name only/i });
+    expect(nameOnly).toHaveFocus();
+    expect(nameOnly).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(REPO_OWNER_KEY)).toBe('hide');
+
     await user.keyboard('{ArrowUp}');
-    expect(screen.getByRole('radio', { name: /show owner/i })).toHaveFocus();
+
+    const showOwner = screen.getByRole('radio', { name: /show owner/i });
+    expect(showOwner).toHaveFocus();
+    expect(showOwner).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(REPO_OWNER_KEY)).toBe('show');
   });
 
   it('jumps to the first and last option with Home and End', async () => {
