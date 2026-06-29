@@ -141,7 +141,10 @@ describe('BoardView — loading / error / empty states', () => {
     const { container } = render(<BoardView repos={[]} getRowData={getRowData} loading />);
 
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-part="skeleton"]').length).toBeGreaterThan(0);
+    // Exactly 2 skeleton rows × 6 signals = 12 placeholders
+    expect(container.querySelectorAll('[data-part="skeleton"]')).toHaveLength(
+      2 * SIGNAL_ORDER.length,
+    );
     expect(keys(container)).toHaveLength(0);
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
   });
