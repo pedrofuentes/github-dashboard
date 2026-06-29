@@ -579,6 +579,10 @@ describe('BoardView — repo-block packing layout', () => {
     expect(blocks).not.toBeNull();
     expect(blocks.className).toContain('flex-wrap');
     expect(blocks.className).toContain('justify-center');
+    // Wrapper hugs its content and is centered (mx-auto + w-fit) so blocks stay
+    // centered even when a block is wider than the page's max-w container.
+    expect(blocks.className).toContain('mx-auto');
+    expect(blocks.className).toContain('w-fit');
     expect(blocks.contains(rowA)).toBe(true);
     expect(blocks.contains(rowB)).toBe(true);
   });
