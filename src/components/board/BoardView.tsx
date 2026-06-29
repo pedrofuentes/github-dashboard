@@ -61,7 +61,7 @@ const GRID_CLASS = 'grid gap-3';
  * tiles never stretch beyond their chosen size. `items-start` keeps blocks
  * top-aligned regardless of per-block height.
  */
-const BLOCKS_CLASS = 'flex flex-wrap items-start justify-center gap-3';
+const BLOCKS_CLASS = 'mx-auto flex w-fit flex-wrap items-start justify-center gap-3';
 
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
