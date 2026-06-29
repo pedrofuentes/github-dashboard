@@ -133,7 +133,7 @@ function Shell(): ReactElement {
         id="main-content"
         tabIndex={-1}
         aria-labelledby="overview-heading"
-        className="mx-auto max-w-5xl px-6 pb-12 outline-none"
+        className={`mx-auto px-6 pb-12 outline-none ${view === 'deck' ? 'max-w-none' : 'max-w-5xl'}`}
       >
         <h2 id="overview-heading" className="sr-only">
           Fleet overview

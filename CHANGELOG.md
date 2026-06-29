@@ -13,7 +13,8 @@ first.
 ### Changed
 
 - **Deck packs repositories full-width.** The Deck now flows each repo as an
-  intact block of signal tiles and packs as many per line as fit (filling the
+  intact block of signal tiles and packs as many per line as fit (full-bleed,
+  filling the
   full window in full-window mode), instead of one repo per line. Packed blocks
   stay centered, and tiles keep their chosen size (readable) while customizing —
   they pack fewer-per-line rather than shrinking. Drag-reorder a repo to any 2D
