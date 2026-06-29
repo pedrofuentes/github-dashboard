@@ -169,6 +169,39 @@ describe('SavedViewsMenu', () => {
     expect(onRename).toHaveBeenCalledWith('v3', 'New name');
   });
 
+  it('does not call onRename for a blank name and shows an alert', async () => {
+    const user = userEvent.setup();
+    const view = makeView({ id: 'v7', name: 'Keep me' });
+    const { onRename } = renderMenu({ views: [view] });
+
+    await user.click(screen.getByRole('button', { name: /saved views/i }));
+    await user.click(screen.getByRole('button', { name: /rename saved view keep me/i }));
+
+    const input = screen.getByLabelText(/rename view/i);
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: /^save name$/i }));
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('does not call onRename for an over-long name and shows an alert', async () => {
+    const user = userEvent.setup();
+    const view = makeView({ id: 'v8', name: 'Keep me' });
+    const { onRename } = renderMenu({ views: [view] });
+
+    await user.click(screen.getByRole('button', { name: /saved views/i }));
+    await user.click(screen.getByRole('button', { name: /rename saved view keep me/i }));
+
+    const input = screen.getByLabelText(/rename view/i);
+    await user.clear(input);
+    await user.type(input, 'a'.repeat(MAX_VIEW_NAME_LENGTH + 1));
+    await user.click(screen.getByRole('button', { name: /^save name$/i }));
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
   it('requires confirmation before removing a view', async () => {
     const user = userEvent.setup();
     const view = makeView({ id: 'v4', name: 'Disposable' });

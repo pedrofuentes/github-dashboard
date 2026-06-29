@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MAX_VIEW_NAME_LENGTH,
+  MAX_SAVED_VIEWS,
   STORAGE_KEY_V1,
   type SavedView,
   type SavedViewsState,
@@ -307,5 +308,78 @@ describe('useSavedViews', () => {
     const { result } = renderHook(() => useSavedViews());
     expect(result.current.views).toHaveLength(1);
     expect(result.current.views[0].name).toBe('Seeded');
+  });
+
+  it('returns ok:false when the MAX_SAVED_VIEWS cap is reached', () => {
+    const seed: SavedViewsState = {
+      version: 1,
+      views: Array.from({ length: MAX_SAVED_VIEWS }, (_, i) => ({
+        id: `seed-${i}`,
+        name: `View ${i}`,
+        view: 'triage' as const,
+        filter: EMPTY_QUERY,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      })),
+    };
+    localStorage.setItem(STORAGE_KEY_V1, JSON.stringify(seed));
+
+    const { result } = renderHook(() => useSavedViews());
+    let outcome!: ReturnType<typeof result.current.create>;
+    act(() => {
+      outcome = result.current.create({ name: 'One Too Many', view: 'grid', filter: EMPTY_QUERY });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views).toHaveLength(MAX_SAVED_VIEWS);
+    expect(persisted()?.views).toHaveLength(MAX_SAVED_VIEWS);
+  });
+
+  it('returns ok:false when the rename id is not found', () => {
+    const { result } = renderHook(() => useSavedViews());
+
+    let outcome!: ReturnType<typeof result.current.rename>;
+    act(() => {
+      outcome = result.current.rename('nonexistent-id', 'X');
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+  });
+
+  it('returns ok:false when the remove id is not found', () => {
+    const { result } = renderHook(() => useSavedViews());
+
+    let outcome!: ReturnType<typeof result.current.remove>;
+    act(() => {
+      outcome = result.current.remove('nonexistent-id');
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.views).toEqual([]); // unchanged
+  });
+
+  it('reports update failure when persistence is unavailable', () => {
+    const { result } = renderHook(() => useSavedViews());
+    let created!: SavedView;
+    act(() => {
+      created = expectView(
+        result.current.create({ name: 'Patch', view: 'grid', filter: EMPTY_QUERY }),
+      );
+    });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    let outcome!: ReturnType<typeof result.current.update>;
+    act(() => {
+      outcome = result.current.update(created.id, { filter: ALT_QUERY });
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    expect(result.current.find(created.id)?.filter).toEqual(EMPTY_QUERY);
+    expect(persisted()?.views[0].filter).toEqual(EMPTY_QUERY);
   });
 });
