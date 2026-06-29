@@ -10,10 +10,16 @@ describe('graphql-flags', () => {
     };
 
     expect(flagsModule.GRAPHQL_SIGNAL_FLAGS).toBeDefined();
-    expect(flagsModule.GRAPHQL_ENABLED_SIGNALS).toEqual(
-      Object.entries(flagsModule.GRAPHQL_SIGNAL_FLAGS ?? {})
-        .filter(([, enabled]) => enabled)
-        .map(([signal]) => signal),
-    );
+    // Concrete-value oracle: hard-code the expected enabled set so a symmetric
+    // entries→filter→map refactor bug can't stay green by recomputing the impl.
+    expect(flagsModule.GRAPHQL_ENABLED_SIGNALS).toEqual([
+      'ci',
+      'reviews',
+      'pullRequests',
+      'issues',
+      'stale',
+    ]);
+    expect(flagsModule.GRAPHQL_ENABLED_SIGNALS).not.toContain('security');
+    expect(flagsModule.GRAPHQL_ENABLED_SIGNALS).not.toContain('activity');
   });
 });
