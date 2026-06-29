@@ -118,6 +118,21 @@ describe('InboxView states (AC-13)', () => {
     expect(screen.queryByText(/all caught up/i)).toBeNull();
   });
 
+  it('suppresses the Clear filters button when only the global scope is active (no user-set filter to clear)', () => {
+    // #597: clearFilters() cannot clear the repoScope (owned by App), so showing
+    // the button when only scope is active is misleading — suppress it.
+    render(
+      <InboxView
+        inbox={inboxResult({ items: [], filters: DEFAULT_FILTERS })}
+        repos={REPOS}
+        repoScope={new Set([REPOS[0].nameWithOwner])}
+      />,
+    );
+
+    expect(screen.getByText(/no items match these filters/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /clear filters/i })).toBeNull();
+  });
+
   it('shows a distinct empty-filtered state with a clear-filters control when filters hide everything', async () => {
     const user = userEvent.setup();
     const setFilters = vi.fn();
@@ -214,6 +229,29 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
 
     expect(screen.getByLabelText(/filter by repository/i)).toHaveValue('');
     await waitFor(() => expect(setFilters).toHaveBeenCalledWith({ repos: [] }));
+  });
+
+  it('preserves the repo-filter when the fleet repos transiently becomes empty (transient load error)', async () => {
+    // #606: the reconciliation effect must not wipe the filter selection when the
+    // repo list is momentarily empty due to a fleet-load error.
+    const setFilters = vi.fn();
+    const selectedFilters = { ...DEFAULT_FILTERS, repos: [REPOS[0].nameWithOwner] };
+    const { rerender } = render(
+      <InboxView inbox={inboxResult({ filters: selectedFilters, setFilters })} repos={REPOS} />,
+    );
+
+    expect(screen.getByLabelText(/filter by repository/i)).toHaveValue(REPOS[0].nameWithOwner);
+    expect(setFilters).not.toHaveBeenCalled();
+
+    // Simulate a transient fleet-load error: repos momentarily becomes empty.
+    rerender(
+      <InboxView inbox={inboxResult({ filters: selectedFilters, setFilters })} repos={[]} />,
+    );
+
+    // The reconciliation must NOT call setFilters when repos is empty — the filter
+    // selection must survive until the fleet reloads.
+    await waitFor(() => expect(screen.getByLabelText(/filter by repository/i)).toBeInTheDocument());
+    expect(setFilters).not.toHaveBeenCalled();
   });
 
   it('narrows by kind', async () => {
@@ -441,5 +479,57 @@ describe('InboxView bulk selection + actions (T-f5-inbox-bulk)', () => {
 
     expect(screen.getByRole('checkbox', { name: /select alpha/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /select bravo/i })).toBeInTheDocument();
+  });
+
+  it('bulk mark-read announces only the count of newly-read items when some are already read (divergent count)', async () => {
+    // #598: changedCount counts only the items that will actually change state, so
+    // the announcement is accurate even when the selection mixes already-read items.
+    const user = userEvent.setup();
+    const markReadMany = vi.fn();
+    const alreadyRead = makeItem({ id: 'r', title: 'Already read', read: true });
+    const unread = makeItem({ id: 'u', title: 'Unread item', read: false });
+    render(
+      <InboxView
+        inbox={inboxResult({ items: [alreadyRead, unread], markReadMany })}
+        repos={REPOS}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select already read/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select unread item/i }));
+    await user.click(screen.getByRole('button', { name: /^mark read$/i }));
+
+    // 2 selected, but only 1 is unread → announcement must say "1", not "2".
+    expect(screen.getByText('Marked 1 as read')).toBeInTheDocument();
+  });
+
+  it('bulk dismiss announces only the count of newly-dismissed items when some are already dismissed (divergent count)', async () => {
+    // #598: changedCount counts only not-yet-dismissed items in the selection.
+    const user = userEvent.setup();
+    const dismissMany = vi.fn();
+    const active = makeItem({ id: 'a', title: 'Active item', dismissed: false });
+    const alreadyDismissed = makeItem({
+      id: 'd',
+      title: 'Dismissed item',
+      dismissed: true,
+      read: true,
+    });
+    render(
+      <InboxView
+        inbox={inboxResult({
+          items: [active, alreadyDismissed],
+          filters: { ...DEFAULT_FILTERS, showDismissed: true },
+          dismissMany,
+        })}
+        repos={REPOS}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /select active item/i }));
+    await user.click(screen.getByRole('checkbox', { name: /select dismissed item/i }));
+    await user.click(screen.getByRole('button', { name: /^dismiss$/i }));
+
+    // 2 selected, but only 1 is not-yet-dismissed → announcement must say "1", not "2".
+    expect(screen.getByText('Dismissed 1 items')).toBeInTheDocument();
   });
 });

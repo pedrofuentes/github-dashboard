@@ -1131,5 +1131,66 @@ describe('App', () => {
       await screen.findByRole('region', { name: /notifications inbox/i });
       expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
     });
+
+    it('keeps the fleet-wide unread badge count even when a global repo scope hides some repos (AC-16)', async () => {
+      // #444: unreadCount is computed over the full fleet (not the scoped view), so
+      // the toggle badge must not drop when the scope hides repos.
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      // Two repos, one failing-CI item each → 2 fleet-wide unread.
+      expect(inboxToggleButton()).toHaveTextContent('2');
+
+      // Activate scope to show only octo/one (hides octo/two's item from the view).
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'one');
+
+      // Wait for the scope to take effect: only one item in the inbox list.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+
+      // Close the filter panel (Escape) so viewToggle() finds exactly one group.
+      await user.keyboard('{Escape}');
+
+      // Badge must still show the fleet-wide count (2), not the scoped count (1).
+      await waitFor(() => expect(inboxToggleButton()).toHaveTextContent('2'));
+    });
+
+    it('dismissing an item under an active repo scope decrements the fleet-wide badge (AC-16)', async () => {
+      // #445: mark-read/dismiss operates on the full inbox (not scoped), so the
+      // fleet-wide badge must update correctly even with a scope active.
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      expect(inboxToggleButton()).toHaveTextContent('2');
+
+      // Activate scope to show only octo/one.
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'one');
+
+      // Wait for scope: one inbox item visible; then close the panel.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+      await user.keyboard('{Escape}');
+
+      // Dismiss the sole visible item (octo/one's unread CI failure).
+      const dismissButtons = await screen.findAllByRole('button', { name: /^dismiss/i });
+      await user.click(dismissButtons[0]);
+
+      // The fleet-wide badge decrements 2 → 1 because the dismissed item was unread.
+      await waitFor(() => expect(inboxToggleButton()).toHaveTextContent('1'));
+    });
   });
 });

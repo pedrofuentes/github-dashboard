@@ -69,3 +69,74 @@ describe('DeckSizeControl', () => {
     expect(screen.getByRole('radio', { name: /x-small/i })).toHaveAttribute('tabindex', '-1');
   });
 });
+
+describe('DeckSizeControl — keyboard reverse/wrap + Home/End (#619)', () => {
+  it('moves selection backward with ArrowLeft (medium → small)', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    const medium = screen.getByRole('radio', { name: /medium/i });
+    medium.focus();
+    await user.keyboard('{ArrowLeft}');
+
+    expect(screen.getByRole('radio', { name: /^small/i })).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DECK_TILE_SIZE_KEY)).toBe('small');
+  });
+
+  it('moves selection backward with ArrowUp (medium → small)', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    const medium = screen.getByRole('radio', { name: /medium/i });
+    medium.focus();
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.getByRole('radio', { name: /^small/i })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('wraps from the first option to the last with ArrowLeft', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    // Click x-small to make it the selected (focused) radio.
+    await user.click(screen.getByRole('radio', { name: /x-small/i }));
+    await user.keyboard('{ArrowLeft}');
+
+    expect(screen.getByRole('radio', { name: /large/i })).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DECK_TILE_SIZE_KEY)).toBe('large');
+  });
+
+  it('wraps from the last option to the first with ArrowRight', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    // Click large to make it the selected (focused) radio.
+    await user.click(screen.getByRole('radio', { name: /large/i }));
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByRole('radio', { name: /x-small/i })).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DECK_TILE_SIZE_KEY)).toBe('x-small');
+  });
+
+  it('Home key jumps to the first option (X-Small) from any position', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    await user.click(screen.getByRole('radio', { name: /large/i }));
+    await user.keyboard('{Home}');
+
+    expect(screen.getByRole('radio', { name: /x-small/i })).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DECK_TILE_SIZE_KEY)).toBe('x-small');
+  });
+
+  it('End key jumps to the last option (Large) from any position', async () => {
+    const user = userEvent.setup();
+    render(<DeckSizeControl />);
+
+    await user.click(screen.getByRole('radio', { name: /x-small/i }));
+    await user.keyboard('{End}');
+
+    expect(screen.getByRole('radio', { name: /large/i })).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DECK_TILE_SIZE_KEY)).toBe('large');
+  });
+});

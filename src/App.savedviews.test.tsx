@@ -104,7 +104,7 @@ describe('App Saved Views integration', () => {
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: /filter repositories/i }).getAttribute('aria-label'),
-      ).toMatch(/filter/i),
+      ).toMatch(/1 repo/),
     );
   });
 

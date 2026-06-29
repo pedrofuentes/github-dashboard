@@ -1,12 +1,34 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DragEndEvent } from '@dnd-kit/core';
 
 import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import { deckKeyId } from '../../lib/deck-visibility';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../../types/fleet';
 import { BoardView } from './BoardView';
+
+/**
+ * Seam for #634: capture the DndContext onDragEnd handler so drag-dispatch tests
+ * can invoke it with a synthetic DragEndEvent without triggering real dnd-kit
+ * pointer/keyboard drag (unreliable in jsdom). The shim renders children so all
+ * SortableContext / useSortable calls use dnd-kit's safe default context values.
+ */
+const mockBoardDragCapture = {
+  fn: undefined as ((event: DragEndEvent) => void) | undefined,
+};
+
+vi.mock('@dnd-kit/core', async (importActual) => {
+  const actual = await importActual<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: (props: Parameters<typeof actual.DndContext>[0]) => {
+      mockBoardDragCapture.fn = props.onDragEnd;
+      return props.children ?? null;
+    },
+  };
+});
 
 /** The six signals BoardView renders, in their fixed left-to-right order. */
 const SIGNAL_ORDER: TileSignalType[] = [
@@ -51,6 +73,7 @@ function keys(container: HTMLElement): HTMLElement[] {
 beforeEach(() => {
   localStorage.clear();
   __resetRepoOwnerStoreForTests();
+  mockBoardDragCapture.fn = undefined;
 });
 
 afterEach(() => {
@@ -611,5 +634,78 @@ describe('BoardView — signal columns reorder via drawer (no on-grid header)', 
     const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
     expect(blocks.className).toContain('flex-wrap');
     expect(blocks.querySelectorAll('[data-repo-row]').length).toBe(2);
+  });
+});
+
+describe('BoardView — drag dispatch seam (#634)', () => {
+  it('dispatches a repo row drag to onMoveRepo with the correct indices', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    // Invoke the captured DndContext onDragEnd with a synthetic repo-row drag.
+    mockBoardDragCapture.fn?.({
+      active: { id: 'octo/repo-a' },
+      over: { id: 'octo/repo-b' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveRepo).toHaveBeenCalledTimes(1);
+    expect(onMoveRepo).toHaveBeenCalledWith(0, 1);
+    expect(onMoveSignal).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a column drag to onMoveSignal with the correct indices', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    // Column ids use the 'col:' prefix from deckColumnId (deck-reorder.ts).
+    // Default signalOrder is DECK_SIGNALS: ci(0), security(1), …, stale(5).
+    mockBoardDragCapture.fn?.({
+      active: { id: 'col:ci' },
+      over: { id: 'col:stale' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveSignal).toHaveBeenCalledTimes(1);
+    expect(onMoveSignal).toHaveBeenCalledWith(0, 5);
+    expect(onMoveRepo).not.toHaveBeenCalled();
+  });
+
+  it('calls neither callback for a no-op drag (same source and target)', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    mockBoardDragCapture.fn?.({
+      active: { id: 'octo/repo-a' },
+      over: { id: 'octo/repo-a' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveRepo).not.toHaveBeenCalled();
+    expect(onMoveSignal).not.toHaveBeenCalled();
   });
 });
