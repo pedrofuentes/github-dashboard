@@ -99,3 +99,118 @@ describe('useDeckOrder', () => {
     expect(loadDeckSignalOrder()).toEqual([]);
   });
 });
+
+describe('useDeckOrder — hydration from persisted order (#626)', () => {
+  it('hydrates repoOrder from a pre-populated fleet:deck-repo-order on mount', () => {
+    // Seed localStorage BEFORE renderHook so the lazy useState initializer picks it up.
+    localStorage.setItem('fleet:deck-repo-order', JSON.stringify(['octo/c', 'octo/a', 'octo/b']));
+    const { result } = renderHook(() => useDeckOrder(fleet));
+    expect(result.current.repoOrder).toEqual(['octo/c', 'octo/a', 'octo/b']);
+  });
+
+  it('hydrates signalOrder from a pre-populated fleet:deck-signal-order on mount', () => {
+    const stored = ['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues'];
+    localStorage.setItem('fleet:deck-signal-order', JSON.stringify(stored));
+    const { result } = renderHook(() => useDeckOrder(fleet));
+    expect(result.current.signalOrder).toEqual(stored);
+  });
+
+  it('reconciles a persisted repo order that contains stale entries against the fleet', () => {
+    // 'octo/z' is not in the live fleet and must be pruned; 'octo/b' is missing
+    // from the saved order and must be appended after the known entries.
+    localStorage.setItem('fleet:deck-repo-order', JSON.stringify(['octo/c', 'octo/z', 'octo/a']));
+    const { result } = renderHook(() => useDeckOrder(fleet));
+    expect(result.current.repoOrder).toEqual(['octo/c', 'octo/a', 'octo/b']);
+  });
+});
+
+describe('useDeckOrder — page-teardown flush paths (#627)', () => {
+  it('flushes a pending debounced repo move on beforeunload', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDeckOrder(fleet));
+      act(() => {
+        result.current.moveRepo(2, 0); // c → front
+      });
+      // Debounce not yet elapsed — storage still empty.
+      expect(loadDeckRepoOrder()).toEqual([]);
+
+      // A hard page close fires beforeunload; React never unmounts, so only the
+      // explicit listener flushes the pending write (mirrors useDashboardLayout).
+      act(() => {
+        window.dispatchEvent(new Event('beforeunload'));
+      });
+      expect(loadDeckRepoOrder()).toEqual(['octo/c', 'octo/a', 'octo/b']);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes a pending debounced signal move on beforeunload', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDeckOrder(fleet));
+      act(() => {
+        result.current.moveSignal(0, 5); // ci → last
+      });
+      expect(loadDeckSignalOrder()).toEqual([]);
+
+      act(() => {
+        window.dispatchEvent(new Event('beforeunload'));
+      });
+      expect(loadDeckSignalOrder()).toEqual([
+        'security',
+        'reviews',
+        'pullRequests',
+        'issues',
+        'stale',
+        'ci',
+      ]);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes a pending debounced repo move on visibilitychange → hidden', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDeckOrder(fleet));
+      act(() => {
+        result.current.moveRepo(0, 2); // a → last
+      });
+      expect(loadDeckRepoOrder()).toEqual([]);
+
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      expect(loadDeckRepoOrder()).toEqual(['octo/b', 'octo/c', 'octo/a']);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not flush on visibilitychange → visible (only hidden tears down the page)', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDeckOrder(fleet));
+      act(() => {
+        result.current.moveRepo(0, 2);
+      });
+      expect(loadDeckRepoOrder()).toEqual([]);
+
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      // No flush — write remains pending.
+      expect(loadDeckRepoOrder()).toEqual([]);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+});
