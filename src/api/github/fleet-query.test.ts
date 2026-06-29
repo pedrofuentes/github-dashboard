@@ -559,8 +559,9 @@ describe('executeFleetBatch', () => {
 
   it('logs a breadcrumb for a data-less chunk response (#532)', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const graphqlErrors = [{ message: 'total failure' }];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      mockJsonResponse(200, { errors: [{ message: 'total failure' }] }),
+      mockJsonResponse(200, { errors: graphqlErrors }),
     );
 
     await executeFleetBatch([repo('o/a'), repo('o/b')], 'me', TOKEN);
@@ -570,6 +571,8 @@ describe('executeFleetBatch', () => {
     expect(message).toMatch(/executeFleetBatch.*chunk/i);
     expect(message).toContain('o/a');
     expect(message).toContain('o/b');
+    // errors array must be passed as 2nd arg, mirroring the catch-sibling (#666)
+    expect(errorSpy.mock.calls[0]?.[1]).toEqual(graphqlErrors);
     errorSpy.mockRestore();
   });
 
