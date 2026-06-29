@@ -380,6 +380,33 @@ describe('GraphQLLimiter', () => {
     expect(task).toHaveBeenCalledTimes(GQL_MAX_RETRIES + 1);
   });
 
+  it('logs a breadcrumb when it gives up after exhausting retries (#528)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const task = vi.fn(async () => {
+      throw rateLimitError(1);
+    });
+
+    const p = limiter.schedule(task);
+    p.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1000 * (GQL_MAX_RETRIES + 1));
+    await expect(p).rejects.toBeInstanceOf(GitHubApiError);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/GraphQLLimiter.*exhaust/i);
+    expect(errorSpy.mock.calls[0]?.[1]).toBeInstanceOf(GitHubApiError);
+  });
+
+  it('does not log when a rate-limit error has no Retry-After (no retries attempted, #528)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const task = vi.fn(async () => {
+      throw rateLimitError(undefined);
+    });
+
+    await expect(limiter.schedule(task)).rejects.toBeInstanceOf(GitHubApiError);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it('propagates a rate-limit error without Retry-After without retrying', async () => {
     const task = vi.fn(async () => {
       throw rateLimitError(undefined);

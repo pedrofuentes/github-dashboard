@@ -949,3 +949,77 @@ describe('useRepoSignals — scoped signal retry', () => {
     expect(result.current.getRowData(REPO).security).toEqual(staleSecurity);
   });
 });
+
+// ── REST-rolled-back scoped retry + fleet.loading gate (#608/#602) ────────────
+//
+// These run the REAL hook with graphql-flags mocked OFF for every signal, so
+// each non-security signal is served via its REST hook. The default suite never
+// mocks graphql-flags (ci/reviews/pullRequests/issues/stale ship ON), so the
+// flag-OFF rollback paths are exercised only here, in module isolation.
+describe('useRepoSignals — REST-rolled-back signals (no GraphQL)', () => {
+  afterEach(() => {
+    vi.doUnmock('../lib/graphql-flags');
+    vi.resetModules();
+  });
+
+  async function loadWithNoGraphql(loader: UseFleetBatchLoaderResult): Promise<{
+    useRepoSignals: typeof import('./useRepoSignals').useRepoSignals;
+    useCiSignal: ReturnType<typeof vi.mocked<typeof import('./signals/useCiSignal').useCiSignal>>;
+  }> {
+    vi.resetModules();
+    vi.doMock('../lib/graphql-flags', () => ({
+      GRAPHQL_SIGNAL_FLAGS: {},
+      GRAPHQL_ENABLED_SIGNALS: [],
+      graphqlSignalEnabled: () => false,
+    }));
+    const ci = vi.mocked((await import('./signals/useCiSignal')).useCiSignal);
+    ci.mockReturnValue(new Map());
+    vi.mocked((await import('./signals/useSecuritySignal')).useSecuritySignal).mockReturnValue(
+      new Map(),
+    );
+    vi.mocked((await import('./signals/useReviewsSignal')).useReviewsSignal).mockReturnValue(
+      new Map(),
+    );
+    vi.mocked(
+      (await import('./signals/usePullRequestsSignal')).usePullRequestsSignal,
+    ).mockReturnValue(new Map());
+    vi.mocked((await import('./signals/useIssuesSignal')).useIssuesSignal).mockReturnValue(
+      new Map(),
+    );
+    vi.mocked((await import('./signals/useStaleSignal')).useStaleSignal).mockReturnValue(new Map());
+    vi.mocked((await import('./useFleetBatchLoader')).useFleetBatchLoader).mockReturnValue(loader);
+    const { useRepoSignals } = await import('./useRepoSignals');
+    return { useRepoSignals, useCiSignal: ci };
+  }
+
+  it('retrying a REST-rolled-back signal reloads the fleet so its REST hook refetches (#608)', async () => {
+    const { useRepoSignals, useCiSignal } = await loadWithNoGraphql({
+      result: new Map(),
+      loading: false,
+      error: false,
+    });
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    const reposBefore = useCiSignal.mock.calls.at(-1)?.[0];
+
+    act(() => {
+      result.current.retrySignal?.(REPO, 'ci');
+    });
+
+    const reposAfter = useCiSignal.mock.calls.at(-1)?.[0];
+    // A fresh repos identity means the REST CI hook's fetch effect re-runs —
+    // the retry is no longer a silent no-op for a flag-OFF signal.
+    expect(reposAfter).not.toBe(reposBefore);
+  });
+
+  it('fleet.loading stays false (ready 0) when no GraphQL signal is enabled, even mid-load (#602)', async () => {
+    const { useRepoSignals } = await loadWithNoGraphql({
+      result: new Map(),
+      loading: true,
+      error: false,
+    });
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    expect(result.current.fleet).toEqual({ loading: false, ready: 0, total: 2 });
+  });
+});

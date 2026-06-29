@@ -527,6 +527,23 @@ describe('executeFleetBatch', () => {
     );
   });
 
+  it('logs a breadcrumb when a chunk hard-fails in the catch path (#532)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(500, { message: 'server error' }),
+    );
+
+    await executeFleetBatch([repo('o/x'), repo('o/y')], 'me', TOKEN);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message, err] = errorSpy.mock.calls[0] ?? [];
+    expect(String(message)).toMatch(/executeFleetBatch.*chunk/i);
+    expect(String(message)).toContain('o/x');
+    expect(String(message)).toContain('o/y');
+    expect(err).toBeInstanceOf(Error);
+    errorSpy.mockRestore();
+  });
+
   it('marks every repo in a data-less response as error', async () => {
     const repos = [repo('o/a'), repo('o/b')];
 
@@ -538,6 +555,22 @@ describe('executeFleetBatch', () => {
     const ciMap = ciMapOf(result);
     expect(ci(ciMap, 'o/a')).toEqual({ status: 'error' });
     expect(ci(ciMap, 'o/b')).toEqual({ status: 'error' });
+  });
+
+  it('logs a breadcrumb for a data-less chunk response (#532)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, { errors: [{ message: 'total failure' }] }),
+    );
+
+    await executeFleetBatch([repo('o/a'), repo('o/b')], 'me', TOKEN);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const message = String(errorSpy.mock.calls[0]?.[0]);
+    expect(message).toMatch(/executeFleetBatch.*chunk/i);
+    expect(message).toContain('o/a');
+    expect(message).toContain('o/b');
+    errorSpy.mockRestore();
   });
 
   it('records the GraphQL cost from the rateLimit fragment', async () => {

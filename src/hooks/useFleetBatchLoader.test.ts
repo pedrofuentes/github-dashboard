@@ -71,6 +71,7 @@ describe('useFleetBatchLoader', () => {
 
     vi.doUnmock('../api/github/fleet-query');
     vi.doUnmock('../lib/graphql-flags');
+    vi.resetModules();
   });
 
   it('sets loading:true while in-flight and loading:false + resolved result after completion', async () => {
