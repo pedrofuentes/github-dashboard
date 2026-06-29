@@ -37,7 +37,7 @@ import {
 import { DECK_SIGNALS, isHidden } from '../../lib/deck-visibility';
 import { DECK_TILE_MIN_PX } from '../../lib/deck-tile-size';
 import type { DeckTileSize } from '../../lib/deck-tile-size';
-import { reorderIndices } from '../../lib/deck-reorder';
+import { resolveDeckMove, deckColumnId } from '../../lib/deck-reorder';
 import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
@@ -145,6 +145,12 @@ export interface BoardViewProps {
    */
   onMoveRepo?: (from: number, to: number) => void;
   /**
+   * Reorders the signal column at `from` to `to` (column drag). Dispatched from
+   * the deck's single DndContext when a drag ends with a column id (prefix
+   * `col:` — see {@link deckColumnId}). Omitted ⇒ column drags are ignored.
+   */
+  onMoveSignal?: (from: number, to: number) => void;
+  /**
    * Removes (hides) a whole repo row. When supplied AND `editing` AND the rows
    * are reorderable, each row's grip is joined by a remove (✕) control that calls
    * this with the row's repo. Add the row back via the Customize panel.
@@ -168,6 +174,7 @@ export function BoardView({
   repoOrder,
   signalOrder,
   onMoveRepo,
+  onMoveSignal,
   onRemoveRepo,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
@@ -247,9 +254,14 @@ export function BoardView({
     [orderedRepos],
   );
 
+  const columnIds = useMemo(() => columns.map(deckColumnId), [columns]);
+
   const handleDeckDragEnd = (event: DragEndEvent): void => {
-    const move = reorderIndices(orderedRepoIds, event.active.id, event.over?.id);
-    if (move !== null) {
+    const move = resolveDeckMove(orderedRepoIds, columnIds, event.active.id, event.over?.id);
+    if (move === null) return;
+    if (move.kind === 'column') {
+      onMoveSignal?.(move.from, move.to);
+    } else {
       onMoveRepo?.(move.from, move.to);
     }
   };
