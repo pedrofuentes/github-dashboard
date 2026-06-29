@@ -427,6 +427,20 @@ describe('saveDashboardLayout', () => {
     expect(() => saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]))).not.toThrow();
   });
 
+  it('warns via console.warn when localStorage.setItem throws on save (#592)', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]));
+
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to persist dashboard layout; changes will be lost on next load.',
+      expect.any(Error),
+    );
+  });
+
   it('does not persist tiles that fail schema validation', () => {
     const invalid: DashboardTile[] = [
       { i: 'octo/a:ci', signal: 'ci', repo: 'octo/a', x: -5, y: 0, w: 3, h: 2, visible: true },

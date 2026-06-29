@@ -10,8 +10,24 @@ first.
 
 ## [Unreleased]
 
+### Changed
+
+- **Deck and Boards tiles open the signal's GitHub page on click.** Clicking any
+  signal tile on the Deck or Boards view now navigates to the corresponding
+  GitHub page (Actions run, PR, security alert, etc.) in a new tab, replacing
+  the previous in-app drill-down. (#616)
+
 ### Fixed
 
+- **Deck Security key explains the `n/a` no-access state.** When a token lacks
+  the required scope or the security feature is disabled, the Security key now
+  includes the reason ("no access — token scope or feature disabled") in its
+  accessible name and hover title, matching the `n/a` grid cell. (#561)
+- **TriageView collapsed-band `aria-controls` and settled-rows-during-load.**
+  Bug-bash behavioral fixes: the collapsed band's `aria-controls` attribute now
+  correctly references its controlled panel, and rows that arrive while the list
+  is still loading are no longer discarded — they settle in place once loading
+  completes. (#585)
 - **Inbox repo-filter survives transient fleet-load errors.** If the fleet
   momentarily returns no repositories (network hiccup), the inbox repo-filter
   dropdown no longer resets — the selection is preserved and remains active once
