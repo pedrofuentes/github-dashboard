@@ -228,7 +228,11 @@ test.describe('accessibility: non-text contrast (WCAG 1.4.11)', () => {
     await page.goto('/');
     await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
     await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+
+    await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByText('Authenticated as testuser')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('Authenticated as testuser')).toBeHidden();
 
     const filterInput = page.getByLabel('Filter repositories by name');
     await expect(filterInput).toBeVisible();
