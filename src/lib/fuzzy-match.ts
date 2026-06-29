@@ -22,7 +22,9 @@ function toChars(value: string): string[] {
  * - Bonus: +50 for match at start (index 0)
  * - Bonus: +20 for match at word/separator boundary (after space, -, _, ., /)
  * - Bonus: +15 for match at camelCase boundary (uppercase after lowercase)
- * - Bonus: up to +40 for contiguous character runs (scales with run length × 8)
+ * - Bonus: each character extending a contiguous run adds min(40, run_length × 8)
+ *   to the score (applied once per matched character in the run; a 3-char run
+ *   contributes 16 + 24 = 40; longer runs accumulate more, without per-char cap)
  * - Penalty: -5 per character gap between matches
  * - Penalty: -0.1 per character of target length
  *
@@ -102,9 +104,11 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
       }
     }
 
-    // Contiguous run bonus (strong bonus for consecutive matches)
+    // Contiguous run bonus: each character in a run adds min(40, run_length × 8),
+    // where run_length is the number of consecutive matched characters up to and
+    // including the current position (i.e. later characters in the run earn more).
     if (i > 0 && indices[i] === indices[i - 1] + 1) {
-      // Scale bonus with position in run (later chars in run = more bonus)
+      // Count how many consecutive matched characters end at position i.
       let runLength = 2;
       let j = i - 1;
       while (j > 0 && indices[j] === indices[j - 1] + 1) {
