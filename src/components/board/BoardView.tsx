@@ -299,11 +299,12 @@ export function BoardView({
 
   // Model C: each repo row is a grid of fixed signal columns. The size sets the
   // per-column width; tiles keep that width (so labels/values stay readable) and
-  // never shrink — blocks pack fewer-per-line instead. One repo's signals always
-  // stay on one line, and BLOCKS_CLASS centers the packed blocks.
-  const rowStyle = {
-    gridTemplateColumns: `repeat(${columns.length}, ${DECK_TILE_MIN_PX[size]}px)`,
-  };
+  // never shrink — blocks pack fewer-per-line instead. Each row sizes to its own
+  // visible-signal count so a hidden tile leaves no empty track (BLOCKS_CLASS
+  // centers the packed blocks).
+  const rowStyleFor = (count: number) => ({
+    gridTemplateColumns: `repeat(${count}, ${DECK_TILE_MIN_PX[size]}px)`,
+  });
 
   // One repo's signal-key cells, shared by the plain and sortable row variants.
   const renderRepoCells = (repo: Repo, signals: readonly TileSignalType[]): ReactNode => {
@@ -347,7 +348,11 @@ export function BoardView({
       {showSkeleton ? (
         <div aria-busy="true" aria-hidden="true" className="flex flex-col gap-3">
           {Array.from({ length: 2 }, (_, row) => (
-            <div key={`skeleton-row-${row}`} className={GRID_CLASS} style={rowStyle}>
+            <div
+              key={`skeleton-row-${row}`}
+              className={GRID_CLASS}
+              style={rowStyleFor(DECK_SIGNALS.length)}
+            >
               {Array.from({ length: DECK_SIGNALS.length }, (_, index) => (
                 <span
                   key={`skeleton-${row}-${index}`}
@@ -388,7 +393,7 @@ export function BoardView({
                         key={repo.nameWithOwner}
                         id={repo.nameWithOwner}
                         label={repo.nameWithOwner}
-                        rowStyle={rowStyle}
+                        rowStyle={rowStyleFor(signals.length)}
                         onRemove={onRemoveRepo !== undefined ? () => onRemoveRepo(repo) : undefined}
                         removeLabel={`Remove repository ${repo.nameWithOwner}`}
                       >
@@ -404,7 +409,7 @@ export function BoardView({
                       key={repo.nameWithOwner}
                       data-repo-row={repo.nameWithOwner}
                       className={GRID_CLASS}
-                      style={rowStyle}
+                      style={rowStyleFor(signals.length)}
                     >
                       {renderRepoCells(repo, signals)}
                     </div>
@@ -419,7 +424,7 @@ export function BoardView({
                   key={repo.nameWithOwner}
                   data-repo-row={repo.nameWithOwner}
                   className={GRID_CLASS}
-                  style={rowStyle}
+                  style={rowStyleFor(signals.length)}
                 >
                   {renderRepoCells(repo, signals)}
                 </div>
