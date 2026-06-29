@@ -49,7 +49,7 @@ export interface UseSavedViewsResult {
   create: (input: CreateSavedViewInput) => SavedViewMutationResult;
   /** Validates the name, then renames + persists a view (#436 boundary). */
   rename: (id: string, name: string) => SavedViewMutationResult;
-  /** Removes + persists the view with the given id (no-op if absent). */
+  /** Removes + persists the view with the given id. Returns ok:false if the id is not found. */
   remove: (id: string) => SavedViewMutationResult;
   /** Merges a patch into the view with the given id, then persists. */
   update: (
