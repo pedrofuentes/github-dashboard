@@ -135,6 +135,9 @@ describe('DashboardView — grid semantics & roving navigation', () => {
     // link natively rather than the in-app drill-down, so onRepoActivate is unused.
     expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/a\//);
     expect(ci).toHaveAttribute('target', '_blank');
+    // Press Enter on the focused link; the native anchor opens a new tab but must
+    // never call the in-app onRepoActivate callback.
+    await user.keyboard('{Enter}');
     expect(onRepoActivate).not.toHaveBeenCalled();
   });
 

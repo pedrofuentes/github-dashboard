@@ -85,6 +85,10 @@ describe('fetchViewerIssueCount', () => {
     expect(decoded).toContain('is:open');
     expect(decoded).toContain('author:alice');
     expect(url).toContain('per_page=1');
+    // The token must be forwarded as an Authorization header so private-repo
+    // searches are authenticated; dropping it causes silent 401/under-counts.
+    const opts = vi.mocked(globalThis.fetch).mock.calls[0][1];
+    expect((opts?.headers as Record<string, string>)['Authorization']).toBe('Bearer ghp_test');
   });
 
   it('URL-encodes the search query so no raw spaces appear in the query param', async () => {
