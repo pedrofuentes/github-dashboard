@@ -188,6 +188,73 @@ describe('SearchLimiter', () => {
     expect(parked).not.toHaveBeenCalled();
   });
 
+  // ── #514 ─────────────────────────────────────────────────────────────────
+  it('rejects immediately when schedule() is called with a pre-aborted signal, never running the task', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const task = vi.fn(async () => 'ran');
+
+    await expect(limiter.schedule(task, controller.signal)).rejects.toHaveProperty(
+      'name',
+      'AbortError',
+    );
+    expect(task).not.toHaveBeenCalled();
+  });
+
+  // ── #600 ─────────────────────────────────────────────────────────────────
+  // The race exercised by these two tests:
+  //   abortableSleep removes its own abort listener before calling resolve(),
+  //   so an abort fired in that narrow window is NOT intercepted by
+  //   abortableSleep — the sleep resolves despite signal.aborted becoming true.
+  //   The acquireToken guard (search-limiter.ts:173-175) is the only net that
+  //   catches this; without it, a token would be silently wasted (or the waiter
+  //   would queue indefinitely with no abort listener to free it).
+  //
+  // Test orchestration:
+  //   1. await Promise.resolve() — flush one microtask tick so runWithRetry
+  //      reaches abortableSleep and its 0 ms fake timer is registered.
+  //   2. vi.advanceTimersByTime(1) — fire the sleep timer SYNCHRONOUSLY so its
+  //      abort listener is removed before the continuation microtask runs.
+  //   3. controller.abort() — abort while the continuation is still queued;
+  //      acquireToken will see signal.aborted === true.
+
+  it('acquireToken rejects with AbortError when the signal aborts between the back-off sleep and re-acquiring a token (token available)', async () => {
+    const controller = new AbortController();
+    const task = vi.fn(async () => {
+      throw rateLimitError(0); // retryAfter=0 → 0 ms back-off sleep
+    });
+
+    const p = limiter.schedule(task, controller.signal);
+    p.catch(() => {});
+
+    await Promise.resolve(); // let runWithRetry register the 0 ms sleep timer
+    vi.advanceTimersByTime(1); // fire timer synchronously — listener removed, sleep resolves
+    controller.abort(); // abort lands after listener removal: acquireToken sees it
+
+    await expect(p).rejects.toHaveProperty('name', 'AbortError');
+    expect(task).toHaveBeenCalledTimes(1); // no retry
+  });
+
+  it('acquireToken rejects with AbortError when the signal aborts between the back-off sleep and re-acquiring a token (no tokens available)', async () => {
+    // 1-token limiter: token is exhausted after the first dispatch, so the
+    // retry's acquireToken call would have to queue without the guard.
+    limiter = new SearchLimiter(1, 5000);
+    const controller = new AbortController();
+    const task = vi.fn(async () => {
+      throw rateLimitError(0);
+    });
+
+    const p = limiter.schedule(task, controller.signal);
+    p.catch(() => {});
+
+    await Promise.resolve();
+    vi.advanceTimersByTime(1);
+    controller.abort();
+
+    await expect(p).rejects.toHaveProperty('name', 'AbortError');
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps refilling after the last queued waiter aborts while the bucket is below capacity', async () => {
     limiter = new SearchLimiter(1, 1000);
     void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
