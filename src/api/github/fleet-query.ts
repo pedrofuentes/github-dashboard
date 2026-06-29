@@ -1328,6 +1328,7 @@ export async function executeFleetBatch(
           // Global derivers run separately and own their own error handling.
           console.error(
             `executeFleetBatch: data-less chunk response, erroring ${chunkRepos.length} repos: ${chunkRepoNames(chunkRepos)}`,
+            errors,
           );
           for (const deriver of enabledDerivers) {
             if (deriver.kind === 'top-level-global') continue;
