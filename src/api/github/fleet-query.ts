@@ -1006,6 +1006,11 @@ function buildChunkContext(
   };
 }
 
+/** Comma-joined repo names for an error breadcrumb (chunk failures, #532). */
+function chunkRepoNames(repos: readonly Repo[]): string {
+  return repos.map((r) => r.nameWithOwner).join(', ');
+}
+
 /** Sets every repo's slice for `signal` to `slice` in `result`. */
 function markChunk(
   result: FleetBatchResult,
@@ -1321,6 +1326,9 @@ export async function executeFleetBatch(
         if (!data) {
           // A data-less response is a hard chunk failure — error this chunk only.
           // Global derivers run separately and own their own error handling.
+          console.error(
+            `executeFleetBatch: data-less chunk response, erroring ${chunkRepos.length} repos: ${chunkRepoNames(chunkRepos)}`,
+          );
           for (const deriver of enabledDerivers) {
             if (deriver.kind === 'top-level-global') continue;
             markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
@@ -1344,6 +1352,7 @@ export async function executeFleetBatch(
       } catch (err) {
         // A caller-abort propagates; any other hard failure isolates to this chunk.
         if (isAbortError(err) || signal?.aborted) throw err;
+        console.error(`executeFleetBatch: chunk failed for ${chunkRepoNames(chunkRepos)}`, err);
         for (const deriver of enabledDerivers) {
           if (deriver.kind === 'top-level-global') continue;
           markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
