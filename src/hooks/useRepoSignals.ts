@@ -122,6 +122,14 @@ export function useRepoSignals(
   const [retryRequest, setRetryRequest] = useState<SignalRetryRequest | null>(null);
   useVisibilityRevalidate(() => setRevalidateNonce((n) => n + 1));
   const retrySignal = useCallback((repo: Repo, signal: TileSignalType) => {
+    if (!graphqlSignalEnabled(signal) && signal !== 'security') {
+      // The signal is served via REST and has no scoped retry overlay (only
+      // GraphQL signals and `security` do). Reload the whole fleet so its REST
+      // hook refetches — otherwise the retry button is a silent no-op for a
+      // GRAPHQL_SIGNAL_FLAGS-rolled-back signal (#608).
+      setRevalidateNonce((n) => n + 1);
+      return;
+    }
     setRetryRequest((current) => ({ repo, signal, nonce: (current?.nonce ?? 0) + 1 }));
   }, []);
 

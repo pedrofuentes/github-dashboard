@@ -320,7 +320,15 @@ export class GraphQLLimiter {
       } catch (err) {
         if (isAbortError(err) || signal?.aborted) throw err;
         const retryAfterSeconds = secondaryLimitRetryAfter(err);
-        if (retryAfterSeconds === undefined || attempt >= GQL_MAX_RETRIES) throw err;
+        if (retryAfterSeconds === undefined) throw err;
+        if (attempt >= GQL_MAX_RETRIES) {
+          // Retried the secondary limit GQL_MAX_RETRIES times and still failing.
+          // In this client-only SPA the console is the only sink, so leave an
+          // operator breadcrumb distinguishing "gave up after retries" from an
+          // immediate failure before dropping the work (#528).
+          console.error(`GraphQLLimiter: secondary limit retries exhausted (${attempt})`, err);
+          throw err;
+        }
         attempt += 1;
         await abortableSleep(retryAfterSeconds * 1000, signal);
       }
