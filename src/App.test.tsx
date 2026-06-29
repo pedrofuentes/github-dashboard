@@ -112,6 +112,9 @@ describe('App', () => {
     expect(settings).toHaveAttribute('aria-expanded', 'true');
     expect(within(dialog).getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
     expect(within(dialog).getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+    // Auth-gating: Account and Defaults sections must NOT appear when unauthenticated.
+    expect(within(dialog).queryByRole('heading', { name: /^account$/i })).toBeNull();
+    expect(within(dialog).queryByRole('heading', { name: /^defaults$/i })).toBeNull();
   });
 
   it('closes the settings overlay on Escape and returns focus to the Settings button', async () => {
@@ -371,6 +374,8 @@ describe('App', () => {
     expect(tile.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/hello-world\//);
     expect(tile).toHaveAttribute('target', '_blank');
     expect(tile).toHaveAttribute('rel', 'noreferrer noopener');
+    // Clicking the tile must NOT open the in-app drill-down drawer.
+    await user.click(tile);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
