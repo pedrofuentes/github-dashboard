@@ -430,23 +430,23 @@ describe('BoardView — tile size', () => {
     return el;
   }
 
-  it('defaults to the medium (152px) per-column matrix template', () => {
+  it('defaults to the medium (152px) fixed per-column matrix template', () => {
     const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
-    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 152px))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 152px)');
   });
 
   it('widens the columns for the large size', () => {
     const { container } = render(
       <BoardView repos={[repoA]} getRowData={getRowData} size="large" />,
     );
-    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 192px))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 192px)');
   });
 
-  it('shrinks the columns for the x-small size', () => {
+  it('keeps the x-small columns at a fixed (readable) width, not shrinking', () => {
     const { container } = render(
       <BoardView repos={[repoA]} getRowData={getRowData} size="x-small" />,
     );
-    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, minmax(0, 104px))');
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 104px)');
   });
 });
 
@@ -578,6 +578,7 @@ describe('BoardView — repo-block packing layout', () => {
     const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
     expect(blocks).not.toBeNull();
     expect(blocks.className).toContain('flex-wrap');
+    expect(blocks.className).toContain('justify-center');
     expect(blocks.contains(rowA)).toBe(true);
     expect(blocks.contains(rowB)).toBe(true);
   });

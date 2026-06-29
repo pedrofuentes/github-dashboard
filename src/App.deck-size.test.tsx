@@ -101,11 +101,11 @@ describe('App — Deck tile-size wiring', () => {
     };
 
     // Default medium.
-    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, minmax(0, 152px))');
+    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, 152px)');
 
     await user.click(screen.getByRole('radio', { name: /large/i }));
 
-    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, minmax(0, 192px))');
+    expect(gridOf().style.gridTemplateColumns).toBe('repeat(6, 192px)');
     expect(localStorage.getItem('fleet:deck-tile-size')).toBe('large');
   });
 });
