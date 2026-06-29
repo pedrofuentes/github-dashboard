@@ -537,7 +537,10 @@ describe('versioned layout migration (v1 → v2)', () => {
 
   it('round-trips through the v2 envelope', () => {
     const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
-    const saved = DEFAULT_LAYOUT(repos);
+    // Use non-default tiles so a no-op save cannot pass via the default fallback.
+    const saved = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
+    );
     saveDashboardLayout(saved);
     expect(loadDashboardLayout(repos)).toEqual(saved);
   });
@@ -550,10 +553,11 @@ describe('versioned layout migration (v1 → v2)', () => {
 
   it('falls back to the default on a v2 envelope with the wrong version', () => {
     const repos = [makeRepo('octo/a')];
-    localStorage.setItem(
-      STORAGE_KEY_V2,
-      JSON.stringify({ version: 99, tiles: DEFAULT_LAYOUT(repos) }),
+    // Use non-default tiles so a widened version guard cannot pass tautologically.
+    const nonDefaultTiles = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
     );
+    localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({ version: 99, tiles: nonDefaultTiles }));
     expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
   });
 

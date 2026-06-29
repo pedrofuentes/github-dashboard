@@ -14,6 +14,7 @@ import {
   createSavedViewsStore,
   MAX_SAVED_VIEWS,
   MAX_VIEW_NAME_LENGTH,
+  STORAGE_KEY_V1,
 } from './saved-views';
 import { EMPTY_QUERY } from './repo-filter-query';
 import { FLEET_VIEWS } from './view-preference';
@@ -307,6 +308,14 @@ describe('addSavedView', () => {
     expect(newState).toBeNull();
     expect(stateWithOne.views[0].name).toBe('View 1'); // unchanged
   });
+
+  it('rejects a view that fails schema validation', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invalid = { ...mockView, id: '' } as any;
+    const newState = addSavedView(baseState, invalid);
+    expect(newState).toBeNull();
+    expect(baseState.views).toHaveLength(0); // state unchanged
+  });
 });
 
 describe('removeSavedView', () => {
@@ -428,6 +437,13 @@ describe('updateSavedView', () => {
     const newState = expectState(updateSavedView(state, 'view-1', { density: 'glanceable' }));
     expect(newState.views[0].density).toBe('glanceable');
   });
+
+  it('rejects a patch that produces an invalid schema', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const newState = updateSavedView(state, 'view-1', { view: 'not-a-valid-view' } as any);
+    expect(newState).toBeNull();
+    expect(state.views[0]).toEqual(view1); // state unchanged
+  });
 });
 
 describe('findSavedView', () => {
@@ -491,14 +507,14 @@ describe('persistence via createSavedViewsStore', () => {
 
   it('degrades to fallback on corrupt data', () => {
     const store = createSavedViewsStore();
-    localStorage.setItem('fleet:saved-views:v1', 'not-valid-json{{{');
+    localStorage.setItem(STORAGE_KEY_V1, 'not-valid-json{{{');
     const loaded = store.load();
     expect(loaded).toEqual({ version: 1, views: [] });
   });
 
   it('degrades to fallback on invalid schema', () => {
     const store = createSavedViewsStore();
-    localStorage.setItem('fleet:saved-views:v1', JSON.stringify({ version: 999, views: null }));
+    localStorage.setItem(STORAGE_KEY_V1, JSON.stringify({ version: 999, views: null }));
     const loaded = store.load();
     expect(loaded).toEqual({ version: 1, views: [] });
   });
