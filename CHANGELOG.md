@@ -8,6 +8,20 @@ build is identified by its deploy date and short commit SHA (shown in the app
 footer, e.g. `2026-06-28 · 532d67f`). Entries are grouped by deploy date, newest
 first.
 
+## [Unreleased]
+
+### Fixed
+
+- **Inbox repo-filter survives transient fleet-load errors.** If the fleet
+  momentarily returns no repositories (network hiccup), the inbox repo-filter
+  dropdown no longer resets — the selection is preserved and remains active once
+  the fleet reloads.
+- **"Clear filters" hidden when only a global scope is active.** When the Inbox
+  shows "No items match" solely because a repo scope is active (no user-set
+  kind/unread/repo filter), the non-operative "Clear filters" button is now
+  suppressed. The button still appears whenever a user-controllable filter can
+  actually be cleared.
+
 ## 2026-06-28
 
 ### Changed

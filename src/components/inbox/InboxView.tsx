@@ -104,12 +104,17 @@ export function InboxView({
     if (filters.repos.length === 0) {
       return;
     }
+    // Do not reconcile when the repo list is transiently empty (fleet-load error):
+    // clearing every selected repo would wipe the filter before it can reload.
+    if (repos.length === 0) {
+      return;
+    }
 
     const availableSelection = filters.repos.filter((repoName) => availableRepoNames.has(repoName));
     if (availableSelection.length !== filters.repos.length) {
       setFilters({ repos: availableSelection });
     }
-  }, [availableRepoNames, filters.repos, setFilters]);
+  }, [availableRepoNames, filters.repos, repos.length, setFilters]);
 
   // Apply the global repo scope on top of the inbox's own session filters: it is
   // a presentation-only narrowing, so the hook's triage GC and fleet-wide unread
@@ -258,6 +263,13 @@ export function InboxView({
     filters.kinds.length > 0 ||
     filters.unreadOnly;
 
+  // clearFilters() only resets the session filters — it cannot clear the global
+  // repoScope (owned by App). Show the button only when there is at least one
+  // user-set filter that clearing would actually remove; suppress it when the
+  // only narrowing is from the scope alone, where the button would be a no-op.
+  const clearableFiltersActive =
+    filters.repos.length > 0 || filters.kinds.length > 0 || filters.unreadOnly;
+
   if (error !== null) {
     return (
       <section aria-label="Notifications inbox" className="flex flex-col gap-3">
@@ -374,13 +386,15 @@ export function InboxView({
         narrowingActive ? (
           <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-surface px-4 py-10 text-center">
             <p className="text-sm text-text-muted">No items match these filters.</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              Clear filters
-            </button>
+            {clearableFiltersActive ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
