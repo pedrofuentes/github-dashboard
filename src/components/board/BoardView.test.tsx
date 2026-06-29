@@ -23,9 +23,9 @@ vi.mock('@dnd-kit/core', async (importActual) => {
   const actual = await importActual<typeof import('@dnd-kit/core')>();
   return {
     ...actual,
-    DndContext: ({ onDragEnd, children }: any) => {
-      mockBoardDragCapture.fn = onDragEnd;
-      return children;
+    DndContext: (props: Parameters<typeof actual.DndContext>[0]) => {
+      mockBoardDragCapture.fn = props.onDragEnd;
+      return props.children ?? null;
     },
   };
 });
