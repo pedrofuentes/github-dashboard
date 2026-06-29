@@ -109,13 +109,18 @@ describe('FleetMatrix ordering & cells', () => {
   it('orders groups worst-first (broken before healthy)', () => {
     const getRowData = rowDataFor({ 'octo/apple': HEALTHY, 'octo/zebra': BROKEN });
     render(<FleetMatrix repos={REPOS} getRowData={getRowData} />);
-    // Broken group appears first (expanded), healthy second (collapsed)
+    // Exactly two group toggle buttons in DOM order: broken first, healthy second
     const buttons = screen.getAllByRole('button');
-    expect(buttons[0]).toHaveTextContent(/broken/i);
-    expect(buttons[1]).toHaveTextContent(/healthy/i);
-    // Broken repo visible, healthy collapsed
-    expect(screen.getByRole('rowheader')).toHaveTextContent('octo/zebra');
-    expect(screen.queryByText('octo/apple')).toBeNull();
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveTextContent(/^broken.*1/i);
+    expect(buttons[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(buttons[1]).toHaveTextContent(/^healthy.*1/i);
+    expect(buttons[1]).toHaveAttribute('aria-expanded', 'false');
+    // Broken group expanded → exactly one rowheader (octo/zebra); healthy collapsed → absent
+    const rowheaders = screen.getAllByRole('rowheader');
+    expect(rowheaders).toHaveLength(1);
+    expect(rowheaders[0]).toHaveTextContent('octo/zebra');
+    expect(screen.queryByRole('rowheader', { name: /octo\/apple/i })).toBeNull();
   });
 
   it('renders each signal cell with its existing status vocabulary', () => {
@@ -389,8 +394,15 @@ describe('FleetMatrix density modes (T-c4)', () => {
     render(<FleetMatrix repos={[repo('octo/hello')]} getRowData={() => BROKEN} />);
     const row = screen.getByRole('row', { name: /octo\/hello/i });
     const rowHeader = within(row).getByRole('rowheader');
-    // Balanced uses py-2 (current spacing)
+    // Balanced uses py-2, not the tighter py-1 used by glanceable — both directions
     expect(rowHeader.className).toMatch(/py-2(?:\s|$)/);
+    expect(rowHeader.className).not.toMatch(/(?:^|\s)py-1(?:\s|$)/);
+    // Signal cells also carry py-2, not py-1
+    const cells = within(row).getAllByRole('cell');
+    for (const cell of cells) {
+      expect(cell.className).toMatch(/py-2(?:\s|$)/);
+      expect(cell.className).not.toMatch(/(?:^|\s)py-1(?:\s|$)/);
+    }
   });
 
   it('applies glanceable density spacing when stored (tighter py-1 spacing)', () => {

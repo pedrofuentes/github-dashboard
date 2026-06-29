@@ -111,9 +111,14 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
 
   it('toggleHealth filters by health band', () => {
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
-    act(() => result.current.toggleHealth('broken'));
-    expect(result.current.query.facets.health).toEqual(['broken']);
-    expect([...result.current.derivedSelected].sort()).toEqual(['acme/c', 'octo/a', 'octo/b']);
+    // All 3 test repos classify as 'broken'; none are 'warning', so filtering by
+    // 'warning' must yield an empty selection — this discriminates from the
+    // unfiltered state which returns all 3.
+    act(() => result.current.toggleHealth('warning'));
+    expect(result.current.query.facets.health).toEqual(['warning']);
+    expect(result.current.isActive).toBe(true);
+    expect(readStored()?.facets.health).toEqual(['warning']);
+    expect([...result.current.derivedSelected]).toHaveLength(0);
   });
 
   it('toggleCi filters by CI conclusion', () => {
