@@ -448,6 +448,14 @@ describe('BoardView — tile size', () => {
     );
     expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 104px)');
   });
+
+  it('sizes a row to its visible signal count so a hidden tile leaves no empty track', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} hiddenKeys={hidden(repoA, ['stale'])} />,
+    );
+    // octo/repo-a has its last signal (stale) hidden → 5 columns, not 6.
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(5, 152px)');
+  });
 });
 
 describe('BoardView — matrix layout', () => {
