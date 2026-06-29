@@ -9,8 +9,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  *   - first-party app assets are served by the preview server;
  *   - the avatar is a tiny first-party SVG; anything else is aborted.
  *
- * Unlike the other fixtures, the latest-run probe answers with a **failing** run
- * so the Inbox derives exactly one `ci` item — enough to prove the live view:
+ * Unlike the other fixtures, the GraphQL pull-request batch answers with one
+ * outside-contributor PR so the Inbox derives exactly one `new-pr` item — enough
+ * to prove the live view:
  * signing in, switching to the **Inbox** via the `ViewToggle`, the derived item
  * rendering with its unread badge, dismissing it down to the "all caught up"
  * empty state, and that the whole flow stays on GitHub-owned origins with no
@@ -26,10 +27,11 @@ const GITHUB_WEB_ORIGIN = 'https://github.com';
 /** The single repo the fleet fixtures expose. */
 const REPO_FULL_NAME = 'octo-org/hello-world';
 
-/** A failing workflow run, so the Inbox derives exactly one `ci:<repo>:<run-id>` item. */
-const FAILING_RUN_ID = 987654321;
-const FAILING_RUN_URL = `https://github.com/${REPO_FULL_NAME}/actions/runs/${FAILING_RUN_ID}`;
-const FAILING_RUN_UPDATED_AT = '2026-06-20T12:00:00Z';
+/** An outside-contributor PR, so the Inbox derives exactly one `new-pr` item. */
+const EXTERNAL_PR_NUMBER = 4242;
+const EXTERNAL_PR_TITLE = 'New contributor PR';
+const EXTERNAL_PR_URL = `https://github.com/${REPO_FULL_NAME}/pull/${EXTERNAL_PR_NUMBER}`;
+const EXTERNAL_PR_CREATED_AT = '2026-06-20T12:00:00Z';
 
 /** GitHub's REST API answers cross-origin browser calls with permissive CORS. */
 const CORS_HEADERS: Record<string, string> = {
@@ -109,19 +111,9 @@ function githubApiBody(url: string): string {
     });
   }
   if (pathname.includes('/actions/runs')) {
-    // A completed, failing latest run → one derived `ci` Inbox item (DESIGN-INBOX §1.1).
     return JSON.stringify({
-      total_count: 1,
-      workflow_runs: [
-        {
-          id: FAILING_RUN_ID,
-          status: 'completed',
-          conclusion: 'failure',
-          html_url: FAILING_RUN_URL,
-          name: 'CI',
-          updated_at: FAILING_RUN_UPDATED_AT,
-        },
-      ],
+      total_count: 0,
+      workflow_runs: [],
     });
   }
   if (pathname.startsWith('/search/')) {
@@ -129,6 +121,41 @@ function githubApiBody(url: string): string {
   }
   // Pulls, dependabot alerts, code-scanning alerts and any other list endpoint.
   return JSON.stringify([]);
+}
+
+function graphQLBody(): string {
+  return JSON.stringify({
+    data: {
+      viewer: { login: 'testuser' },
+      rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-06-29T18:00:00Z', limit: 5000 },
+      r0: {
+        nameWithOwner: REPO_FULL_NAME,
+        isArchived: false,
+        defaultBranchRef: { target: { statusCheckRollup: { state: 'SUCCESS' } } },
+        openIssues: { totalCount: 0 },
+        myIssues: { totalCount: 0 },
+        pullRequests: {
+          nodes: [
+            {
+              number: EXTERNAL_PR_NUMBER,
+              title: EXTERNAL_PR_TITLE,
+              url: EXTERNAL_PR_URL,
+              createdAt: EXTERNAL_PR_CREATED_AT,
+              isDraft: false,
+              authorAssociation: 'FIRST_TIME_CONTRIBUTOR',
+              author: { login: 'new-contributor' },
+            },
+          ],
+        },
+      },
+      stale_r0: { issueCount: 0, nodes: [] },
+      reviews: {
+        issueCount: 0,
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: [],
+      },
+    },
+  });
 }
 
 /**
@@ -156,6 +183,15 @@ async function installFleetRoutes(
       return;
     }
     if (origin === GITHUB_API_ORIGIN) {
+      if (new URL(url).pathname === '/graphql') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: CORS_HEADERS,
+          body: graphQLBody(),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -188,7 +224,10 @@ async function signIn(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
   await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Authenticated as testuser')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Authenticated as testuser')).toBeHidden();
 }
 
 /** Switches to the Inbox view via the toggle and returns the inbox region locator. */
@@ -207,7 +246,7 @@ test.describe('notifications inbox', () => {
     await installFleetRoutes(page, appOriginFrom(baseURL));
     await signIn(page);
 
-    // The failing CI run derives one unread item, so the toggle grows a badge —
+    // The outside-contributor PR derives one unread item, so the toggle grows a badge —
     // a web-first assertion that waits for the CI signal to settle.
     const tab = inboxTab(page);
     await expect(tab).toContainText('1');
@@ -218,7 +257,7 @@ test.describe('notifications inbox', () => {
     // The single derived `ci` item renders, attributed to its repo.
     const items = inbox.getByRole('listitem');
     await expect(items).toHaveCount(1);
-    await expect(items.first()).toContainText('CI failing');
+    await expect(items.first()).toContainText(EXTERNAL_PR_TITLE);
     await expect(items.first()).toContainText(REPO_FULL_NAME);
 
     // The header surfaces the same filter-independent unread count.
@@ -235,9 +274,9 @@ test.describe('notifications inbox', () => {
 
     const item = inbox.getByRole('listitem');
     await expect(item).toHaveCount(1);
-    await expect(item.first()).toContainText('CI failing');
+    await expect(item.first()).toContainText(EXTERNAL_PR_TITLE);
 
-    await inbox.getByRole('button', { name: 'Dismiss CI failing' }).click();
+    await inbox.getByRole('button', { name: `Dismiss ${EXTERNAL_PR_TITLE}` }).click();
 
     // Dismissed items are hidden by default, so the queue empties to the positive
     // "all caught up" empty state (never a blank panel).
@@ -256,7 +295,7 @@ test.describe('notifications inbox', () => {
 
     // The per-item dismiss control is a real, labelled button reachable in tab
     // order (not a colour-only affordance) — focus it directly and confirm.
-    const dismiss = inbox.getByRole('button', { name: 'Dismiss CI failing' });
+    const dismiss = inbox.getByRole('button', { name: `Dismiss ${EXTERNAL_PR_TITLE}` });
     await dismiss.focus();
     await expect(dismiss).toBeFocused();
   });
@@ -281,7 +320,7 @@ test.describe('notifications inbox', () => {
     await signIn(page);
     const inbox = await openInbox(page);
     await expect(inbox.getByRole('listitem')).toHaveCount(1);
-    await inbox.getByRole('button', { name: 'Dismiss CI failing' }).click();
+    await inbox.getByRole('button', { name: `Dismiss ${EXTERNAL_PR_TITLE}` }).click();
     await expect(inbox.getByText('All caught up — nothing needs your attention.')).toBeVisible();
     await page.waitForLoadState('networkidle');
 

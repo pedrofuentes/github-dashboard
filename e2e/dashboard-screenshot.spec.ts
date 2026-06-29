@@ -195,26 +195,158 @@ function buildCiRuns(entry: FleetEntry): unknown {
     case 'failure':
       return {
         total_count: 1,
-        workflow_runs: [{ status: 'completed', conclusion: 'failure', html_url, name: 'CI' }],
+        workflow_runs: [
+          {
+            id: 5500123,
+            name: 'CI',
+            status: 'completed',
+            conclusion: 'failure',
+            head_branch: 'main',
+            event: 'push',
+            display_title: `CI for ${entry.name}`,
+            run_number: 42,
+            html_url,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
       };
     case 'success':
       return {
         total_count: 1,
-        workflow_runs: [{ status: 'completed', conclusion: 'success', html_url, name: 'CI' }],
+        workflow_runs: [
+          {
+            id: 5500123,
+            name: 'CI',
+            status: 'completed',
+            conclusion: 'success',
+            head_branch: 'main',
+            event: 'push',
+            display_title: `CI for ${entry.name}`,
+            run_number: 42,
+            html_url,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
       };
     case 'in_progress':
       return {
         total_count: 1,
-        workflow_runs: [{ status: 'in_progress', conclusion: null, html_url, name: 'CI' }],
+        workflow_runs: [
+          {
+            id: 5500123,
+            name: 'CI',
+            status: 'in_progress',
+            conclusion: null,
+            head_branch: 'main',
+            event: 'push',
+            display_title: `CI for ${entry.name}`,
+            run_number: 42,
+            html_url,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
       };
     case 'queued':
       return {
         total_count: 1,
-        workflow_runs: [{ status: 'queued', conclusion: null, html_url, name: 'CI' }],
+        workflow_runs: [
+          {
+            id: 5500123,
+            name: 'CI',
+            status: 'queued',
+            conclusion: null,
+            head_branch: 'main',
+            event: 'push',
+            display_title: `CI for ${entry.name}`,
+            run_number: 42,
+            html_url,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
       };
     default:
       return { total_count: 0, workflow_runs: [] };
   }
+}
+
+function buildGraphQLRepo(entry: FleetEntry): unknown {
+  const ciState =
+    entry.ci === 'failure'
+      ? 'FAILURE'
+      : entry.ci === 'success'
+        ? 'SUCCESS'
+        : entry.ci === 'in_progress'
+          ? 'PENDING'
+          : entry.ci === 'queued'
+            ? 'EXPECTED'
+            : null;
+
+  return {
+    nameWithOwner: `${entry.owner}/${entry.name}`,
+    isArchived: false,
+    defaultBranchRef:
+      ciState === null ? null : { target: { statusCheckRollup: { state: ciState } } },
+    openIssues: { totalCount: entry.issues },
+    myIssues: { totalCount: 0 },
+    pullRequests: {
+      nodes: buildPulls(entry).map((pull) => {
+        const p = pull as {
+          number: number;
+          user: { login: string };
+          author_association: string;
+          draft: boolean;
+          html_url: string;
+        };
+        return {
+          number: p.number,
+          title: `Pull request ${p.number} in ${entry.name}`,
+          url: p.html_url,
+          createdAt: '2026-06-20T12:00:00Z',
+          isDraft: p.draft,
+          authorAssociation: p.author_association,
+          author: { login: p.user.login },
+        };
+      }),
+    },
+  };
+}
+
+function buildGraphQLBody(variables: Record<string, unknown>): string {
+  const data: Record<string, unknown> = {
+    viewer: { login: 'octodemo' },
+    rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-06-29T18:00:00Z', limit: 5000 },
+  };
+
+  for (let i = 0; typeof variables[`owner${i}`] === 'string'; i += 1) {
+    const fullName = `${variables[`owner${i}`]}/${variables[`name${i}`]}`;
+    const entry = byName.get(fullName);
+    data[`r${i}`] = entry === undefined ? null : buildGraphQLRepo(entry);
+    data[`stale_r${i}`] = {
+      issueCount: entry?.stale ?? 0,
+      nodes:
+        entry === undefined
+          ? []
+          : Array.from({ length: entry.stale }, (_, index) => ({
+              __typename: 'Issue',
+              number: 2000 + index,
+              title: `Stale issue ${index + 1} in ${entry.name}`,
+              url: `https://github.com/${entry.owner}/${entry.name}/issues/${2000 + index}`,
+              updatedAt: '2026-05-01T12:00:00Z',
+            })),
+    };
+  }
+
+  data.reviews = {
+    issueCount: 0,
+    pageInfo: { hasNextPage: false, endCursor: null },
+    nodes: [],
+  };
+
+  return JSON.stringify({ data });
 }
 
 function buildDependabotAlerts(entry: FleetEntry): unknown[] {
@@ -380,6 +512,16 @@ async function mockAuthenticatedFleet(page: Page, appOrigin: string): Promise<vo
       return;
     }
     if (origin === GITHUB_API_ORIGIN) {
+      if (new URL(url).pathname === '/graphql') {
+        const postData = request.postDataJSON() as { variables?: Record<string, unknown> };
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: CORS_HEADERS,
+          body: buildGraphQLBody(postData.variables ?? {}),
+        });
+        return;
+      }
       await fulfillGitHubApi(route, url);
       return;
     }
@@ -411,7 +553,11 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
   await page.goto('/');
   await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
   await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Authenticated as octodemo')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Authenticated as octodemo')).toBeHidden();
 
   // Let the grid signals settle before switching, so the tiles render "ready".
   await expect(
@@ -419,13 +565,13 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
   ).toBeVisible();
   await page.waitForLoadState('networkidle');
 
-  // Switch to the at-a-glance Dashboard view.
-  await page.getByRole('button', { name: 'Dashboard' }).click();
+  // Switch to the at-a-glance Dashboard/Boards view.
+  await page.getByRole('button', { name: 'Boards' }).click();
 
   // The pinned fleet summary anchors the top; the tiles fill the grid below.
   await expect(page.getByRole('region', { name: 'Fleet summary' })).toBeVisible();
   await expect(page.getByRole('grid', { name: 'Dashboard tiles' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^CI:.*acme\/payments-service$/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^CI:.*acme\/payments-service$/i })).toBeVisible();
 
   // No per-cell skeletons left animating (all signals resolved).
   await expect(page.locator('.animate-pulse')).toHaveCount(0);
@@ -445,13 +591,14 @@ test('captures the at-a-glance Dashboard view for the README', async ({ page, ba
   // Capture the same Dashboard in the dark theme for the README's Appearance
   // section: switch the header Theme control to Dark and confirm the resolved
   // theme is applied before re-shooting.
-  await page
-    .getByRole('radiogroup', { name: 'Theme' })
-    .getByRole('radio', { name: 'Dark' })
-    .click();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const themeGroup = page.getByRole('radiogroup', { name: 'Theme' });
+  await themeGroup.getByRole('radio', { name: 'Dark' }).click();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
     .toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(themeGroup).toBeHidden();
   await page.mouse.move(0, 0);
 
   if (SHOULD_WRITE) {

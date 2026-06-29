@@ -180,11 +180,14 @@ async function assertStructuralA11y(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
 
   // The theme control is a labelled radiogroup whose every radio has a name.
+  await page.getByRole('button', { name: 'Settings' }).click();
   const themeGroup = page.getByRole('radiogroup', { name: 'Theme' });
   await expect(themeGroup).toBeVisible();
   for (const name of ['Light', 'Dark', 'System']) {
     await expect(themeGroup.getByRole('radio', { name })).toBeVisible();
   }
+  await page.keyboard.press('Escape');
+  await expect(themeGroup).toBeHidden();
 
   // The skip-to-content control must still move focus into main under the dark
   // theme. The natural tab-order reachability is proven in the light-theme a11y
@@ -203,9 +206,9 @@ test.describe('theme toggle: dark mode + persistence', () => {
   test('selecting Dark flips the html class, persists, and survives a reload', async ({ page }) => {
     await page.goto('/');
 
+    await page.getByRole('button', { name: 'Settings' }).click();
     const themeGroup = page.getByRole('radiogroup', { name: 'Theme' });
     const darkRadio = themeGroup.getByRole('radio', { name: 'Dark' });
-    const lightRadio = themeGroup.getByRole('radio', { name: 'Light' });
 
     await darkRadio.click();
 
@@ -213,17 +216,23 @@ test.describe('theme toggle: dark mode + persistence', () => {
     await expect(darkRadio).toHaveAttribute('aria-checked', 'true');
     expect(await htmlHasDarkClass(page)).toBe(true);
     expect(await storedThemeChoice(page)).toBe('dark');
+    await page.keyboard.press('Escape');
+    await expect(themeGroup).toBeHidden();
 
     // The persisted choice is restored before paint on a fresh load (no FOUC):
     // the page comes back dark without re-toggling.
     await page.reload();
     expect(await htmlHasDarkClass(page)).toBe(true);
     expect(await storedThemeChoice(page)).toBe('dark');
+    await page.getByRole('button', { name: 'Settings' }).click();
     await expect(
       page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Dark' }),
     ).toHaveAttribute('aria-checked', 'true');
 
     // Switching back to Light clears the class and persists 'light'.
+    const lightRadio = page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', {
+      name: 'Light',
+    });
     await lightRadio.click();
     await expect(lightRadio).toHaveAttribute('aria-checked', 'true');
     expect(await htmlHasDarkClass(page)).toBe(false);
@@ -237,10 +246,13 @@ test.describe('theme toggle: accessibility holds in dark mode', () => {
   }) => {
     await page.goto('/');
 
+    await page.getByRole('button', { name: 'Settings' }).click();
     await page
       .getByRole('radiogroup', { name: 'Theme' })
       .getByRole('radio', { name: 'Dark' })
       .click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeHidden();
     await expect.poll(() => htmlHasDarkClass(page)).toBe(true);
 
     await assertStructuralA11y(page);
@@ -253,15 +265,21 @@ test.describe('theme toggle: accessibility holds in dark mode', () => {
     await mockAuthenticatedFleet(page, appOriginFrom(baseURL));
 
     await page.goto('/');
+    await page.getByRole('button', { name: 'Settings' }).click();
     await page
       .getByRole('radiogroup', { name: 'Theme' })
       .getByRole('radio', { name: 'Dark' })
       .click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeHidden();
     await expect.poll(() => htmlHasDarkClass(page)).toBe(true);
 
     await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
     await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByText('Authenticated as testuser')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('Authenticated as testuser')).toBeHidden();
 
     // The fleet UI rendered under the dark theme; the structural invariants and
     // the persisted choice still hold.

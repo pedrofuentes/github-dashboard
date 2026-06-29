@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Default-view smoke spec — run against the real built app to prove, in a
  * browser, the configurable default-view behaviour (#309): with empty storage
- * the app opens on the at-a-glance Dashboard, and when a user has persisted a
+ * the app opens on the Triage view, and when a user has persisted a
  * different default under `fleet:default-view` the app opens straight onto it.
  *
  * The Dashboard and its toolbar controls live behind auth (`App.tsx` renders
@@ -112,26 +112,29 @@ async function mockAuthenticatedFleet(page: Page, appOrigin: string): Promise<vo
 
 test.use({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
 
-test('opens on the Dashboard view by default with empty storage', async ({ page, baseURL }) => {
+test('opens on the Triage view by default with empty storage', async ({ page, baseURL }) => {
   await mockAuthenticatedFleet(page, appOriginFrom(baseURL));
 
   await page.goto('/');
   await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
   await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Authenticated as testuser')).toBeVisible();
 
-  // The dashboard is the out-of-the-box default: its region renders and the
-  // grid table does not (AC1). The "Customize layout" affordance is dashboard-only.
-  await expect(page.getByRole('region', { name: 'Fleet summary' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Customize layout' })).toBeVisible();
+  // Triage is the out-of-the-box default: its region renders and the grid table
+  // does not (AC1).
+  await expect(page.getByRole('region', { name: 'Triage' })).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(0);
 
-  // The "Default view" control reflects Dashboard as the checked default (AC4).
+  // The "Default view" control reflects Triage as the checked default (AC4).
   const defaultGroup = page.getByRole('radiogroup', { name: 'Default view' });
-  await expect(defaultGroup.getByRole('radio', { name: 'Dashboard' })).toHaveAttribute(
+  await expect(defaultGroup.getByRole('radio', { name: 'Triage' })).toHaveAttribute(
     'aria-checked',
     'true',
   );
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Authenticated as testuser')).toBeHidden();
 });
 
 test('opens on the configured default (Grid) when one is persisted', async ({ page, baseURL }) => {
@@ -144,7 +147,11 @@ test('opens on the configured default (Grid) when one is persisted', async ({ pa
   await page.goto('/');
   await page.getByLabel('GitHub personal access token').fill(DUMMY_TOKEN);
   await page.getByRole('button', { name: 'Connect to GitHub' }).click();
+
+  await page.getByRole('button', { name: 'Settings' }).click();
   await expect(page.getByText('Authenticated as testuser')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Authenticated as testuser')).toBeHidden();
 
   await expect(page.getByRole('table')).toBeVisible();
 });
