@@ -320,6 +320,45 @@ describe('fuzzyRankBy', () => {
     });
   });
 
+  describe('sort-comparator coverage', () => {
+    it('orders multiple results by descending best-match score regardless of input order (#390)', () => {
+      // Input order is intentionally reverse of expected rank order to verify the score branch.
+      // 'xzz' matches 'z' mid-word (no start bonus); 'zxxx' and 'z' match at index 0 (start bonus).
+      const items = [
+        { id: 1, keys: ['xzz'] }, // no start/boundary bonus → lower score, listed first
+        { id: 2, keys: ['zxxx'] }, // start bonus → medium score
+        { id: 3, keys: ['z'] }, // start bonus + shortest → highest score, listed last
+      ];
+      const results = fuzzyRankBy('z', items, (item) => item.keys);
+      expect(results[0].id).toBe(3);
+      expect(results[1].id).toBe(2);
+      expect(results[2].id).toBe(1);
+    });
+
+    it('breaks score ties by shorter best-key length when both scores clamp to zero (#389)', () => {
+      // Keys longer than ~1000 chars accumulate enough length-penalty to exhaust the
+      // base score and clamp to 0 via Math.max(0, …). With equal scores the tie-break
+      // must prefer the shorter key — listed in reverse order to verify the sort.
+      const items = [
+        { id: 1, keys: ['x'.repeat(1002) + 'z'] }, // 1003-char key, listed first
+        { id: 2, keys: ['x'.repeat(1001) + 'z'] }, // 1002-char key, listed second
+      ];
+      const results = fuzzyRankBy('z', items, (item) => item.keys);
+      expect(results[0].id).toBe(2); // shorter key wins the tie
+      expect(results[1].id).toBe(1);
+    });
+
+    it('preserves original input order when score and best-key length are equal (#390)', () => {
+      const items = [
+        { id: 1, keys: ['test'] },
+        { id: 2, keys: ['test'] },
+        { id: 3, keys: ['test'] },
+      ];
+      const results = fuzzyRankBy('t', items, (item) => item.keys);
+      expect(results.map((r) => r.id)).toEqual([1, 2, 3]);
+    });
+  });
+
   describe('edge cases', () => {
     it('handles empty keys array', () => {
       const results = fuzzyRankBy('test', repos, () => []);

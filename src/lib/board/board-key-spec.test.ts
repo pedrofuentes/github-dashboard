@@ -250,6 +250,21 @@ describe('boardKeySpec — value signals (ready)', () => {
       line3: 'Stale',
     });
   });
+
+  it('coalesces a missing pullRequests openCount to 0 (#481)', () => {
+    const data: RepoSignalData = { pullRequests: { status: 'ready' } };
+    expect(boardKeySpec('pullRequests', data).line2).toBe('0');
+  });
+
+  it('coalesces a missing reviews requestedCount to 0 (#481)', () => {
+    const data: RepoSignalData = { reviews: { status: 'ready' } };
+    expect(boardKeySpec('reviews', data).line2).toBe('0');
+  });
+
+  it('coalesces a missing stale staleCount to 0 (#481)', () => {
+    const data: RepoSignalData = { stale: { status: 'ready' } };
+    expect(boardKeySpec('stale', data).line2).toBe('0');
+  });
 });
 
 describe('boardKeySpec — security grade → accent', () => {
