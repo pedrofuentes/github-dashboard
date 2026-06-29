@@ -10,6 +10,13 @@ first.
 
 ## 2026-06-28
 
+### Fixed
+
+- **Tile retry works after a GraphQL→REST rollback.** Retrying a signal that has
+  been rolled back to its REST path (via `GRAPHQL_SIGNAL_FLAGS`) now refreshes
+  that tile instead of silently doing nothing — its retry button reloads the
+  fleet so the REST hook refetches.
+
 ### Changed
 
 - **Deck packs repositories full-width.** The Deck now flows each repo as an
