@@ -14,8 +14,10 @@ first.
 
 - **Deck packs repositories full-width.** The Deck now flows each repo as an
   intact block of signal tiles and packs as many per line as fit (filling the
-  full window in full-window mode), instead of one repo per line. Drag-reorder a
-  repo to any 2D position.
+  full window in full-window mode), instead of one repo per line. Packed blocks
+  stay centered, and tiles keep their chosen size (readable) while customizing —
+  they pack fewer-per-line rather than shrinking. Drag-reorder a repo to any 2D
+  position.
 - **Customize is now a non-blocking drawer.** "Customize tiles" no longer opens a
   modal that covered the deck — it's a side drawer, so you can drag/remove tiles
   while it's open. Signal-column reordering moved into the drawer as a

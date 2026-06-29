@@ -61,7 +61,7 @@ const GRID_CLASS = 'grid gap-3';
  * tiles never stretch beyond their chosen size. `items-start` keeps blocks
  * top-aligned regardless of per-block height.
  */
-const BLOCKS_CLASS = 'flex flex-wrap items-start gap-3';
+const BLOCKS_CLASS = 'flex flex-wrap items-start justify-center gap-3';
 
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
@@ -120,10 +120,9 @@ export interface BoardViewProps {
   /** Toggles one (repo, signal) key's visibility — wired to the × remove overlay. */
   onToggleKey?: (repo: Repo, signal: TileSignalType) => void;
   /**
-   * How large to render each key. In the repo×signal matrix this is the
-   * per-column **target/max** width (see {@link DECK_TILE_MIN_PX}); each repo's
-   * signals always stay on one line (columns shrink to fit narrow viewports and
-   * cap at the target on wide / full-window displays), so repos never mix.
+   * How large to render each key. In the repo×signal matrix this is the fixed
+   * per-column width (see {@link DECK_TILE_MIN_PX}); tiles keep that width so
+   * labels stay readable, and blocks pack fewer-per-line rather than shrinking.
    */
   size?: DeckTileSize;
   /**
@@ -299,11 +298,11 @@ export function BoardView({
       : `${repoCount} ${repoNoun}`;
 
   // Model C: each repo row is a grid of fixed signal columns. The size sets the
-  // per-column target/max width; columns shrink to fit narrow viewports and cap
-  // at the target on wide displays, so a repo's signals always stay on one line
-  // (one row per repo) and never reflow into another repo's row.
+  // per-column width; tiles keep that width (so labels/values stay readable) and
+  // never shrink — blocks pack fewer-per-line instead. One repo's signals always
+  // stay on one line, and BLOCKS_CLASS centers the packed blocks.
   const rowStyle = {
-    gridTemplateColumns: `repeat(${columns.length}, minmax(0, ${DECK_TILE_MIN_PX[size]}px))`,
+    gridTemplateColumns: `repeat(${columns.length}, ${DECK_TILE_MIN_PX[size]}px)`,
   };
 
   // One repo's signal-key cells, shared by the plain and sortable row variants.
