@@ -96,13 +96,41 @@ describe('TriageView structure', () => {
         getRowData={() => ({ ...FAILING_CI, ...REVIEW_REQUESTED })}
       />,
     );
+    const region = screen.getByRole('region', { name: /needs attention/i });
+    expect(within(region).getByText('octo/dup')).toBeInTheDocument();
     expect(screen.getAllByText('octo/dup')).toHaveLength(1);
     expect(screen.queryByRole('heading', { name: /waiting on me/i })).not.toBeInTheDocument();
   });
 
-  it('shows the relevant signal indicator for the band', () => {
+  it('shows CI-failing and co-active indicators in the needs-attention band', () => {
+    render(
+      <TriageView
+        repos={[repo('octo/broken')]}
+        getRowData={() => ({ ...FAILING_CI, ...ISSUES_OVER_THRESHOLD })}
+      />,
+    );
+    const region = screen.getByRole('region', { name: /needs attention/i });
+    expect(within(region).getByLabelText(/CI failing/i)).toBeInTheDocument();
+    expect(within(region).getByLabelText(/over the triage threshold/i)).toBeInTheDocument();
+  });
+
+  it('shows the review badge for the waiting-on-me band', () => {
     render(<TriageView repos={[repo('octo/review')]} getRowData={() => REVIEW_REQUESTED} />);
     expect(screen.getByRole('img', { name: /awaiting your review/i })).toBeInTheDocument();
+  });
+
+  it('shows the external-contributor badge for the community band', () => {
+    render(<TriageView repos={[repo('octo/community')]} getRowData={() => EXTERNAL_PR} />);
+    const region = screen.getByRole('region', { name: /community/i });
+    expect(within(region).getByText(/from new outside contributors/i)).toBeInTheDocument();
+  });
+
+  it('shows the stale badge for the watch band', () => {
+    render(<TriageView repos={[repo('octo/stale')]} getRowData={() => STALE} />);
+    const region = screen.getByRole('region', { name: /watch/i });
+    expect(
+      within(region).getByRole('img', { name: /open items? with no activity/i }),
+    ).toBeInTheDocument();
   });
 
   it('surfaces ALL active signals for a repo, not just its band’s (regression)', () => {
@@ -196,6 +224,15 @@ describe('TriageView states', () => {
     const { container } = render(<TriageView repos={[]} getRowData={() => ({})} loading />);
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+  });
+
+  it('does not show skeletons during a background refresh (loading with repos present)', () => {
+    // showSkeleton = loading && repos.length === 0 — when repos is non-empty, bands render
+    const { container } = render(
+      <TriageView repos={[repo('octo/broken')]} getRowData={() => FAILING_CI} loading />,
+    );
+    expect(container.querySelectorAll('.animate-pulse').length).toBe(0);
+    expect(screen.getByRole('region', { name: /needs attention/i })).toBeInTheDocument();
   });
 
   it('renders an alert with a retry control on error', async () => {
