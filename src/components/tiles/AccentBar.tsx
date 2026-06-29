@@ -5,10 +5,9 @@ import { toneBgClass } from './types';
 
 /**
  * Salience-weighted thickness of the accent bar. `calm` (default) paints the
- * thin 5px bar; `problem` paints the heavier 6px bar. `sm`/`md` are deprecated
- * aliases retained for backward compatibility (`sm` → calm, `md` → problem).
+ * thin 5px bar; `problem` paints the heavier 6px bar.
  */
-export type AccentBarThickness = 'calm' | 'problem' | 'sm' | 'md';
+export type AccentBarThickness = 'calm' | 'problem';
 
 export interface AccentBarProps {
   /** Status/identity accent the bar paints. */
@@ -19,9 +18,7 @@ export interface AccentBarProps {
 
 const THICKNESS_HEIGHT: Record<AccentBarThickness, string> = {
   calm: 'h-[5px]',
-  sm: 'h-[5px]',
   problem: 'h-[6px]',
-  md: 'h-[6px]',
 };
 
 /**

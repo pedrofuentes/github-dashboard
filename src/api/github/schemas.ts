@@ -180,12 +180,21 @@ export const BranchListItemSchema = z
   })
   .passthrough();
 
-/** Schema for a single week of commit activity. */
+/**
+ * Schema for a single week of commit activity as returned by the stats API.
+ *
+ * `days` is the seven daily commit counts (Sunday..Saturday); the endpoint
+ * always returns exactly seven, so the length is validated to reject a
+ * malformed payload before it reaches a consumer (e.g. the Activity heatmap).
+ */
 export const CommitActivityWeekSchema = z
   .object({
+    /** Total commits in the week. */
     total: z.number(),
+    /** Start of the week as a Unix timestamp in seconds (week starts Sunday). */
     week: z.number(),
-    days: z.array(z.number()),
+    /** Daily commit counts, Sunday (0) .. Saturday (6). */
+    days: z.array(z.number()).length(7),
   })
   .passthrough();
 

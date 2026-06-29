@@ -45,6 +45,31 @@ describe('StatusGlyph', () => {
     expect(spinner.getAttribute('class') ?? '').toContain('motion-reduce:animate-none');
   });
 
+  it('never spins a non-loading glyph (only loading animates)', () => {
+    // Negative companion to the loading-spinner test: every other kind —
+    // including the static three-quarter `running` arc — must carry no
+    // `animate-spin`, so a stray spinner on the wrong status fails here.
+    const nonLoading: SignalIconKind[] = [
+      'success',
+      'failure',
+      'running',
+      'queued',
+      'warning',
+      'stale',
+      'neutral',
+      'external',
+      'review',
+      'unknown',
+      'info',
+    ];
+    for (const status of nonLoading) {
+      const { container, unmount } = render(<StatusGlyph status={status} />);
+      const svg = container.querySelector(`[data-status="${status}"]`) as HTMLElement;
+      expect(svg.getAttribute('class') ?? '').not.toContain('animate-spin');
+      unmount();
+    }
+  });
+
   it('renders every documented status kind with a usable accessible name', () => {
     const kinds: SignalIconKind[] = [
       'success',
@@ -66,6 +91,28 @@ describe('StatusGlyph', () => {
       expect(name.length).toBeGreaterThan(0);
       unmount();
     }
+  });
+
+  const STATUS_LABELS: ReadonlyArray<[SignalIconKind, string]> = [
+    ['success', 'Passing'],
+    ['failure', 'Failing'],
+    ['running', 'Running'],
+    ['queued', 'Queued'],
+    ['warning', 'Warning'],
+    ['stale', 'Stale'],
+    ['neutral', 'None'],
+    ['external', 'External'],
+    ['review', 'Awaiting you'],
+    ['loading', 'Loading…'],
+    ['unknown', 'Unavailable'],
+    ['info', 'Info'],
+  ];
+
+  it.each(STATUS_LABELS)('gives the %s glyph its default accessible name "%s"', (status, label) => {
+    // Per-status characterization: a wrong/dropped label for ANY status (not
+    // just `success`) must fail here — colour-blind users rely on this text.
+    render(<StatusGlyph status={status} />);
+    expect(screen.getByRole('img')).toHaveAccessibleName(label);
   });
 
   it('exposes the status via a data attribute', () => {

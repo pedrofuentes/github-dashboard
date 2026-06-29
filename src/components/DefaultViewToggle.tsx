@@ -18,9 +18,12 @@ interface DefaultViewOption {
 }
 
 const DEFAULT_VIEW_OPTIONS: ReadonlyArray<DefaultViewOption> = [
+  { value: 'triage', label: 'Triage' },
+  { value: 'matrix', label: 'Matrix' },
   { value: 'grid', label: 'Grid' },
-  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'dashboard', label: 'Boards' },
   { value: 'inbox', label: 'Inbox' },
+  { value: 'deck', label: 'Deck' },
 ];
 
 const BASE_BUTTON =

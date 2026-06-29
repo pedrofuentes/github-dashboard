@@ -62,6 +62,16 @@ vi.mock('../hooks/useCommitActivity', () => ({
 const { DashboardView } = await import('./DashboardView');
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+
+/** Reads the tiles from the persisted v2 envelope (or null when unwritten). */
+function readPersistedV2(): DashboardTile[] | null {
+  const raw = localStorage.getItem(STORAGE_KEY_V2);
+  if (raw === null) {
+    return null;
+  }
+  return (JSON.parse(raw) as { tiles: DashboardTile[] }).tiles;
+}
 
 function makeRepo(nameWithOwner: string): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -93,11 +103,11 @@ describe('DashboardView — repo-filter projection', () => {
         repoFilter={new Set(['octo/a'])}
       />,
     );
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /: .*octo\/b/i })).toBeNull();
   });
 
-  it('renders the whole fleet when no filter is active (empty selection ⇒ all shown)', () => {
+  it('renders the whole fleet when no filter is active (undefined ⇒ all shown)', () => {
     const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
     render(
       <DashboardView
@@ -106,11 +116,11 @@ describe('DashboardView — repo-filter projection', () => {
         onRepoActivate={vi.fn()}
         layout={DEFAULT_LAYOUT(repos)}
         onLayoutChange={vi.fn()}
-        repoFilter={new Set()}
+        repoFilter={undefined}
       />,
     );
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBe(7);
-    expect(screen.getAllByRole('button', { name: /: .*octo\/b/i }).length).toBe(7);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBe(7);
+    expect(screen.getAllByRole('link', { name: /: .*octo\/b/i }).length).toBe(7);
   });
 
   it('keeps a hidden tile hidden across a filter apply + clear (orthogonal to visibility, AC-7)', () => {
@@ -130,13 +140,13 @@ describe('DashboardView — repo-filter projection', () => {
       onLayoutChange,
     };
 
-    const { rerender } = render(<DashboardView {...props} repoFilter={new Set()} />);
+    const { rerender } = render(<DashboardView {...props} repoFilter={undefined} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
     rerender(<DashboardView {...props} repoFilter={new Set(['octo/a'])} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
-    rerender(<DashboardView {...props} repoFilter={new Set()} />);
+    rerender(<DashboardView {...props} repoFilter={undefined} />);
     expect(screen.queryByRole('button', { name: /ci: .*octo\/a/i })).toBeNull();
 
     // The filter is purely presentational: it never called the layout setter, and
@@ -169,8 +179,8 @@ describe('DashboardView — repo-filter projection', () => {
     expect(headings[0]).toHaveAttribute('title', 'octo/a');
 
     // The activate control's accessible name keeps the real repo, not the alias.
-    expect(screen.getAllByRole('button', { name: /: .*octo\/a/i }).length).toBe(7);
-    expect(screen.queryByRole('button', { name: /alpha/i })).toBeNull();
+    expect(screen.getAllByRole('link', { name: /: .*octo\/a/i }).length).toBe(7);
+    expect(screen.queryByRole('link', { name: /alpha/i })).toBeNull();
   });
 });
 
@@ -180,7 +190,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
     repoFilter,
   }: {
     repos: Repo[];
-    repoFilter: Set<string>;
+    repoFilter: Set<string> | undefined;
   }): ReactElement {
     const { layout, setLayout } = useDashboardLayout(repos);
     return (
@@ -214,7 +224,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
 
       // Byte-unchanged: the guard prevented the partial/compacted layout from
       // being persisted while filtered.
-      expect(localStorage.getItem(STORAGE_KEY)).toBe(seeded);
+      expect(readPersistedV2()).toEqual(JSON.parse(seeded));
     } finally {
       vi.useRealTimers();
     }
@@ -227,13 +237,13 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
       const seeded = JSON.stringify(DEFAULT_LAYOUT(repos));
       localStorage.setItem(STORAGE_KEY, seeded);
 
-      render(<GuardHarness repos={repos} repoFilter={new Set()} />);
+      render(<GuardHarness repos={repos} repoFilter={undefined} />);
       fireEvent.click(screen.getByText('rgl-emit-change'));
       act(() => {
         vi.advanceTimersByTime(400);
       });
 
-      expect(localStorage.getItem(STORAGE_KEY)).not.toBe(seeded);
+      expect(readPersistedV2()).not.toEqual(JSON.parse(seeded));
     } finally {
       vi.useRealTimers();
     }
@@ -268,7 +278,7 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
         onRepoActivate={vi.fn()}
         layout={DEFAULT_LAYOUT(repos)}
         onLayoutChange={vi.fn()}
-        repoFilter={new Set()}
+        repoFilter={undefined}
         editing
       />,
     );
@@ -291,6 +301,51 @@ describe('DashboardView — B1 arrange-guard while filtered', () => {
       />,
     );
     expect(screen.getByText(/clear the filter to rearrange tiles/i)).toBeInTheDocument();
+  });
+});
+
+describe('DashboardView — active zero-match filter narrows to empty (ADR-025, #401)', () => {
+  // Contract: `repoFilter === undefined` ⇒ no filter (whole fleet, arrange on);
+  // ANY defined Set — including an EMPTY one — ⇒ active narrowing filter. A
+  // defined-but-empty filter is the zero-match case (incompatible facets, or an
+  // inverted query that excludes everything visible): it must render NO tiles and
+  // keep arrange disabled, NOT fall back to showing the entire fleet with drag on.
+  it('renders NO repo tiles when an active filter matches nothing (defined empty Set)', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={new Set()}
+      />,
+    );
+    // The whole fleet must NOT render — an empty active filter matches nothing.
+    expect(screen.queryByRole('button', { name: /: .*octo\/a/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /: .*octo\/b/i })).toBeNull();
+    expect(screen.getByText(/no tiles match the current filter/i)).toBeInTheDocument();
+  });
+
+  it('disables arrange (drag/resize + keyboard rail) under an active zero-match filter while editing', () => {
+    const repos = [makeRepo('octo/a')];
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={new Set()}
+        editing
+      />,
+    );
+    // No fleet renders, so there is no drag surface or keyboard rail to arrange —
+    // the ADR-025 guard must NOT re-enable layout editing for a zero-match filter.
+    expect(screen.queryByRole('button', { name: /move ci · octo\/a right/i })).toBeNull();
+    expect(lastGridProps?.isDraggable).not.toBe(true);
+    expect(lastGridProps?.isResizable).not.toBe(true);
   });
 });
 
@@ -343,5 +398,95 @@ describe('DashboardView — empty-state discrimination (I1)', () => {
     expect(screen.getByText(/no tiles match the current filter/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /clear filter/i }));
     expect(onClearFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the neutral empty copy when a visible tile has no matching repo (defensive)', () => {
+    // A visible tile whose repo is absent from the current fleet projects out of
+    // `tiles` (the repo lookup misses), yet the layout is not "all hidden" and no
+    // filter is active — so the discriminated empty state lands on its final
+    // neutral fallback branch rather than rendering a blank region.
+    const orphanTile: DashboardTile = {
+      i: 'octo/ghost:ci',
+      signal: 'ci',
+      repo: 'octo/ghost',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 2,
+      visible: true,
+    };
+    render(
+      <DashboardView
+        repos={[makeRepo('octo/a')]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={[orphanTile]}
+        onLayoutChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
+    // Distinguishes the fallback from the filtered-empty branch: with no active
+    // filter, no Clear-filter recovery is offered. The summary still anchors.
+    expect(screen.queryByRole('button', { name: /clear filter/i })).toBeNull();
+    expect(screen.getByRole('region', { name: /fleet summary/i })).toBeInTheDocument();
+  });
+});
+
+describe('DashboardView — hideRepoHeader derivation reaches the tiles (#335)', () => {
+  const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+
+  function renderFiltered(repoFilter: Set<string> | undefined): void {
+    render(
+      <DashboardView
+        repos={repos}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        layout={DEFAULT_LAYOUT(repos)}
+        onLayoutChange={vi.fn()}
+        repoFilter={repoFilter}
+      />,
+    );
+  }
+
+  it('drops the visible repo header on every tile when the filter narrows to exactly one repo', () => {
+    renderFiltered(new Set(['octo/a']));
+
+    // D1 integration: the projection leaves only octo/a's tiles, and the
+    // single-repo derivation (`repoFilter.size === 1`) must actually reach each
+    // tile as `hideRepoHeader` — so every visible repo header line is dropped to
+    // `sr-only`. The TileFrame leaf test (TileFrame.test) only proves the prop is
+    // honoured; this asserts DashboardView WIRES it from the filter (#335).
+    const headings = screen.getAllByRole('heading', { level: 3, name: 'octo/a' });
+    expect(headings.length).toBeGreaterThan(0);
+    headings.forEach((heading) => {
+      expect(heading).toHaveClass('sr-only');
+      // UX-only: repo identity never leaves the a11y tree (AC-10) — the real
+      // `nameWithOwner` still rides the heading `title`.
+      expect(heading).toHaveAttribute('title', 'octo/a');
+    });
+    // The excluded repo's tiles are projected out entirely (no stray headers).
+    expect(screen.queryByRole('heading', { level: 3, name: 'octo/b' })).toBeNull();
+  });
+
+  it('keeps the visible repo header when two or more repos are selected', () => {
+    renderFiltered(new Set(['octo/a', 'octo/b']));
+
+    // `size > 1` ⇒ `filteredToOneRepo` false ⇒ `hideRepoHeader` false: each tile
+    // keeps its visible repo line so the user can tell the repos apart.
+    for (const name of ['octo/a', 'octo/b']) {
+      const headings = screen.getAllByRole('heading', { level: 3, name });
+      expect(headings.length).toBeGreaterThan(0);
+      headings.forEach((heading) => expect(heading).not.toHaveClass('sr-only'));
+    }
+  });
+
+  it('keeps the visible repo header when no filter is active (undefined ⇒ all shown)', () => {
+    renderFiltered(undefined);
+
+    for (const name of ['octo/a', 'octo/b']) {
+      const headings = screen.getAllByRole('heading', { level: 3, name });
+      expect(headings.length).toBeGreaterThan(0);
+      headings.forEach((heading) => expect(heading).not.toHaveClass('sr-only'));
+    }
   });
 });

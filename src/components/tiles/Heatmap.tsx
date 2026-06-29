@@ -15,37 +15,36 @@
  * animation), so it already honors `prefers-reduced-motion`.
  *
  * Robustness: ragged weeks (fewer than 7 days), an empty `weeks` array,
- * all-zero data, and `max === 0` are all handled without emitting `NaN` /
- * `Infinity` geometry or dividing by zero.
+ * all-zero data, and a non-finite or non-positive `max` (`NaN` / `Infinity` /
+ * `0`) are all handled without emitting `NaN` / `Infinity` geometry, dividing by
+ * zero, or flattening every cell to a constant intensity.
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
  * @license MIT
  */
 
-/**
- * Semantic accent tones, each resolving to a `--color-<tone>` CSS variable
- * defined in `src/index.css`. Defined locally so this primitive stays
- * self-contained (the sibling tiles share no barrel yet).
- */
-export type AccentTone =
-  | 'success'
-  | 'failure'
-  | 'warning'
-  | 'info'
-  | 'neutral'
-  | 'coral'
-  | 'purple'
-  | 'gold';
+import type { AccentTone } from './types';
+import { toneToVar } from './types';
 
 export interface HeatmapProps {
-  /** Commit counts as weeks × days (Sunday..Saturday). Ragged rows are padded. */
+  /**
+   * Commit counts as weeks × days (Sunday..Saturday). Ragged rows (fewer than
+   * 7 days) are not padded; the missing days are read as zero.
+   */
   weeks: number[][];
   /** Accent tone for non-empty cells. Defaults to `success` (activity ink). */
   tone?: AccentTone;
-  /** Intensity denominator. Defaults to the data maximum; guarded against 0. */
+  /**
+   * Intensity denominator. Defaults to the data maximum; a non-finite
+   * (`NaN` / `Infinity`) or non-positive value also falls back to the data
+   * maximum so intensities stay finite and proportional.
+   */
   max?: number;
-  /** Accessible summary describing the whole heatmap (the `role="img"` name). */
+  /**
+   * Accessible summary describing the whole heatmap. Used both as the
+   * `role="img"` name and as the `<caption>` of the sr-only weekly-totals table.
+   */
   srLabel: string;
   /** Custom per-cell tooltip. Defaults to "{count} commits". */
   cellTitle?: (weekIndex: number, dayIndex: number, count: number) => string;
@@ -89,11 +88,15 @@ export function Heatmap({
     (peak, week) => week.reduce((rowPeak, day) => Math.max(rowPeak, toCount(day)), peak),
     0,
   );
-  // `max` may be explicitly 0 (or the data may be all-zero); guard the divide.
-  const effectiveMax = max !== undefined ? max : dataMax;
+  // A caller-supplied `max` is honoured only when it is a finite positive
+  // number; a non-finite (NaN/Infinity) or non-positive `max` falls back to the
+  // data maximum so intensities stay finite AND proportional rather than
+  // collapsing every non-zero cell to a constant (#166). An all-zero `dataMax`
+  // still guards the divide below.
+  const effectiveMax = max !== undefined && Number.isFinite(max) && max > 0 ? max : dataMax;
   const denominator = effectiveMax > 0 ? effectiveMax : 0;
 
-  const toneVar = `var(--color-${tone})`;
+  const toneVar = toneToVar(tone);
   const emptyFill = 'var(--color-surface-raised)';
 
   const width = Math.max(weeks.length * (CELL + GAP) - GAP, 1);

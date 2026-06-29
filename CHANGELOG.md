@@ -2,10 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/). This
+project is deployed continuously and is **not** semantically versioned: each
+build is identified by its deploy date and short commit SHA (shown in the app
+footer, e.g. `2026-06-28 · 532d67f`). Entries are grouped by deploy date, newest
+first.
 
 ## [Unreleased]
+
+### Changed
+
+- **Deck and Boards tiles open the signal's GitHub page on click.** Clicking any
+  signal tile on the Deck or Boards view now navigates to the corresponding
+  GitHub page (Actions run, PR, security alert, etc.) in a new tab, replacing
+  the previous in-app drill-down. (#616)
+
+### Fixed
+
+- **Deck Security key explains the `n/a` no-access state.** When a token lacks
+  the required scope or the security feature is disabled, the Security key now
+  includes the reason ("no access — token scope or feature disabled") in its
+  accessible name and hover title, matching the `n/a` grid cell. (#561)
+- **TriageView collapsed-band `aria-controls` and settled-rows-during-load.**
+  Bug-bash behavioral fixes: the collapsed band's `aria-controls` attribute now
+  correctly references its controlled panel, and rows that arrive while the list
+  is still loading are no longer discarded — they settle in place once loading
+  completes. (#585)
+- **Inbox repo-filter survives transient fleet-load errors.** If the fleet
+  momentarily returns no repositories (network hiccup), the inbox repo-filter
+  dropdown no longer resets — the selection is preserved and remains active once
+  the fleet reloads.
+- **"Clear filters" hidden when only a global scope is active.** When the Inbox
+  shows "No items match" solely because a repo scope is active (no user-set
+  kind/unread/repo filter), the non-operative "Clear filters" button is now
+  suppressed. The button still appears whenever a user-controllable filter can
+  actually be cleared.
+
+## 2026-06-28
+
+### Fixed
+
+- **Tile retry works after a GraphQL→REST rollback.** Retrying a signal that has
+  been rolled back to its REST path (via `GRAPHQL_SIGNAL_FLAGS`) now refreshes
+  that tile instead of silently doing nothing — its retry button reloads the
+  fleet so the REST hook refetches.
+
+### Changed
+
+- **Deck packs repositories full-width.** The Deck now flows each repo as an
+  intact block of signal tiles and packs as many per line as fit (full-bleed,
+  filling the
+  full window in full-window mode), instead of one repo per line. Packed blocks
+  stay centered, and tiles keep their chosen size (readable) while customizing —
+  they pack fewer-per-line rather than shrinking. Drag-reorder a repo to any 2D
+  position.
+- **Customize is now a non-blocking drawer.** "Customize tiles" no longer opens a
+  modal that covered the deck — it's a side drawer, so you can drag/remove tiles
+  while it's open. Signal-column reordering moved into the drawer as a
+  drag-to-reorder list.
+- **Versioning: dropped SemVer in favor of a date + short-SHA build identity.**
+  The frozen `1.0.0` semantic version (only ever shown in the footer) was
+  removed; the footer now reads `<deploy date> · <short SHA>` (the SHA links to
+  the commit). Update detection already keyed on the SHA, so nothing functional
+  changed — this just makes the displayed identity honest for a continuously
+  deployed, client-only app with no release cadence or external consumers.
+  `package.json` version is now `0.0.0` (read by nothing in-app).
 
 ### Security
 
@@ -19,7 +80,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Dashboard customization & repo-scope filter** (Phase 3): a **Customize layout** panel to show or hide tiles per repository and set short per-repo **display aliases** (the real `owner/name` is still announced to assistive tech), plus a toolbar **repo filter** to focus the Dashboard on just the repositories you pick. While a filter is active the grid is read-only — drag, resize and keyboard rearrange are paused — so a focused, partial view can never be compacted and saved over your real tile arrangement. Empty states are now actionable: distinct messages for no repositories, **all tiles hidden** (with a nudge to add some back), and **nothing matching the current filter** (with a one-click **Clear filter**). All client-only and stored per-device.
+- **Remove a Deck repository row from the grid + reset order** — in the Deck's
+  Customize mode each repo row's drag grip is joined by a remove (✕) control that
+  hides the whole repository (bring it back from the Customize panel). The panel
+  also gains a **Reset order** button that restores the default repo-row and
+  signal-column order.
+- **Reorder Deck repositories and signal columns by drag** — in the Deck's
+  Customize mode each repo row gains a drag grip (reorder rows) and a draggable
+  signal-column header strip (reorder the signal columns globally, across all
+  repos). Drag with pointer or keyboard; the order is remembered. Row reordering
+  is disabled while a repository filter is active (a subset can't be reordered);
+  column reordering stays available since columns are fleet-wide.
+- **Full-window mode** — a toolbar control opens the active view in an immersive,
+  chrome-less overlay that fills the browser window (the header and toolbar are
+  hidden). A thin top bar shows the view name and an Exit control; `Esc` also
+  exits. On the Deck the tile-size control is available in the bar, so keys can
+  be resized full-screen (handy on a wall display).
+- **Deck tile size** — a toolbar control (X-Small / Small / Medium / Large) to
+  scale the Deck's keys; Medium reproduces the previous layout and the choice is
+  remembered. Larger sizes suit full-screen wall displays; smaller sizes pack
+  more repositories per row.
+- **Deck view** — a Stream Deck–style board showing one key per repository ×
+  signal (CI, security, reviews, pull requests, issues, stale). Reachable from
+  the view switcher, the `g d` keyboard shortcut, and selectable as the default
+  view (#500).
+- **Deck per-tile customization** — hide or show individual repository × signal
+  keys directly in the Deck view. In edit mode (toggled via **Customize tiles**
+  in the toolbar), every visible key shows an inline **×** remove button; the
+  **Customize deck** panel adds per-signal column toggles (show/hide a signal
+  across every repo at once), bulk **Show all keys** / **Hide all keys** /
+  **Show only selected** actions, and a search-to-reveal section for targeted
+  per-repo row and per-key overrides. Visibility state persists locally
+  (independent of the dashboard layout) and new fleet repos appear automatically.
+- **Show/hide repo owner** — a Settings → Appearance toggle (and a ⌘K "Toggle
+  repo owner" command) that hides the `owner/` prefix in repository labels
+  across the matrix, tiles, inbox, and drill-down, while keeping the full
+  `owner/name` in tooltips and links (#488).
+- **Community-vs-mine open issues**: when you're signed in, the Issues cell (in
+  the Matrix and Triage) and the Issues tile now break the open-issue total down
+  into how many were opened by the community versus by you — shown as a compact
+  `· N community · N mine` annotation on the cell and an `N community · N mine`
+  meta line on the tile, with the full split spelled out for screen readers. The
+  total count and the over-triage-threshold warning are unchanged, and signed-out
+  views render exactly as before.
+- **Inbox multi-select + bulk-action bar**: triage many notifications at once
+  instead of clicking one by one. Each Inbox row now has a selection checkbox;
+  selecting one or more reveals an accessible bulk-action toolbar that shows the
+  selection count and lets you **Mark read**, **Dismiss**, or **Restore** the
+  whole batch (Restore enables only when a dismissed item is selected), plus
+  **Select all** visible and **Clear selection**. Each batch is one persisted
+  triage update, the action is announced for screen readers, and the selection is
+  pruned to currently-visible items so a bulk action never touches a hidden one.
+- **Keyboard shortcuts + "?" help overlay**: power-user navigation lands in the
+  authenticated app. Press `g` then `t`/`m`/`g`/`b`/`i` to jump to
+  Triage/Matrix/Grid/Boards/Inbox, `?` to open a discoverable shortcuts cheat
+  sheet, and `,` to open Settings. Shortcuts never fire while you are typing in a
+  filter/search field, and ⌘K (command palette) and browser chords pass through
+  untouched. The help overlay is a fully accessible dialog (focus trap, `Esc` /
+  backdrop close, focus restore) and also points to ⌘K and Saved Views.
+- **⌘K command palette (live)**: press ⌘K (or Ctrl-K) anywhere in the
+  authenticated app to open a searchable command palette. It exposes navigation
+  (Go to Triage/Matrix/Grid/Inbox/Boards), filter presets (Needs attention,
+  Awaiting my review, Failing CI, Security risk, Stale, Clear all filters),
+  Open Settings, and Toggle theme/density — each wired to existing actions
+  (no new behaviour). Recently-run commands are remembered and surfaced first.
+- **Saved Views manager + quick-switcher**: a new accessible `SavedViewsMenu`
+  disclosure (backed by the `useSavedViews` hook) lets you save the current repo
+  filter + target view as a named workspace and apply, rename, or delete saved
+  views. Names are validated (non-empty, bounded length) before persisting, with
+  inline feedback.
+- **Saved Views in the toolbar + built-in presets**: the Saved Views menu is now
+  mounted in the app toolbar for every view, wired to the live filter and target
+  view, so you can save the current scope and apply, rename, or delete views from
+  anywhere. It also ships six read-only starter **presets** (Needs attention,
+  Awaiting my review, Failing CI, Security risk, Stale, All repositories) — each
+  applies a sensible filter + view in one click, making the menu useful out of
+  the box.
+- **Global repo scope across all views**: the faceted repo filter is now a
+  single global scope (ADR-027). Activating it narrows **every** primary view —
+  including the Grid table and the Notifications Inbox, which previously ignored
+  it — and the filter control is now available on those views too, matching the
+  existing Matrix/Triage placement. The Inbox's per-device triage and fleet-wide
+  unread badge are unchanged (scope narrows what's shown, not what's stored), and
+  the Boards filter-gating (ADR-025) is untouched.
+- **Rule-based dashboard customization**: the **Customize dashboard** panel now
+  shapes the board with signal *rules* instead of a per-repo checkbox grind.
+  Seven tri-state signal toggles each show or hide that signal across **every**
+  repository at once (with a live "shown of total" status), backed by bulk
+  **Show all tiles**, **Hide all tiles**, and **Show only selected** actions. A
+  repository search still surfaces targeted per-repo tile overrides and display
+  aliases for power users, and **Reset to default layout** plus the dialog's
+  focus-trap/`Esc`/return-focus accessibility are unchanged.
+- **Settings overlay**: the previously scattered preference controls — the
+  header **Theme** and **Density** toggles, the toolbar **Default view** control,
+  and the authenticated-as / **Forget token** account bar — are now consolidated
+  behind a single header **Settings** button that opens one accessible modal
+  dialog (focus-trapped, `Esc`/backdrop to close, focus returns to the opener).
+  The dialog groups them into **Appearance**, **Defaults** and **Account**
+  sections; all controls keep their existing behaviour.
+- **Triage home** (ADR-030): the **Triage** view — the attention-first "what needs me right now?" surface — is now the out-of-the-box default landing view, grouping the fleet worst-first into urgency bands (Needs attention → Waiting on me → Community → Watch → Healthy). It honours the **faceted repo filter** and drills down into the existing detail drawer, and is listed first in both the view switcher and the **Default view** control. The **Fleet Matrix** remains a prominent selectable view and a valid persisted default; existing users keep whatever default they previously chose.
+- **Fleet Matrix view** (ADR-026): a dense, scannable **repos × signals** table is now the out-of-the-box default landing view, replacing the free-form tile grid as the at-a-glance surface. Repositories are ordered worst-first into collapsible **Broken / Warning / Healthy** health groups (Healthy collapsed by default), every cell reuses the same status vocabulary as the Grid, and each row drills down into the existing detail drawer. The Matrix honours the **faceted repo filter** and the **density** control, and is available alongside Grid / Dashboard / Inbox in both the view switcher and the **Default view** control. Existing users keep whatever default they previously chose.
+- **Dashboard customization & repo-scope filter** (Phase 3): a **Customize layout** panel to show or hide tiles per repository and set short per-repo **display aliases** (the real `owner/name` is still announced to assistive tech), plus a toolbar **repo filter** to focus the Dashboard on just the repositories you pick. While a filter is active the grid is read-only — drag, resize and keyboard rearrange are paused — so a focused, partial view can never be compacted and saved over your real tile arrangement. Empty states are now actionable: distinct messages for no repositories, **all tiles hidden** (with a nudge to add some back), and **nothing matching the current filter** (with a one-click **Clear filter**). All client-only and stored per-device. When the filter narrows the grid to a **single repository**, each tile's now-redundant `owner/name` header line is visually dropped — still announced to assistive tech — so the focused view reads as one clean board.
 - **Configurable default view**: the **Dashboard** is now the out-of-the-box default landing view, and a new **Default view** control lets you choose which of **Grid / Dashboard / Inbox** the app opens to (persisted under `fleet:default-view`). The app no longer reopens to your last-used view — it always opens to your chosen default.
 - **Notifications Inbox** (M11): a third top-level view — a single, **newest-first**,
   triageable list that gathers everything across your fleet that needs attention
@@ -64,8 +225,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
     per-**severity** breakdown bar (the partial/`≥` indicator is preserved).
   - **Pull requests** — the open-PR count with a prominent **new-contributor
     highlight** chip when outside contributors have open PRs.
-  - **Reviews / Issues / Stale** — urgency-scaled counts (the accent escalates
-    with the backlog) with the triage / staleness wording spelled out.
+  - **Reviews / Issues** — urgency-scaled counts (the accent escalates with the
+    backlog) with the triage wording spelled out.
+  - **Stale** — **age-led**: the hero is the oldest item's age (e.g. "34d") over
+    an **age-bucket bar** (`>14d` / `>30d` / `>60d`), with the count and PR/issue
+    split demoted to a secondary line — so staleness reads by how old, not how
+    many.
   - **Fleet summary** — the pinned anchor is reworked into a **health-split bar**
     (need-attention / warning / healthy proportions) above the per-signal rollup
     chips, each segment keeping its icon + count + word. See ADR-015.
@@ -137,6 +302,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Deck error / empty key states** — errored keys now show an in-place retry
+  button and clearer empty ("n/a") states instead of a misleading red ✕, making
+  transient fetch failures recoverable without a full reload.
+- **Stale and Security signals recover from GitHub Search secondary rate-limits**
+  (HTTP 403 + `Retry-After`) instead of erroring every repo in the fleet; the
+  client backs off and retries after the server-specified delay.
+- **Triage rows now surface every pending action for a repo**: a repository is
+  grouped into its single highest-priority band (e.g. **Needs attention** for an
+  over-threshold issue backlog), but its row now renders **all** of its active
+  signal indicators — failing CI, security, issues, pending reviews, new
+  external PRs, and stale items — in a consistent order, instead of only the
+  band's own signal. Previously a repo in "Needs attention" (for example one
+  with 727 open issues) hid its pending-review / external-PR / stale badges, so
+  those actions were invisible until you drilled in (T-c1).
+- **Density toggle now updates the dashboard live**: switching density to
+  **Glanceable** (or back to Balanced) in Settings — or via the ⌘K "Toggle
+  density" command — immediately re-renders the Fleet Matrix and dashboard tiles
+  instead of doing nothing until a reload. `useDensity` was a per-component
+  `useState`, so each of its four consumers held an independent copy; the toggle
+  only updated its own and the matrix/tiles never heard about the change. It is
+  now a single shared `useSyncExternalStore` reading `localStorage` as the source
+  of truth, so every consumer re-renders in sync (T-fix-density-sync).
+- **Keyboard focus stays visible in the ⌘K palette and repo filter**: both
+  `aria-activedescendant` listboxes now scroll the highlighted option into view
+  as you arrow/Home/End through long lists, so the active descendant — the only
+  visible keyboard-focus indicator — never disappears off-screen (WCAG 2.1 AA
+  2.4.7 Focus Visible, #468/#469).
+- **Tinted-badge label contrast (light theme)**: the **warning** and **coral**
+  badge/chip text now uses darker **amber-800 (`#92400e`)** / **orange-800
+  (`#9a3412`)** ink instead of the amber-700 / orange-700 accent, so small labels
+  on a 10% accent tint clear WCAG 2.1 AA 4.5:1 (the -700 accents only reached
+  ~4.4:1); borders and rings keep the -700 accent (non-text UI, ≥3:1). Surfaced
+  while building the dark theme's per-theme token system (#171).
 - **Dashboard tile focus no longer throws on exotic ids**: restoring roving focus
   to a tile interpolated the tile id (`owner/repo:signal`) straight into a
   `querySelector`, so a repository name containing a CSS-selector metacharacter
@@ -161,7 +359,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Dashboard 2.0 — "Signal Keys" tile redesign**: the dashboard tiles were
+- **Deck is now a repo × signal matrix** — the Stream Deck keys lay out as **one
+  row per repository** (signals across, in a consistent column order) at every
+  tile size. Previously the responsive grid only kept one row per repo at the
+  Medium size; X-Small/Large reflowed keys so repos visually "mixed". Each repo's
+  signals now always stay on one line (columns shrink to fit narrow viewports and
+  cap at the chosen size on wide / full-window displays). Foundation for the
+  upcoming drag-to-reorder + per-row/column add/remove.
+
+- **Fleet signals (CI, Pull Requests, Issues, Stale, Reviews) now fetched via one batched GraphQL query** (chunked at ~10–15 repos per request) instead of per-repo REST calls — dramatically fewer API requests and no more GitHub Search secondary-rate-limit (30 req/min) bursts on large fleets. **CI now reflects the default-branch HEAD check rollup** (`statusCheckRollup`) rather than "the latest workflow run on any branch", giving a more accurate and consistent fleet-health signal. **Security (code-scanning) and commit-activity remain on REST** — no GraphQL equivalent is available for those signals.
+
+- **Dashboard view renamed to "Boards" and demoted**: the free-form,
+  drag-and-drop react-grid-layout view is now labelled **Boards** in the view
+  switcher and the **Default view** control, and sits **after Matrix and Grid**
+  as a secondary, optional surface (the **Fleet Matrix** remains the scannable
+  default per ADR-026). The view keeps all of its existing behaviour — tiles,
+  drag/resize, keyboard rearrange and the customize flow are unchanged; only the
+  label and ordering moved. Existing saved defaults are unaffected.
+- **Forward-compatible Boards layout storage**: the persisted tile layout now
+  uses a **versioned envelope** (`{ version: 2, tiles }`) under the new
+  `fleet:dashboard-view:v2` key. An existing unversioned layout under the legacy
+  `fleet:dashboard-layout` key is **migrated automatically on first load** (your
+  tiles and positions are preserved exactly) and the legacy key is **kept for
+  rollback**. Corrupt or missing storage degrades to the default layout as
+  before. This is a storage-format change only — nothing changes on screen.
+
+
   reworked around a **3-tier salience model** so a glance reads problems first.
   Only tiles that need action carry colour — a PROBLEM tile (e.g. failing CI, a
   D–F security grade) and the "needs-you" Reviews tile — while healthy tiles stay

@@ -55,12 +55,12 @@ async function openDashboard(user: ReturnType<typeof userEvent.setup>): Promise<
   });
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
   await user.click(screen.getByRole('button', { name: /connect/i }));
-  await screen.findByText(/authenticated as octocat/i);
-  await user.click(screen.getByRole('button', { name: /dashboard/i }));
+  await screen.findByRole('group', { name: /view mode/i });
+  await user.click(screen.getByRole('button', { name: /boards/i }));
 }
 
 describe('App — customize-layout contrast (#125)', () => {
-  it('uses sky-700 (AA-passing) for the active customize-layout toggle', async () => {
+  it('uses the accent-info token (sky-700 in light, AA-passing) for the active customize-layout toggle', async () => {
     const user = userEvent.setup();
     render(<App />);
     await openDashboard(user);

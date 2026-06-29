@@ -13,6 +13,8 @@ import {
 } from './dashboard-layout';
 
 const STORAGE_KEY = 'fleet:dashboard-layout';
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+const LAYOUT_VERSION = 2;
 
 const SIGNALS: TileSignalType[] = [
   'ci',
@@ -177,11 +179,14 @@ describe('loadDashboardLayout', () => {
     const saved = DEFAULT_LAYOUT(repos);
     expect(saved).toHaveLength(repos.length * SIGNALS.length);
     expect(saved.length).toBeGreaterThan(600);
+    // ...and still inside the headroom cap, so the schema persists rather than
+    // rejecting the whole fleet (#200/#204): 90 × 7 = 630 ≤ MAX_TILES (700).
+    expect(saved.length).toBeLessThanOrEqual(MAX_TILES);
 
     saveDashboardLayout(saved);
 
     // Persistence actually wrote (not silently skipped by the schema cap).
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull();
     expect(loadDashboardLayout(repos)).toEqual(saved);
   });
 
@@ -343,6 +348,48 @@ describe('loadDashboardLayout', () => {
     expect(loaded).toHaveLength(legacy.length + repos.length);
   });
 
+  it('does not reintroduce a fleet repo that is absent from the stored layout (#201)', () => {
+    // Backfill is per-repo: it only completes the signal set for repos ALREADY in
+    // the stored layout. A fleet repo with no stored tiles (e.g. one the user
+    // removed every tile for) must stay out — repo membership is authoritative and
+    // a removed repo only returns on an explicit reset, never via the activity
+    // back-compat merge.
+    const repoA = makeRepo('octo/a');
+    const repoB = makeRepo('octo/b');
+    saveDashboardLayout(DEFAULT_LAYOUT([repoA])); // only repo A persisted
+
+    const loaded = loadDashboardLayout([repoA, repoB]); // B is in the fleet, not the layout
+
+    expect(loaded.some((t) => t.repo === 'octo/b')).toBe(false);
+    expect(loaded.every((t) => t.repo === 'octo/a')).toBe(true);
+    expect(loaded).toEqual(DEFAULT_LAYOUT([repoA]));
+  });
+
+  it('partial migration: backfills activity only for the repos missing it (mixed 7+6) (#201)', () => {
+    // A layout persisted across the activity rollout can be mixed: some repos
+    // already carry all 7 signals while others still hold the legacy 6. The merge
+    // must add the activity tile ONLY to the repos that lack it, never duplicating
+    // it for repos that already migrated.
+    const repoA = makeRepo('octo/a');
+    const repoB = makeRepo('octo/b');
+    const stored = [...DEFAULT_LAYOUT([repoA]), ...legacyLayout([repoB])]; // A: 7, B: 6
+    saveDashboardLayout(stored);
+
+    const loaded = loadDashboardLayout([repoA, repoB]);
+
+    // Every stored tile survives; no repo loses a tile.
+    for (const tile of stored) {
+      expect(loaded.some((t) => t.i === tile.i)).toBe(true);
+    }
+    // Exactly one activity tile per repo — A's pre-existing one is untouched and
+    // B gains the single missing one.
+    expect(loaded.filter((t) => t.signal === 'activity')).toHaveLength(2);
+    expect(loaded.filter((t) => t.repo === 'octo/a')).toHaveLength(SIGNALS.length);
+    expect(loaded.filter((t) => t.repo === 'octo/b')).toHaveLength(SIGNALS.length);
+    // Only B's activity tile is appended (A was already complete).
+    expect(loaded).toHaveLength(stored.length + 1);
+  });
+
   it('preserves a stored tile with a non-default custom position through reconciliation', () => {
     const repoA = makeRepo('octo/a');
     const repoB = makeRepo('octo/b');
@@ -363,11 +410,14 @@ describe('loadDashboardLayout', () => {
 });
 
 describe('saveDashboardLayout', () => {
-  it('persists the layout as JSON', () => {
+  it('persists the layout under the versioned v2 key as a {version, tiles} envelope', () => {
     const repos = [makeRepo('octo/a')];
     const layout = DEFAULT_LAYOUT(repos);
     saveDashboardLayout(layout);
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(layout);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: layout,
+    });
   });
 
   it('swallows localStorage.setItem throwing', () => {
@@ -377,21 +427,43 @@ describe('saveDashboardLayout', () => {
     expect(() => saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]))).not.toThrow();
   });
 
+  it('warns via console.warn when localStorage.setItem throws on save (#592)', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]));
+
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to persist dashboard layout; changes will be lost on next load.',
+      expect.any(Error),
+    );
+  });
+
   it('does not persist tiles that fail schema validation', () => {
     const invalid: DashboardTile[] = [
       { i: 'octo/a:ci', signal: 'ci', repo: 'octo/a', x: -5, y: 0, w: 3, h: 2, visible: true },
     ];
     saveDashboardLayout(invalid);
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 
 describe('resetDashboardLayout', () => {
-  it('removes the stored layout key', () => {
+  it('removes the versioned v2 key', () => {
     saveDashboardLayout(DEFAULT_LAYOUT([makeRepo('octo/a')]));
-    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull();
+    resetDashboardLayout();
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
+  });
+
+  it('also clears the legacy v1 key so the default is truly restored', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_LAYOUT([makeRepo('octo/a')])));
     resetDashboardLayout();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(loadDashboardLayout([makeRepo('octo/a')])).toEqual(DEFAULT_LAYOUT([makeRepo('octo/a')]));
   });
 
   it('swallows localStorage.removeItem throwing', () => {
@@ -399,5 +471,116 @@ describe('resetDashboardLayout', () => {
       throw new Error('blocked');
     });
     expect(() => resetDashboardLayout()).not.toThrow();
+  });
+});
+
+describe('versioned layout migration (v1 → v2)', () => {
+  it('loads a legacy v1 array unchanged (same tiles/positions) into the new shape', () => {
+    const repos = [makeRepo('octo/a')];
+    // Seed a NON-DEFAULT legacy layout so the assertion can distinguish a working
+    // migration from a fallback to DEFAULT_LAYOUT. Mutate one tile's position and
+    // flip another's visibility to clearly non-default values.
+    const legacy = DEFAULT_LAYOUT(repos).map((tile) => {
+      if (tile.signal === 'ci') return { ...tile, x: 6, y: 8 };
+      if (tile.signal === 'security') return { ...tile, visible: false };
+      return tile;
+    });
+    // Guard: the fixture must actually differ from the default, otherwise the test
+    // would silently revert to being tautological.
+    expect(legacy).not.toEqual(DEFAULT_LAYOUT(repos));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    // The migrated tiles must equal the seeded non-default layout — if migration
+    // fell back to DEFAULT_LAYOUT, this fails.
+    expect(loadDashboardLayout(repos)).toEqual(legacy);
+    // And the migration persists those same non-default tiles under the v2 key.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: legacy,
+    });
+  });
+
+  it('persists a migrated v2 envelope on read while preserving the legacy key', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    loadDashboardLayout(repos);
+
+    // v2 is written with the same tiles...
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_V2) ?? 'null')).toEqual({
+      version: LAYOUT_VERSION,
+      tiles: legacy,
+    });
+    // ...and the legacy key is kept intact for rollback (NOT deleted).
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual(legacy);
+  });
+
+  it('warns and still returns the migrated v2 layout when migration persistence fails', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+    vi.spyOn(localStorage, 'setItem').mockImplementation((key) => {
+      if (key === STORAGE_KEY_V2) {
+        throw new Error('quota exceeded');
+      }
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(loadDashboardLayout(repos)).toEqual(legacy);
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to persist migrated dashboard layout; legacy layout will be retried on next load.',
+      expect.any(Error),
+    );
+  });
+
+  it('prefers the v2 envelope over the legacy key when both are present', () => {
+    const repos = [makeRepo('octo/a')];
+    const legacy = DEFAULT_LAYOUT(repos);
+    const v2Tiles = legacy.map((tile) => (tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+    localStorage.setItem(
+      STORAGE_KEY_V2,
+      JSON.stringify({ version: LAYOUT_VERSION, tiles: v2Tiles }),
+    );
+
+    expect(loadDashboardLayout(repos)).toEqual(v2Tiles);
+  });
+
+  it('round-trips through the v2 envelope', () => {
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    // Use non-default tiles so a no-op save cannot pass via the default fallback.
+    const saved = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
+    );
+    saveDashboardLayout(saved);
+    expect(loadDashboardLayout(repos)).toEqual(saved);
+  });
+
+  it('falls back to the default on a corrupt v2 envelope', () => {
+    const repos = [makeRepo('octo/a')];
+    localStorage.setItem(STORAGE_KEY_V2, '{not json');
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default on a v2 envelope with the wrong version', () => {
+    const repos = [makeRepo('octo/a')];
+    // Use non-default tiles so a widened version guard cannot pass tautologically.
+    const nonDefaultTiles = DEFAULT_LAYOUT(repos).map((tile) =>
+      tile.signal === 'ci' ? { ...tile, x: 6, y: 8 } : tile,
+    );
+    localStorage.setItem(STORAGE_KEY_V2, JSON.stringify({ version: 99, tiles: nonDefaultTiles }));
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
+  });
+
+  it('falls back to the default on a v2 envelope whose tiles are invalid', () => {
+    const repos = [makeRepo('octo/a')];
+    localStorage.setItem(
+      STORAGE_KEY_V2,
+      JSON.stringify({ version: LAYOUT_VERSION, tiles: [{ i: 'x', signal: 'nope' }] }),
+    );
+    expect(loadDashboardLayout(repos)).toEqual(DEFAULT_LAYOUT(repos));
   });
 });

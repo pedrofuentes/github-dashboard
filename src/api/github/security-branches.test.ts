@@ -18,6 +18,7 @@ import {
   MAX_ALERT_PAGES,
   assertGitHubApiOrigin,
   fetchCodeScanningAlerts,
+  fetchCommitActivityWeeks,
   fetchDependabotAlerts,
 } from './security-branches';
 import { ETagCache } from './etag-cache';
@@ -797,5 +798,120 @@ describe('alert feeds — per-alert identity rows + 304 replay (INBOX-2B #216)',
       string
     >;
     expect(headers['If-None-Match']).toBeUndefined();
+  });
+});
+
+describe('alert feeds — diagnostics (#234, #235)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('throws an explicit cold-cache diagnostic on a 304 with no cached feed (#234)', async () => {
+    // A 304 with a fresh cache is a protocol violation (no If-None-Match was
+    // sent), so it must surface a specific message — not the generic
+    // "GitHub API error (304)" the `!ok` fallthrough would otherwise throw.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(mockResponse(304, null, undefined, 'W/"v1"'));
+
+    await expect(
+      fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, new ETagCache()),
+    ).rejects.toThrow(/304 Not Modified but no cached/i);
+  });
+
+  it('debug-logs a Dependabot alert skipped from inbox rows for missing identity (#235)', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    // A counted alert lacking number/html_url/created_at yields no inbox row.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [advisoryAlert('critical')], undefined, 'W/"v1"'),
+    );
+
+    const feed = await fetchDependabotAlerts('octo', 'dep', 'tok', undefined, new ETagCache());
+
+    expect(feed.total).toBe(1); // still counted in the tally
+    expect(feed.rows).toEqual([]); // but produced no inbox row
+    expect(debug).toHaveBeenCalled(); // and the skip was announced
+    expect(debug.mock.calls[0]?.[0]).toMatch(/skipped dependabot alert/i);
+  });
+
+  it('debug-logs a code-scanning alert skipped from inbox rows for missing identity (#235)', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(200, [levelAlert('high')], undefined, 'W/"v1"'),
+    );
+
+    const feed = await fetchCodeScanningAlerts('octo', 'cs', 'tok', undefined, new ETagCache());
+
+    expect(feed.total).toBe(1);
+    expect(feed.rows).toEqual([]);
+    expect(debug).toHaveBeenCalled();
+    expect(debug.mock.calls[0]?.[0]).toMatch(/skipped code-scanning alert/i);
+  });
+});
+
+/**
+ * `fetchCommitActivityWeeks` is the aggregate weekly-stats reader colocated with
+ * the other security-branches fetchers. github-api.test.ts and
+ * network-graph-api.test.ts do not exercise it, so this suite covers the 202
+ * (computing), 204 (empty), success and error paths.
+ */
+describe('fetchCommitActivityWeeks', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('returns null while GitHub is still computing the stats (202)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(202, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toBeNull();
+  });
+
+  it('returns an empty array for an empty repository (204)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(204, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toEqual([]);
+  });
+
+  it('returns the parsed weekly activity on success', async () => {
+    const weeks = [
+      { total: 5, week: 1700000000, days: [0, 1, 2, 0, 1, 1, 0] },
+      { total: 0, week: 1700604800, days: [0, 0, 0, 0, 0, 0, 0] },
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(200, weeks));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo', 'ghp_test');
+    expect(result).toHaveLength(2);
+    expect(result?.[0].total).toBe(5);
+    expect(result?.[0].days).toHaveLength(7);
+  });
+
+  it('works without a token for a public repository', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(204, ''));
+
+    const result = await fetchCommitActivityWeeks('owner', 'repo');
+    expect(result).toEqual([]);
+  });
+
+  it('throws a GitHubApiError on API failure', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse(500, { message: 'server error' }));
+
+    await expect(fetchCommitActivityWeeks('owner', 'repo', 'ghp_test')).rejects.toThrow(
+      GitHubApiError,
+    );
   });
 });

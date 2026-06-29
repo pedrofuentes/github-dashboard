@@ -5,44 +5,64 @@ import { describe, expect, it, vi } from 'vitest';
 import { DefaultViewToggle } from './DefaultViewToggle';
 
 describe('DefaultViewToggle', () => {
-  it('exposes an accessible "Default view" radiogroup with the three choices', () => {
+  it('exposes an accessible "Default view" radiogroup with the six choices', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
     const group = screen.getByRole('radiogroup', { name: /default view/i });
     expect(group).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /matrix/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /grid/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /boards/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /inbox/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /deck/i })).toBeInTheDocument();
   });
 
   it('marks the passed value as the checked default', () => {
     render(<DefaultViewToggle value="inbox" onChange={vi.fn()} />);
     expect(screen.getByRole('radio', { name: /inbox/i })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /grid/i })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('radio', { name: /dashboard/i })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
+    expect(screen.getByRole('radio', { name: /boards/i })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('renders a redundant text label for every option (never colour alone)', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+    expect(screen.getByText('Triage')).toBeInTheDocument();
+    expect(screen.getByText('Matrix')).toBeInTheDocument();
     expect(screen.getByText('Grid')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Boards')).toBeInTheDocument();
     expect(screen.getByText('Inbox')).toBeInTheDocument();
+    expect(screen.getByText('Deck')).toBeInTheDocument();
   });
 
-  it('exposes a visible focus ring on each option for keyboard users', () => {
+  it('lists Triage first as the home default', () => {
     render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
-    expect(screen.getByRole('radio', { name: /grid/i }).className).toMatch(
-      /focus-visible:outline-focus/,
-    );
+    const radios = screen.getAllByRole('radio');
+    expect(radios[0]).toHaveAccessibleName(/triage/i);
   });
 
-  it('calls onChange with the chosen view when a radio is clicked', async () => {
+  it.each([/triage/i, /matrix/i, /grid/i, /boards/i, /inbox/i, /deck/i])(
+    'exposes a visible focus ring on the %s option for keyboard users',
+    (name) => {
+      render(<DefaultViewToggle value="dashboard" onChange={vi.fn()} />);
+      expect(screen.getByRole('radio', { name }).className).toMatch(/focus-visible:outline-focus/);
+    },
+  );
+
+  it.each([
+    { name: /triage/i, expected: 'triage' as const },
+    { name: /matrix/i, expected: 'matrix' as const },
+    { name: /grid/i, expected: 'grid' as const },
+    { name: /boards/i, expected: 'dashboard' as const },
+    { name: /inbox/i, expected: 'inbox' as const },
+    { name: /deck/i, expected: 'deck' as const },
+  ])('calls onChange with $expected when that radio is clicked', async ({ name, expected }) => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<DefaultViewToggle value="dashboard" onChange={onChange} />);
-    await user.click(screen.getByRole('radio', { name: /inbox/i }));
-    expect(onChange).toHaveBeenCalledWith('inbox');
+    // `value="grid"` so the grid click re-selects the already-active radio while
+    // the others are genuine changes; the toggle calls `onChange`
+    // unconditionally, so every option — re-select included — reports its value.
+    render(<DefaultViewToggle value="grid" onChange={onChange} />);
+    await user.click(screen.getByRole('radio', { name }));
+    expect(onChange).toHaveBeenCalledWith(expected);
   });
 });

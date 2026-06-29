@@ -21,12 +21,13 @@
  * / "Restored" alongside the re-announced unread count (§6.2). All colour comes
  * from semantic theme tokens, so the view recolours with a single `.dark` flip.
  */
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import type { ChangeEvent, ReactElement } from 'react';
 
 import type { UseInboxResult } from '../../hooks/useInbox';
 import type { Repo } from '../../types/fleet';
 import type { InboxKind } from '../../types/inbox';
+import { InboxBulkBar } from './InboxBulkBar';
 import { InboxList } from './InboxList';
 import { KIND_LABELS } from './labels';
 
@@ -67,6 +68,14 @@ export interface InboxViewProps {
   inbox: UseInboxResult;
   /** Fleet repositories (drive the repo filter dropdown). */
   repos: Repo[];
+  /**
+   * Active GLOBAL repo scope (ADR-027). When provided, only items whose repo is
+   * in this set are rendered, so the faceted filter narrows the Inbox like every
+   * other view. Omitted means "no narrowing" (the whole fleet). The fleet-wide
+   * triage state and unread badge are left untouched — this scopes presentation
+   * only, so switching scope never mutates read/dismissed marks.
+   */
+  repoScope?: ReadonlySet<string>;
   /** True while the fleet fetch is in flight (skeleton on first load). */
   loading?: boolean;
   /** Fleet fetch error message; renders an alert + retry instead of the inbox. */
@@ -78,11 +87,45 @@ export interface InboxViewProps {
 export function InboxView({
   inbox,
   repos,
+  repoScope,
   loading = false,
   error = null,
   onRetry,
 }: InboxViewProps): ReactElement {
   const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
+  const { markReadMany, dismissMany, restoreMany } = inbox;
+  const availableRepoNames = useMemo(
+    () => new Set(repos.map((repo) => repo.nameWithOwner)),
+    [repos],
+  );
+  const selectedRepoFilter = filters.repos.find((repoName) => availableRepoNames.has(repoName));
+
+  useEffect(() => {
+    if (filters.repos.length === 0) {
+      return;
+    }
+    // Do not reconcile when the repo list is transiently empty (fleet-load error):
+    // clearing every selected repo would wipe the filter before it can reload.
+    if (repos.length === 0) {
+      return;
+    }
+
+    const availableSelection = filters.repos.filter((repoName) => availableRepoNames.has(repoName));
+    if (availableSelection.length !== filters.repos.length) {
+      setFilters({ repos: availableSelection });
+    }
+  }, [availableRepoNames, filters.repos, repos.length, setFilters]);
+
+  // Apply the global repo scope on top of the inbox's own session filters: it is
+  // a presentation-only narrowing, so the hook's triage GC and fleet-wide unread
+  // badge stay computed over the whole fleet (ADR-027).
+  const scopedItems = useMemo(
+    () =>
+      repoScope === undefined
+        ? items
+        : items.filter((item) => repoScope.has(item.repo.nameWithOwner)),
+    [items, repoScope],
+  );
 
   const repoFilterId = useId();
   const kindFilterId = useId();
@@ -96,6 +139,85 @@ export function InboxView({
   const announce = useCallback((text: string) => {
     setAnnouncement((prev) => ({ text, nonce: prev.nonce + 1 }));
   }, []);
+
+  // Multi-select state lives here (ADR-027: selection is presentation-only). The
+  // ids of every currently-visible row, used to drive Select-all and to prune the
+  // selection so a bulk action can never target a hidden (filtered/scoped) item.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+  const visibleIds = useMemo(() => scopedItems.map((item) => item.id), [scopedItems]);
+
+  // Drop any selected id that is no longer visible whenever the visible set
+  // changes (filter/scope change, or an item hidden after a dismiss) so a bulk
+  // action only ever targets currently-visible items.
+  useEffect(() => {
+    const visible = new Set(visibleIds);
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [visibleIds]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set(visibleIds));
+  }, [visibleIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set());
+  }, []);
+
+  // The selected items that are still visible drive the bulk-bar enablement: a
+  // batch only acts where it can meaningfully apply.
+  const selectedVisible = useMemo(
+    () => scopedItems.filter((item) => selected.has(item.id)),
+    [scopedItems, selected],
+  );
+  const canMarkRead = selectedVisible.some((item) => !item.read);
+  const canDismiss = selectedVisible.some((item) => !item.dismissed);
+  const canRestore = selectedVisible.some((item) => item.dismissed);
+
+  const handleBulkMarkRead = useCallback(() => {
+    const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => !item.read).length;
+    markReadMany(ids);
+    announce(`Marked ${changedCount} as read`);
+    setSelected(new Set());
+  }, [selected, selectedVisible, markReadMany, announce]);
+
+  const handleBulkDismiss = useCallback(() => {
+    const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => !item.dismissed).length;
+    dismissMany(ids);
+    announce(`Dismissed ${changedCount} items`);
+    setSelected(new Set());
+  }, [selected, selectedVisible, dismissMany, announce]);
+
+  const handleBulkRestore = useCallback(() => {
+    const ids = [...selected];
+    const changedCount = selectedVisible.filter((item) => item.dismissed).length;
+    restoreMany(ids);
+    announce(`Restored ${changedCount} items`);
+    setSelected(new Set());
+  }, [selected, selectedVisible, restoreMany, announce]);
 
   const handleMarkRead = useCallback(
     (id: string) => {
@@ -136,6 +258,16 @@ export function InboxView({
   // `show dismissed` widens the view, so it never triggers the empty-filtered
   // state — only the narrowing filters do (§4.2).
   const narrowingActive =
+    repoScope !== undefined ||
+    filters.repos.length > 0 ||
+    filters.kinds.length > 0 ||
+    filters.unreadOnly;
+
+  // clearFilters() only resets the session filters — it cannot clear the global
+  // repoScope (owned by App). Show the button only when there is at least one
+  // user-set filter that clearing would actually remove; suppress it when the
+  // only narrowing is from the scope alone, where the button would be a no-op.
+  const clearableFiltersActive =
     filters.repos.length > 0 || filters.kinds.length > 0 || filters.unreadOnly;
 
   if (error !== null) {
@@ -199,7 +331,7 @@ export function InboxView({
             </label>
             <select
               id={repoFilterId}
-              value={filters.repos[0] ?? ''}
+              value={selectedRepoFilter ?? ''}
               onChange={handleRepoChange}
               className={SELECT_CLASS}
             >
@@ -250,17 +382,19 @@ export function InboxView({
         </div>
       </header>
 
-      {items.length === 0 ? (
+      {scopedItems.length === 0 ? (
         narrowingActive ? (
           <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-surface px-4 py-10 text-center">
             <p className="text-sm text-text-muted">No items match these filters.</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              Clear filters
-            </button>
+            {clearableFiltersActive ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface px-4 py-10 text-center">
@@ -271,12 +405,29 @@ export function InboxView({
           </div>
         )
       ) : (
-        <InboxList
-          items={items}
-          onMarkRead={handleMarkRead}
-          onDismiss={handleDismiss}
-          onRestore={handleRestore}
-        />
+        <>
+          {selected.size > 0 ? (
+            <InboxBulkBar
+              count={selected.size}
+              canMarkRead={canMarkRead}
+              canDismiss={canDismiss}
+              canRestore={canRestore}
+              onMarkRead={handleBulkMarkRead}
+              onDismiss={handleBulkDismiss}
+              onRestore={handleBulkRestore}
+              onSelectAll={selectAll}
+              onClear={clearSelection}
+            />
+          ) : null}
+          <InboxList
+            items={scopedItems}
+            onMarkRead={handleMarkRead}
+            onDismiss={handleDismiss}
+            onRestore={handleRestore}
+            selectedIds={selected}
+            onToggleSelect={toggleSelect}
+          />
+        </>
       )}
 
       <div aria-live="polite" aria-atomic="true" className="sr-only">

@@ -2,9 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
-import { GITHUB_API_BASE, fetchWithETag } from '../../api/github';
+import { GITHUB_API_BASE, fetchWithETag, scheduleSearchRequest } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
+import {
+  STALE_ITEMS_PER_REPO,
+  STALE_THRESHOLD_DAYS,
+  staleCutoffDate,
+} from '../../lib/stale-cutoff';
 import type { Repo, StaleItem, StaleSignalSlice } from '../../types/fleet';
+
+/**
+ * Re-exported from `lib/stale-cutoff` so the REST hook and the GraphQL deriver
+ * share one source of truth while existing call sites keep importing from here.
+ */
+export { STALE_ITEMS_PER_REPO, STALE_THRESHOLD_DAYS, staleCutoffDate };
 
 /**
  * Stale signal — open PRs and issues with no recent activity (issue #17).
@@ -25,21 +36,6 @@ import type { Repo, StaleItem, StaleSignalSlice } from '../../types/fleet';
  * This replaces the stub and edits nothing shared — `useRepoSignals` composes
  * it exactly as before.
  */
-
-/**
- * Days of inactivity after which an open PR or issue counts as stale. Issue
- * #17's single tunable: raise it for slower-moving fleets, lower it for
- * stricter hygiene. Applied to both PRs and issues so one query covers a repo.
- */
-export const STALE_THRESHOLD_DAYS = 30;
-
-/**
- * Items requested from the same per-repo Search call. The page is widened from
- * 1 to this bound (still one call per repo) and sorted newest-stale-first so the
- * Notifications Inbox can read each stale item's identity without any extra
- * request; `total_count` continues to drive the tally regardless of this cap.
- */
-export const STALE_ITEMS_PER_REPO = 30;
 
 /** Separator for the repo-set effect key (repo names can't contain it). */
 const KEY_SEPARATOR = '\n';
@@ -74,16 +70,6 @@ const StaleSearchResponseSchema = z
     items: z.array(StaleItemSchema).optional(),
   })
   .passthrough();
-
-/**
- * The inactivity cutoff as a UTC `YYYY-MM-DD` date: open items not updated on
- * or after this day are stale. Computed in UTC so the query is deterministic
- * regardless of the viewer's local time zone.
- */
-export function staleCutoffDate(now: Date, days: number = STALE_THRESHOLD_DAYS): string {
-  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  return cutoff.toISOString().slice(0, 10);
-}
 
 /**
  * Absolute Search URL counting a repo's open PRs + issues with no update since
@@ -129,8 +115,16 @@ export function readyStaleSlice(
  *
  * @param repos - Repositories to resolve stale counts for.
  * @param token - Auth token; `null` short-circuits to an empty map.
+ * @param override - When provided, the hook returns it immediately and makes
+ *   zero network calls (used by {@link useRepoSignals} to inject slices from the
+ *   batched GraphQL loader when the `stale` flag is enabled). `undefined`
+ *   restores normal REST behavior.
  */
-export function useStaleSignal(repos: Repo[], token: string | null): Map<string, StaleSignalSlice> {
+export function useStaleSignal(
+  repos: Repo[],
+  token: string | null,
+  override?: Map<string, StaleSignalSlice>,
+): Map<string, StaleSignalSlice> {
   const [slices, setSlices] = useState<Map<string, StaleSignalSlice>>(EMPTY);
   const generationRef = useRef(0);
   // Mirror the latest repos into a ref so the effect can read them without
@@ -143,6 +137,9 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
   const repoSignature = repos.map((repo) => repo.nameWithOwner).join(KEY_SEPARATOR);
 
   useEffect(() => {
+    // When an override is supplied the caller owns the data; skip all REST work.
+    if (override) return;
+
     const generation = (generationRef.current += 1);
     const currentRepos = reposRef.current;
 
@@ -171,10 +168,21 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
       SIGNAL_FETCH_CONCURRENCY,
       async (repo, signal) => {
         try {
-          const data = await fetchWithETag(
-            staleSearchUrl(repo.owner, repo.name, cutoffDate),
-            StaleSearchResponseSchema,
-            { token, context: 'useStaleSignal', signal },
+          // Route every per-repo Search call through the shared Search limiter
+          // so the fleet stays inside GitHub's ~30 req/min Search budget and a
+          // transient secondary-limit 403 is retried instead of erroring (#495).
+          const data = await scheduleSearchRequest(
+            () =>
+              fetchWithETag(
+                staleSearchUrl(repo.owner, repo.name, cutoffDate),
+                StaleSearchResponseSchema,
+                {
+                  token,
+                  context: 'useStaleSignal',
+                  signal,
+                },
+              ),
+            signal,
           );
           if (generation !== generationRef.current) {
             return;
@@ -212,7 +220,7 @@ export function useStaleSignal(repos: Repo[], token: string | null): Map<string,
     );
 
     return () => controller.abort();
-  }, [repoSignature, token]);
+  }, [repoSignature, token, override]);
 
-  return slices;
+  return override ?? slices;
 }

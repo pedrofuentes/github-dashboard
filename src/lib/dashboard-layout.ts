@@ -14,8 +14,15 @@ import type { Layout } from 'react-grid-layout';
 import type { Repo } from '../types/fleet';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 
-/** Namespaced key holding the persisted dashboard layout. */
+/**
+ * Legacy (v1) key: an unversioned bare `DashboardTile[]`. Kept for rollback —
+ * the migration reads it but never deletes it.
+ */
 const STORAGE_KEY = 'fleet:dashboard-layout';
+/** Current versioned key holding the `{ version, tiles }` envelope. */
+const STORAGE_KEY_V2 = 'fleet:dashboard-view:v2';
+/** Schema version of the persisted layout envelope at {@link STORAGE_KEY_V2}. */
+const LAYOUT_VERSION = 2;
 
 /** Signals in render order — one tile per repo is created per entry. */
 const TILE_SIGNALS: readonly TileSignalType[] = [
@@ -78,6 +85,16 @@ const DashboardTileSchema = z
 
 const DashboardLayoutSchema = z.array(DashboardTileSchema).max(MAX_TILES);
 
+/**
+ * The forward-compatible persisted envelope (v2). Wrapping the tile array in a
+ * versioned object lets future format changes be detected and migrated rather
+ * than silently mis-parsed. `version` is pinned to {@link LAYOUT_VERSION}.
+ */
+const VersionedLayoutSchema = z.object({
+  version: z.literal(LAYOUT_VERSION),
+  tiles: DashboardLayoutSchema,
+});
+
 function safeGet(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -86,11 +103,13 @@ function safeGet(key: string): string | null {
   }
 }
 
-function safeSet(key: string, value: string): void {
+function safeSet(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // Persistence is best-effort: ignore quota / disabled-storage failures.
+    return false;
   }
 }
 
@@ -142,6 +161,59 @@ export function toRglLayout(tiles: DashboardTile[]): Layout {
 }
 
 /**
+ * Reads the raw persisted tiles (pre-reconciliation), preferring the versioned
+ * v2 envelope and transparently migrating a legacy v1 array on first read.
+ *
+ * Resolution order:
+ *  1. v2 key present → parse the `{ version, tiles }` envelope; corrupt/invalid
+ *     ⇒ `null` (the caller falls back to {@link DEFAULT_LAYOUT}).
+ *  2. v2 absent, legacy v1 array present & valid → migrate: persist the v2
+ *     envelope with the SAME tiles (so the on-screen layout is unchanged) and
+ *     KEEP the legacy key for rollback. Returns the migrated tiles.
+ *  3. Nothing valid stored ⇒ `null`.
+ *
+ * Never throws.
+ */
+function loadStoredTiles(): DashboardTile[] | null {
+  const rawV2 = safeGet(STORAGE_KEY_V2);
+  if (rawV2 !== null) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawV2);
+    } catch {
+      return null;
+    }
+    const result = VersionedLayoutSchema.safeParse(parsed);
+    return result.success ? result.data.tiles : null;
+  }
+
+  const rawLegacy = safeGet(STORAGE_KEY);
+  if (rawLegacy === null) {
+    return null;
+  }
+  let parsedLegacy: unknown;
+  try {
+    parsedLegacy = JSON.parse(rawLegacy);
+  } catch {
+    return null;
+  }
+  const legacy = DashboardLayoutSchema.safeParse(parsedLegacy);
+  if (!legacy.success) {
+    return null;
+  }
+  // Migrate v1 → v2 on read: write the versioned envelope (same tiles) and leave
+  // the legacy key in place for rollback. This is a storage-format change only.
+  const migrated = JSON.stringify({ version: LAYOUT_VERSION, tiles: legacy.data });
+  if (!safeSet(STORAGE_KEY_V2, migrated)) {
+    console.warn(
+      'Failed to persist migrated dashboard layout; legacy layout will be retried on next load.',
+      new Error('dashboard layout migration persistence failed'),
+    );
+  }
+  return legacy.data;
+}
+
+/**
  * Reads, validates, and reconciles the persisted layout against the current
  * fleet. Tiles for repos no longer present are dropped; tiles missing from the
  * stored layout (e.g. a newly added signal such as `activity` absent from an
@@ -150,25 +222,13 @@ export function toRglLayout(tiles: DashboardTile[]): Layout {
  * result falls back to {@link DEFAULT_LAYOUT}. Never throws.
  */
 export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
-  const raw = safeGet(STORAGE_KEY);
-  if (raw === null) {
-    return DEFAULT_LAYOUT(repos);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return DEFAULT_LAYOUT(repos);
-  }
-
-  const result = DashboardLayoutSchema.safeParse(parsed);
-  if (!result.success) {
+  const stored = loadStoredTiles();
+  if (stored === null) {
     return DEFAULT_LAYOUT(repos);
   }
 
   const present = new Set(repos.map((repo) => repo.nameWithOwner));
-  const reconciled = result.data.filter((tile) => present.has(tile.repo));
+  const reconciled = stored.filter((tile) => present.has(tile.repo));
   if (reconciled.length === 0) {
     return DEFAULT_LAYOUT(repos);
   }
@@ -189,19 +249,29 @@ export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
 }
 
 /**
- * Persists the layout as JSON (best-effort). Caller-supplied tiles are
- * re-validated against {@link DashboardLayoutSchema} first; an invalid layout
- * is skipped rather than written, so corrupt geometry never reaches storage.
- * Never throws.
+ * Persists the layout as the versioned v2 envelope (best-effort). Caller-supplied
+ * tiles are re-validated against {@link DashboardLayoutSchema} first; an invalid
+ * layout is skipped rather than written, so corrupt geometry never reaches
+ * storage. The legacy v1 key is left untouched. Never throws.
  */
 export function saveDashboardLayout(tiles: DashboardTile[]): void {
   if (!DashboardLayoutSchema.safeParse(tiles).success) {
     return;
   }
-  safeSet(STORAGE_KEY, JSON.stringify(tiles));
+  if (!safeSet(STORAGE_KEY_V2, JSON.stringify({ version: LAYOUT_VERSION, tiles }))) {
+    console.warn(
+      'Failed to persist dashboard layout; changes will be lost on next load.',
+      new Error('dashboard layout save failed'),
+    );
+  }
 }
 
-/** Clears the persisted layout (best-effort). */
+/**
+ * Clears the persisted layout (best-effort). Removes BOTH the v2 envelope and
+ * the legacy v1 key so an explicit reset truly restores {@link DEFAULT_LAYOUT}
+ * rather than re-migrating the legacy layout on the next load.
+ */
 export function resetDashboardLayout(): void {
+  safeRemove(STORAGE_KEY_V2);
   safeRemove(STORAGE_KEY);
 }

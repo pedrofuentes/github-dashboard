@@ -159,6 +159,26 @@ describe('StaleTileBody — size tiers', () => {
     expect(bucket?.className).toMatch(/\bh-\d/);
   });
 
+  it('standard: AgeBucketBar encodes the exact per-bucket counts, not just presence', () => {
+    const { container } = renderBody(slice, 'standard');
+    // Ages 20/33/45/70 with boundaries `age > min && age <= max`:
+    // 20→>14d, 33+45→>30d, 70→>60d  ⇒  >14d:1, >30d:2, >60d:1.
+    const counts = [...container.querySelectorAll('[data-bucket]')].map((node) => ({
+      label: node.getAttribute('data-bucket'),
+      title: node.getAttribute('title'),
+    }));
+    expect(counts).toEqual([
+      { label: '>14d', title: '>14d: 1' },
+      { label: '>30d', title: '>30d: 2' },
+      { label: '>60d', title: '>60d: 1' },
+    ]);
+    // the screen-reader list mirrors the same counts for assistive tech
+    const srItems = [
+      ...(container.querySelector('[data-part="age-bucket-bar"]')?.querySelectorAll('li') ?? []),
+    ].map((node) => node.textContent);
+    expect(srItems).toEqual(expect.arrayContaining(['>14d: 1', '>30d: 2', '>60d: 1']));
+  });
+
   it('expanded: adds the type breakdown', () => {
     const { container } = renderBody(slice, 'expanded');
     expect(container.querySelector('[data-part="age-bucket-bar"]')).not.toBeNull();
@@ -214,6 +234,101 @@ describe('StaleTileBody — defensive & a11y', () => {
     };
     const { container } = renderBody(slice, 'expanded');
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+  });
+});
+
+describe('StaleTileBody — unparseable updated_at (#283)', () => {
+  /** A stale item whose `updated_at` does not parse to a finite timestamp. */
+  function unparseable(type: 'pr' | 'issue', number = 1): StaleItem {
+    return {
+      number,
+      title: `item ${String(number)}`,
+      html_url: `https://github.com/octocat/hello-world/issues/${String(number)}`,
+      updated_at: 'not-a-real-date',
+      type,
+    };
+  }
+
+  it('does NOT render a misleading "0d" hero when the only item has an unparseable date', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 1,
+      staleItems: [unparseable('pr')],
+    };
+    const { queryByText } = renderBody(slice, 'standard');
+    expect(queryByText('0d')).toBeNull();
+  });
+
+  it('renders an explicit unknown-age hero (em-dash) instead of "0d"', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 1,
+      staleItems: [unparseable('issue')],
+    };
+    const { getByText } = renderBody(slice, 'standard');
+    expect(getByText('—')).toBeInTheDocument();
+  });
+
+  it('still shows the oldest KNOWN age when only some items are unparseable', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 2,
+      staleItems: [item('pr', 30), unparseable('issue', 2)],
+    };
+    const { getByText, queryByText } = renderBody(slice, 'standard');
+    expect(getByText('30d')).toBeInTheDocument();
+    expect(queryByText('0d')).toBeNull();
+  });
+
+  it('describes the oldest age as "unknown" (not "0 days") in the sr sentence', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 1,
+      staleItems: [unparseable('issue')],
+    };
+    const { container } = renderBody(slice, 'standard');
+    const srTexts = [...container.querySelectorAll('.sr-only')].map((n) => n.textContent ?? '');
+    expect(srTexts.some((t) => /unknown/i.test(t))).toBe(true);
+    expect(srTexts.some((t) => /oldest 0 days/i.test(t))).toBe(false);
+  });
+
+  it('shows an unknown (—) oldest row in the expanded breakdown, not "0d"', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 1,
+      staleItems: [unparseable('pr')],
+    };
+    const { container } = renderBody(slice, 'expanded');
+    const breakdown = container.querySelector('[data-part="breakdown"]');
+    expect(breakdown?.textContent).toContain('—');
+    expect(breakdown?.textContent).not.toContain('0d');
+  });
+
+  it('counts undatable items in the total but excludes them from the age buckets (#342)', () => {
+    const slice: StaleSignalSlice = {
+      status: 'ready',
+      staleCount: 4,
+      staleItems: [item('pr', 20), item('issue', 45), item('pr', 70), unparseable('issue', 2)],
+    };
+    const { container } = renderBody(slice, 'standard');
+
+    // Each datable item lands in exactly one ascending-age bucket; the undatable
+    // item lands in NONE — it must neither throw nor masquerade as a fresh entry.
+    const titles = [...container.querySelectorAll('[data-bucket]')].map((node) =>
+      node.getAttribute('title'),
+    );
+    expect(titles).toEqual(['>14d: 1', '>30d: 1', '>60d: 1']);
+
+    // The bucketed total (3) is exactly the datable subset — one fewer than the
+    // headline count (4), confirming the undatable item is summarised but never
+    // placed in a bucket.
+    const bucketSum = titles.reduce((sum, title) => sum + Number(title?.split(': ')[1] ?? 0), 0);
+    expect(bucketSum).toBe(3);
+    expect(bucketSum).toBeLessThan(4);
+
+    // The screen-reader summary still reports the full headline count (all 4).
+    const srLabel = container.querySelector('[data-part="age-bucket-bar"] li')?.textContent;
+    expect(srLabel).toBe('Stale items by age: 4 total');
   });
 });
 

@@ -144,15 +144,30 @@ export interface PullRequestsSignalSlice extends SignalSlice {
 
 /** Issues slice — owned by issue #16 (open issue counts / triage threshold). */
 export interface IssuesSignalSlice extends SignalSlice {
+  /** Total open issues (pull requests excluded); the triage threshold's basis. */
   openCount?: number;
+  /** `true` when {@link openCount} is at or above the triage threshold. */
   overThreshold?: boolean;
+  /**
+   * Open issues authored by the authenticated viewer (GitHub Search
+   * `author:<login>`). Present only when a viewer login was supplied; omitted
+   * otherwise so a viewer-less slice stays unchanged.
+   */
+  mineCount?: number;
+  /**
+   * Open issues NOT authored by the viewer (the community remainder), derived
+   * as `max(openCount - mineCount, 0)` — the clamp guards the rare case where
+   * the viewer and total counts (separate GitHub endpoints) momentarily
+   * disagree. Present only alongside {@link mineCount}.
+   */
+  communityCount?: number;
 }
 
 /**
  * A stale open PR or issue, un-projected from the same per-repo Search call
  * (its `per_page` widened and `sort=updated&order=desc` appended — no extra
  * request). One `stale:<repo>:<pr|issue>:#<number>` Inbox item is emitted per
- * entry, ordered by `updatedAt`.
+ * entry, ordered by `updated_at`.
  */
 export interface StaleItem {
   number: number;

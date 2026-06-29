@@ -1,12 +1,19 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { ReactElement } from 'react';
 
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import type { FleetColumn, Repo, RepoSignalData } from '../../types/fleet';
 import { fleetColumns, repoColumn } from './index';
 
 const EMPTY: RepoSignalData = {};
+const REPO_OWNER_KEY = 'fleet:repo-owner';
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
+});
 
 function repo(nameWithOwner: string, isPrivate = false): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -59,6 +66,21 @@ describe('repo column', () => {
   });
 
   it('renders the owner/repo with a full-name title tooltip', () => {
+    renderCell(repoColumn, repo('octocat/hello-world'));
+    const nameEl = screen.getByTitle('octocat/hello-world');
+    expect(nameEl).toHaveTextContent('octocat/hello-world');
+  });
+
+  it('hides the owner in the visible label when the preference is "hide", keeping the full name in the title', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderCell(repoColumn, repo('octocat/hello-world'));
+    const nameEl = screen.getByTitle('octocat/hello-world');
+    expect(nameEl).toHaveTextContent('hello-world');
+    expect(nameEl).not.toHaveTextContent('octocat');
+  });
+
+  it('shows the full owner/repo in the visible label when the preference is "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
     renderCell(repoColumn, repo('octocat/hello-world'));
     const nameEl = screen.getByTitle('octocat/hello-world');
     expect(nameEl).toHaveTextContent('octocat/hello-world');

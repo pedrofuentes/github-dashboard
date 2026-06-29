@@ -291,6 +291,27 @@ describe('useInbox — triage state & actions (AC-11)', () => {
     expect(persisted.dismissedIds).not.toContain(ID_STALE);
   });
 
+  it('markAllRead is idempotent: a second call adds no duplicate read ids (#242)', () => {
+    // Calling markAllRead twice (each in its own commit, so the second sees the
+    // first's committed state) must not re-append already-read ids — the
+    // duplicate-free guard keeps storage bounded (§3.3).
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markAllRead();
+    });
+    act(() => {
+      result.current.markAllRead();
+    });
+
+    const persisted = loadInboxTriage();
+    expect([...persisted.readIds].sort()).toEqual([...NEWEST_FIRST].sort());
+    for (const id of NEWEST_FIRST) {
+      expect(persisted.readIds.filter((readId) => readId === id)).toHaveLength(1);
+    }
+    expect(result.current.unreadCount).toBe(0);
+  });
+
   it('prunes triage marks for ids no longer derived when it persists', () => {
     // A stale read mark whose item is no longer in the fleet must be GC'd on the
     // next persist so storage cannot grow unbounded (§3.3).
@@ -601,5 +622,178 @@ describe('useInbox — triage flush on page teardown (#241)', () => {
     });
 
     expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
+  });
+});
+
+describe('useInbox — transient fetch failure preserves triage (#249, #233)', () => {
+  it('keeps a read mark whose slice is transiently failing but GCs a resolved one', () => {
+    const TRANSIENT = 'security:octocat/alpha:dependabot:7'; // security errors → not derived
+    const RESOLVED = 'ci:octocat/alpha:999'; //                ci ready, run gone → GC'd
+    saveInboxTriage({ readIds: [TRANSIENT, RESOLVED], dismissedIds: [], lastVisitedAt: null });
+
+    const rows = fixtureRows();
+    const alpha = rows.get(ALPHA.nameWithOwner) ?? {};
+    // This refresh, alpha's security fetch fails: the slice is `error`, so its
+    // alert is not derived — but the triage mark must survive the blip (#249).
+    rows.set(ALPHA.nameWithOwner, { ...alpha, security: { status: 'error' } });
+
+    const { result } = renderInbox(REPOS, rows);
+    act(() => {
+      result.current.markRead(ID_CI);
+    });
+
+    const persisted = loadInboxTriage().readIds;
+    expect(persisted).toContain(TRANSIENT); // protected: the slice merely failed
+    expect(persisted).toContain(ID_CI); // the freshly read live item
+    expect(persisted).not.toContain(RESOLVED); // ci ready → resolved run forgets its mark
+  });
+
+  it('resets a watermark older than the 180-day horizon on the next triage write (#233)', () => {
+    // A stale watermark from years ago, far beyond the §3.3 horizon.
+    saveInboxTriage({ readIds: [], dismissedIds: [], lastVisitedAt: '2020-01-01T00:00:00Z' });
+
+    const { result } = renderInbox();
+    act(() => {
+      result.current.markRead(ID_CI);
+    });
+
+    expect(loadInboxTriage().lastVisitedAt).toBeNull();
+  });
+});
+
+describe('useInbox — bulk triage actions (T-f5-inbox-bulk)', () => {
+  it('markReadMany marks every given id read, drops the unread count, and survives reload', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markReadMany([ID_SECURITY, ID_NEW_PR]);
+    });
+
+    expect(viewById(result.current.items, ID_SECURITY)?.read).toBe(true);
+    expect(viewById(result.current.items, ID_NEW_PR)?.read).toBe(true);
+    // Only the explicitly-passed ids are affected; others stay unread.
+    expect(viewById(result.current.items, ID_REVIEW)?.read).toBe(false);
+    expect(result.current.unreadCount).toBe(3);
+
+    // Round-trip through the store (never a setItem spy, #124): both reads persisted.
+    const persisted = loadInboxTriage().readIds;
+    expect(persisted).toContain(ID_SECURITY);
+    expect(persisted).toContain(ID_NEW_PR);
+    expect(persisted).not.toContain(ID_REVIEW);
+  });
+
+  it('markReadMany is idempotent and never accumulates duplicate ids', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markReadMany([ID_CI, ID_CI]);
+    });
+    act(() => {
+      result.current.markReadMany([ID_CI]);
+    });
+
+    expect(loadInboxTriage().readIds.filter((id) => id === ID_CI)).toHaveLength(1);
+  });
+
+  it('markReadMany([]) is a no-op that never writes (opening the Inbox never persists)', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.markReadMany([]);
+    });
+
+    expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
+    expect(result.current.unreadCount).toBe(5);
+  });
+
+  it('dismissMany dismisses every given id, hiding them by default, and persists', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismissMany([ID_NEW_PR, ID_STALE]);
+    });
+
+    expect(viewById(result.current.items, ID_NEW_PR)).toBeUndefined();
+    expect(viewById(result.current.items, ID_STALE)).toBeUndefined();
+    expect(result.current.items).toHaveLength(3);
+
+    const persisted = loadInboxTriage().dismissedIds;
+    expect(persisted).toContain(ID_NEW_PR);
+    expect(persisted).toContain(ID_STALE);
+  });
+
+  it('dismissMany([]) is a no-op', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismissMany([]);
+    });
+
+    expect(localStorage.getItem(TRIAGE_KEY)).toBeNull();
+    expect(result.current.items).toHaveLength(5);
+  });
+
+  it('restoreMany restores every given dismissed id and persists the removal', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismissMany([ID_NEW_PR, ID_STALE]);
+    });
+    act(() => {
+      result.current.restoreMany([ID_NEW_PR, ID_STALE]);
+    });
+
+    expect(viewById(result.current.items, ID_NEW_PR)?.dismissed).toBe(false);
+    expect(viewById(result.current.items, ID_STALE)?.dismissed).toBe(false);
+    expect(result.current.items).toHaveLength(5);
+
+    const persisted = loadInboxTriage().dismissedIds;
+    expect(persisted).not.toContain(ID_NEW_PR);
+    expect(persisted).not.toContain(ID_STALE);
+  });
+
+  it('restoreMany ignores ids that were never dismissed', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismiss(ID_NEW_PR);
+    });
+    act(() => {
+      // ID_STALE was never dismissed: restoring it is a harmless no-op.
+      result.current.restoreMany([ID_NEW_PR, ID_STALE]);
+    });
+
+    const persisted = loadInboxTriage().dismissedIds;
+    expect(persisted).not.toContain(ID_NEW_PR);
+    expect(persisted).not.toContain(ID_STALE);
+  });
+
+  it('restoreMany([]) is a no-op', () => {
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismiss(ID_NEW_PR);
+    });
+    const before = loadInboxTriage();
+
+    act(() => {
+      result.current.restoreMany([]);
+    });
+
+    expect(loadInboxTriage()).toEqual(before);
+  });
+
+  it('a bulk op affects only the given ids and leaves unrelated live triage marks intact', () => {
+    // A pre-existing read mark on a still-live, unrelated item.
+    saveInboxTriage({ readIds: [ID_REVIEW], dismissedIds: [], lastVisitedAt: null });
+    const { result } = renderInbox();
+
+    act(() => {
+      result.current.dismissMany([ID_NEW_PR]);
+    });
+
+    // The dismiss batch must not GC or alter the unrelated read mark.
+    expect(loadInboxTriage().readIds).toContain(ID_REVIEW);
+    expect(loadInboxTriage().dismissedIds).toContain(ID_NEW_PR);
   });
 });

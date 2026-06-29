@@ -10,7 +10,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { abortableSleep, fetchWithRetry, GitHubApiError } from './core';
+import {
+  abortableSleep,
+  fetchWithRetry,
+  GitHubApiError,
+  GitHubErrorCode,
+  handleApiError,
+  type RateLimitInfo,
+} from './core';
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -52,6 +59,7 @@ describe('fetchWithRetry', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('returns response on first success without retrying', async () => {
@@ -91,6 +99,7 @@ describe('fetchWithRetry', () => {
       .mockResolvedValueOnce(okResponse);
 
     const promise = fetchWithRetry('https://api.github.com/test');
+    promise.catch(() => {});
     await vi.advanceTimersByTimeAsync(2000);
     const result = await promise;
 
@@ -131,6 +140,7 @@ describe('fetchWithRetry', () => {
   // ── Retry-After header ──────────────────────────────────
 
   it('respects Retry-After header on 429', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(1);
     const headersWithRetryAfter = mockHeaders({ 'retry-after': '2' });
     const rateLimitResponse = mockFetchResponse(429, headersWithRetryAfter);
     const okResponse = mockFetchResponse(200);
@@ -146,6 +156,48 @@ describe('fetchWithRetry', () => {
 
     // At 2.5s the Retry-After delay has elapsed, retry happens
     await vi.advanceTimersByTimeAsync(1000);
+    const result = await promise;
+
+    expect(result).toBe(okResponse);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not shorten Retry-After delays with jitter', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const headersWithRetryAfter = mockHeaders({ 'retry-after': '2' });
+    const rateLimitResponse = mockFetchResponse(429, headersWithRetryAfter);
+    const okResponse = mockFetchResponse(200);
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(okResponse);
+
+    const promise = fetchWithRetry('https://api.github.com/test');
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await promise;
+
+    expect(result).toBe(okResponse);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('adds deterministic jitter to retry backoff instead of retrying in lockstep', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const serverErrResponse = mockFetchResponse(503);
+    const okResponse = mockFetchResponse(200);
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(serverErrResponse)
+      .mockResolvedValueOnce(okResponse);
+
+    const promise = fetchWithRetry('https://api.github.com/test');
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     const result = await promise;
 
     expect(result).toBe(okResponse);
@@ -266,6 +318,7 @@ describe('fetchWithRetry', () => {
   // ── Non-retryable HTTP status codes pass through immediately ────
 
   it('uses exponential backoff delays: 1s, 2s, 4s', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(1);
     const serverErrResponse = mockFetchResponse(503);
     const okResponse = mockFetchResponse(200);
     vi.mocked(globalThis.fetch)
@@ -508,5 +561,50 @@ describe('fetchWithRetry — abort-aware backoff', () => {
     // A 30s internal timeout (no external abort) must remain retryable.
     expect(result).toBe(okResponse);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ──────────────────────────────────────────────
+// #495 — secondary rate-limit classification
+// ──────────────────────────────────────────────
+
+describe('handleApiError — secondary rate limit (#495)', () => {
+  function rateLimitInfo(overrides: Partial<RateLimitInfo> = {}): RateLimitInfo {
+    return {
+      limit: 5000,
+      remaining: 4999,
+      reset: new Date(Date.now() + 3600_000),
+      used: 1,
+      ...overrides,
+    };
+  }
+
+  it('classifies a 403 carrying a Retry-After as RATE_LIMITED, not ACCESS_DENIED', () => {
+    // GitHub signals a *secondary* rate limit with a 403 + Retry-After while the
+    // primary budget (x-ratelimit-remaining) still looks healthy. Misreading it
+    // as ACCESS_DENIED is the bug behind the Stale "error on every repo" and the
+    // Security "no grade" symptoms (T-bf2): it must be a recoverable rate limit.
+    let caught: unknown;
+    try {
+      handleApiError(403, rateLimitInfo({ remaining: 4999 }), 'octo', 'a', 42);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.RATE_LIMITED);
+    expect((caught as GitHubApiError).retryAfterSeconds).toBe(42);
+  });
+
+  it('still classifies a plain 403 (no Retry-After, budget remaining) as ACCESS_DENIED', () => {
+    // The reclassification must stay surgical: a permissions 403 with neither an
+    // exhausted budget nor a Retry-After is a genuine access problem.
+    let caught: unknown;
+    try {
+      handleApiError(403, rateLimitInfo({ remaining: 4999 }), 'octo', 'a', undefined);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.ACCESS_DENIED);
   });
 });

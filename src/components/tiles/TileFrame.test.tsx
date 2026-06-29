@@ -1,10 +1,18 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo } from '../../types/fleet';
 import { TileFrame } from './TileFrame';
+
+const REPO_OWNER_KEY = 'fleet:repo-owner';
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
+});
 
 function makeRepo(nameWithOwner = 'octo/a'): Repo {
   const [owner, name] = nameWithOwner.split('/');
@@ -96,6 +104,16 @@ describe('TileFrame — activate overlay', () => {
     );
   });
 
+  it('uses the tokenised focus ring on the activate overlay so it flips with the theme', () => {
+    const { container } = renderFrame();
+    const activate = container.querySelector('[data-tile-activate]') as HTMLElement;
+    // The whole-tile activate button is non-text UI; its focus ring must use the
+    // semantic `focus` token so it re-themes (sky-700 in light, #58a6ff in dark)
+    // rather than the static sky-600 that never flipped with `.dark`.
+    expect(activate.className).toContain('focus-visible:outline-focus');
+    expect(activate.className).not.toContain('outline-sky-600');
+  });
+
   it('is tabbable when active and removed from the tab order when inactive', () => {
     const { rerender } = renderFrame({ active: true });
     expect(screen.getByRole('button', { name: /view ci details for octo\/a/i })).toHaveAttribute(
@@ -128,6 +146,36 @@ describe('TileFrame — activate overlay', () => {
     renderFrame({ onTileFocus });
     await user.tab();
     expect(onTileFocus).toHaveBeenCalledWith('octo/a:ci');
+  });
+
+  it('renders the activate overlay as a new-tab link when activateHref is set (display mode)', () => {
+    renderFrame({ activateHref: 'https://github.com/octo/a/issues' });
+    const link = screen.getByRole('link', { name: /view ci details for octo\/a/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/a/issues');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer noopener');
+    expect(link).toHaveAttribute('data-tile-activate', 'octo/a:ci');
+    // No drill-down button is rendered when the overlay is a link.
+    expect(screen.queryByRole('button', { name: /view ci details for octo\/a/i })).toBeNull();
+  });
+
+  it('reports focus via onTileFocus from the link overlay', async () => {
+    const onTileFocus = vi.fn();
+    const user = userEvent.setup();
+    renderFrame({ onTileFocus, activateHref: 'https://github.com/octo/a/issues' });
+    await user.tab();
+    expect(onTileFocus).toHaveBeenCalledWith('octo/a:ci');
+  });
+
+  it('keeps the activate overlay a drill-down button in edit mode even when activateHref is set', async () => {
+    const onActivate = vi.fn();
+    const user = userEvent.setup();
+    renderFrame({ onActivate, editing: true, activateHref: 'https://github.com/octo/a/issues' });
+    // In edit mode the overlay stays a button so keyboard reorder/resize and the
+    // in-app activation are unaffected; it must NOT become a navigation link.
+    expect(screen.queryByRole('link', { name: /view ci details for octo\/a/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /view ci details for octo\/a/i }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces aria-colindex and aria-rowindex on the cell', () => {
@@ -200,6 +248,46 @@ describe('TileFrame — salience treatment', () => {
     expect(glow).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('paints the PROBLEM-tier color-mix tint surface from the edge tone (beyond bar + glow)', () => {
+    // The PROBLEM salience tints the tile SURFACE itself — not just the 6px bar +
+    // glow — via an inline color-mix background that blends 10% of the edge-tone
+    // token into the surface token, so the tint flips with the theme and never
+    // carries raw hex (DESIGN-TILES §3).
+    renderFrame({
+      salience: salience({ tier: 'problem', edgeTone: 'failure', tint: true, glow: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe(
+      'color-mix(in srgb, var(--color-failure) 10%, var(--color-surface))',
+    );
+  });
+
+  it('derives the PROBLEM tint surface from the salience edge tone, not the lifecycle tone', () => {
+    renderFrame({
+      tone: 'success',
+      salience: salience({ tier: 'problem', edgeTone: 'warning', tint: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe(
+      'color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))',
+    );
+  });
+
+  it('omits the tint surface on calm, actionable, and tint-opted-out problem tiles', () => {
+    const calm = renderFrame({ salience: salience({ tier: 'calm' }) });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+    calm.unmount();
+
+    const actionable = renderFrame({
+      salience: salience({ tier: 'actionable', edgeTone: 'info', actionableTab: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+    actionable.unmount();
+
+    renderFrame({
+      salience: salience({ tier: 'problem', edgeTone: 'failure', tint: false, glow: true }),
+    });
+    expect(screen.getByRole('gridcell').style.backgroundColor).toBe('');
+  });
+
   it('renders the ACTIONABLE tier with a persistent info tab and a calm neutral bar', () => {
     const { container } = renderFrame({
       salience: salience({ tier: 'actionable', edgeTone: 'info', actionableTab: true }),
@@ -270,5 +358,66 @@ describe('TileFrame — alias and accessible summary', () => {
     expect(
       screen.getByRole('button', { name: /view ci details for octo\/a/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('TileFrame — hideRepoHeader (filtered-to-one header drop, AC-10)', () => {
+  it('drops the visible repo header line but keeps the real repo in the title and activate label', () => {
+    // When the dashboard is filtered to a single repo every tile belongs to that
+    // repo, so the per-tile repo header line is redundant and visually dropped.
+    // The repo identity must NEVER leave the a11y tree (AC-10): the heading is
+    // only visually hidden (sr-only) while its title + the activate control's
+    // accessible name still announce the real `nameWithOwner`.
+    renderFrame({ hideRepoHeader: true, accessibleSummary: 'CI: 2 failing, problem — octo/a' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveClass('sr-only');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    expect(
+      screen.getByRole('button', { name: 'CI: 2 failing, problem — octo/a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the visually-hidden alias note announcing the real repo when header-dropped', () => {
+    renderFrame({ hideRepoHeader: true, alias: 'api' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveClass('sr-only');
+    expect(heading).toHaveAttribute('title', 'octo/a');
+    const aliasNote = within(heading).getByText('(alias for octo/a)');
+    expect(aliasNote).toHaveClass('sr-only');
+  });
+
+  it('renders the visible repo header normally when hideRepoHeader is absent', () => {
+    renderFrame();
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).not.toHaveClass('sr-only');
+    expect(heading).toHaveTextContent('octo/a');
+  });
+});
+
+describe('TileFrame — repo-owner display preference', () => {
+  it('hides the owner in the visible header when the preference is "hide", keeping the full name in the title', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderFrame({ repo: makeRepo('octo/api-server') });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('api-server');
+    expect(heading).not.toHaveTextContent('octo/api-server');
+    expect(heading).toHaveAttribute('title', 'octo/api-server');
+  });
+
+  it('shows the full owner/repo in the visible header when the preference is "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
+    renderFrame({ repo: makeRepo('octo/api-server') });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('octo/api-server');
+  });
+
+  it('lets an explicit alias still override the label even when the owner is hidden', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderFrame({ repo: makeRepo('octo/api-server'), alias: 'gateway' });
+    const heading = screen.getByRole('heading', { level: 3 });
+    expect(heading).toHaveTextContent('gateway');
+    expect(heading).toHaveAttribute('title', 'octo/api-server');
+    // The real repo stays announced to screen readers via the sr-only alias note.
+    expect(within(heading).getByText('(alias for octo/api-server)')).toHaveClass('sr-only');
   });
 });

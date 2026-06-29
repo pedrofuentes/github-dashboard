@@ -48,6 +48,8 @@ describe('formatDelta', () => {
 
   it('renders non-finite values as an em dash', () => {
     expect(formatDelta(Number.NaN)).toBe('—');
+    expect(formatDelta(Number.POSITIVE_INFINITY)).toBe('—');
+    expect(formatDelta(Number.NEGATIVE_INFINITY)).toBe('—');
   });
 });
 

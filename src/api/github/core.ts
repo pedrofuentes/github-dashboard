@@ -143,6 +143,17 @@ const RETRY_BASE_DELAY_MS = 1000;
 /** HTTP status codes that are safe to retry. */
 const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 
+/** Applies equal jitter while keeping the delay capped by the computed backoff. */
+export function jitterRetryDelayMs(
+  computedBackoffMs: number,
+  random: () => number = Math.random,
+): number {
+  if (!Number.isFinite(computedBackoffMs) || computedBackoffMs <= 0) return 0;
+  const normalizedRandom = Math.min(1, Math.max(0, random()));
+  const halfBackoffMs = computedBackoffMs / 2;
+  return Math.round(halfBackoffMs + normalizedRandom * halfBackoffMs);
+}
+
 /**
  * A `setTimeout`-based delay that settles early when `signal` aborts.
  *
@@ -202,7 +213,9 @@ export async function fetchWithRetry(
 
       if (RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_RETRIES) {
         const retryAfter = parseRetryAfter(response.headers);
-        const delay = retryAfter ? retryAfter * 1000 : RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        const delay = retryAfter
+          ? retryAfter * 1000
+          : jitterRetryDelayMs(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
         await abortableSleep(delay, signal);
         continue;
       }
@@ -222,7 +235,7 @@ export async function fetchWithRetry(
         (err.code === GitHubErrorCode.NETWORK_ERROR || err.code === GitHubErrorCode.TIMEOUT)
       ) {
         if (attempt < MAX_RETRIES) {
-          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+          const delay = jitterRetryDelayMs(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
           await abortableSleep(delay, signal);
           continue;
         }
@@ -299,6 +312,20 @@ export function handleApiError(
       status,
       rateLimitInfo,
       waitSec,
+      GitHubErrorCode.RATE_LIMITED,
+    );
+  }
+
+  if (status === 403 && retryAfterSeconds !== undefined) {
+    // Secondary rate limit: GitHub returns 403 + Retry-After while the primary
+    // budget (x-ratelimit-remaining) may still look healthy. Treat it as a
+    // recoverable RATE_LIMITED error so the Search limiter can back off (#495),
+    // rather than a permanent ACCESS_DENIED.
+    throw new GitHubApiError(
+      `GitHub API secondary rate limit hit. Retry after ${retryAfterSeconds}s`,
+      status,
+      rateLimitInfo,
+      retryAfterSeconds,
       GitHubErrorCode.RATE_LIMITED,
     );
   }

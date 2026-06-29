@@ -1,0 +1,714 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DragEndEvent } from '@dnd-kit/core';
+
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
+import { deckKeyId } from '../../lib/deck-visibility';
+import type { TileSignalType } from '../../types/dashboard';
+import type { GetRowData, Repo, RepoSignalData } from '../../types/fleet';
+import { BoardView } from './BoardView';
+
+/**
+ * Seam for #634: capture the DndContext onDragEnd handler so drag-dispatch tests
+ * can invoke it with a synthetic DragEndEvent without triggering real dnd-kit
+ * pointer/keyboard drag (unreliable in jsdom). The shim renders children so all
+ * SortableContext / useSortable calls use dnd-kit's safe default context values.
+ */
+const mockBoardDragCapture = {
+  fn: undefined as ((event: DragEndEvent) => void) | undefined,
+};
+
+vi.mock('@dnd-kit/core', async (importActual) => {
+  const actual = await importActual<typeof import('@dnd-kit/core')>();
+  return {
+    ...actual,
+    DndContext: (props: Parameters<typeof actual.DndContext>[0]) => {
+      mockBoardDragCapture.fn = props.onDragEnd;
+      return props.children ?? null;
+    },
+  };
+});
+
+/** The six signals BoardView renders, in their fixed left-to-right order. */
+const SIGNAL_ORDER: TileSignalType[] = [
+  'ci',
+  'security',
+  'reviews',
+  'pullRequests',
+  'issues',
+  'stale',
+];
+
+/** Builds the hidden-set ids for the given signals of `repo` (deck-visibility lib). */
+function hidden(repo: Repo, signals: TileSignalType[]): Set<string> {
+  return new Set(signals.map((signal) => deckKeyId(repo.nameWithOwner, signal)));
+}
+
+function makeRepo(nameWithOwner: string): Repo {
+  const [owner, name] = nameWithOwner.split('/');
+  return { nameWithOwner, owner, name, isPrivate: false };
+}
+
+const repoA = makeRepo('octo/repo-a');
+const repoB = makeRepo('octo/repo-b');
+
+/** Ready data for every signal so each key resolves to a deterministic value. */
+const READY_DATA: RepoSignalData = {
+  ci: { status: 'ready', conclusion: 'success' },
+  security: { status: 'ready', grade: 'A' },
+  reviews: { status: 'ready', requestedCount: 2 },
+  pullRequests: { status: 'ready', openCount: 4 },
+  issues: { status: 'ready', openCount: 7 },
+  stale: { status: 'ready', staleCount: 1 },
+};
+
+const getRowData: GetRowData = () => READY_DATA;
+
+/** Every rendered board key exposes the `data-signal` seam (from BoardKey). */
+function keys(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>('[data-signal]'));
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
+  mockBoardDragCapture.fn = undefined;
+});
+
+afterEach(() => {
+  localStorage.clear();
+});
+
+describe('BoardView — grid composition', () => {
+  it('renders one key per (repo × signal) — six keys per repo', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(keys(container)).toHaveLength(2 * 6);
+  });
+
+  it('renders the six signal keys in the fixed order and omits activity', () => {
+    const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+
+    const signals = keys(container).map((key) => key.getAttribute('data-signal'));
+    expect(signals).toEqual(SIGNAL_ORDER);
+    expect(signals).not.toContain('activity');
+  });
+
+  it('exposes an accessible, labelled board region', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+
+    expect(screen.getByRole('region', { name: /board/i })).toBeInTheDocument();
+  });
+
+  it('announces the visible repository count (plural)', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 repositories');
+  });
+
+  it('announces the visible repository count (singular)', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 repository');
+  });
+});
+
+describe('BoardView — repo filter', () => {
+  it('shows all repos when no filter is provided', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(keys(container)).toHaveLength(2 * 6);
+  });
+
+  it('narrows to the repos in a non-empty filter set', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        repoFilter={new Set([repoA.nameWithOwner])}
+      />,
+    );
+
+    expect(keys(container)).toHaveLength(6);
+    expect(screen.queryByText('octo/repo-b')).toBeNull();
+    expect(screen.getAllByText('octo/repo-a')).toHaveLength(6);
+  });
+});
+
+describe('BoardView — loading / error / empty states', () => {
+  it('shows skeleton placeholders on first load and no real keys', () => {
+    const { container } = render(<BoardView repos={[]} getRowData={getRowData} loading />);
+
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    // Exactly 2 skeleton rows × 6 signals = 12 placeholders
+    expect(container.querySelectorAll('[data-part="skeleton"]')).toHaveLength(
+      2 * SIGNAL_ORDER.length,
+    );
+    expect(keys(container)).toHaveLength(0);
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+  });
+
+  it('renders an error alert with a Retry that calls onRetry', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<BoardView repos={[repoA]} getRowData={getRowData} error="Boom" onRetry={onRetry} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Boom');
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the error alert without a Retry button when no onRetry is given', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} error="Boom" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Boom');
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
+
+  it('shows the no-repos empty state when there are no repositories', () => {
+    render(<BoardView repos={[]} getRowData={getRowData} />);
+
+    expect(screen.getByText(/No repositories found for this token\./i)).toBeInTheDocument();
+  });
+
+  it('shows the filtered empty state when the filter excludes every repo', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        repoFilter={new Set(['octo/does-not-exist'])}
+      />,
+    );
+
+    expect(screen.getByText(/No repositories match your filter\./i)).toBeInTheDocument();
+  });
+});
+
+describe('BoardView — drill-down', () => {
+  it('links a ready key to its signal’s GitHub page instead of drilling down', async () => {
+    const user = userEvent.setup();
+    const onRepoActivate = vi.fn();
+    render(<BoardView repos={[repoA]} getRowData={getRowData} onRepoActivate={onRepoActivate} />);
+
+    const ci = screen.getByRole('link', { name: /CI:.*octo\/repo-a/ });
+    expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//);
+    expect(ci).toHaveAttribute('target', '_blank');
+    await user.click(ci);
+    // The key navigates to GitHub, so the in-app drill-down is never invoked.
+    expect(onRepoActivate).not.toHaveBeenCalled();
+  });
+
+  it('renders interactive deep-link keys even when onRepoActivate is omitted', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+
+    // Each key is a GitHub link (its href is intrinsic to the repo + signal), so
+    // the deck is interactive even without a drill-down handler.
+    const links = screen.getAllByRole('link', { name: /octo\/repo-a/ });
+    expect(links).toHaveLength(6);
+    links.forEach((link) =>
+      expect(link.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//),
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+describe('BoardView — per-key retry threading', () => {
+  /** Every signal slice errored, so each key resolves to an error (retry) state. */
+  const ERRORED_DATA: RepoSignalData = {
+    ci: { status: 'error' },
+    security: { status: 'error' },
+    reviews: { status: 'error' },
+    pullRequests: { status: 'error' },
+    issues: { status: 'error' },
+    stale: { status: 'error' },
+  };
+
+  it('threads onRetry down so an errored key re-fetches (not drills down) on press', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRepoActivate = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={() => ERRORED_DATA}
+        onRepoActivate={onRepoActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    const retryButtons = screen.getAllByRole('button', { name: /retry/i });
+    expect(retryButtons).toHaveLength(SIGNAL_ORDER.length);
+
+    await user.click(retryButtons[0]);
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRepoActivate).not.toHaveBeenCalled();
+  });
+
+  it('uses the scoped retry seam for the failed repo and signal instead of board reload', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRetrySignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={() => ERRORED_DATA}
+        onRetry={onRetry}
+        onRetrySignal={onRetrySignal}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Retry CI for octo/repo-a' }));
+
+    expect(onRetrySignal).toHaveBeenCalledTimes(1);
+    expect(onRetrySignal).toHaveBeenCalledWith(repoA, 'ci');
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('links a ready key to GitHub even when onRetry is also provided', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onRepoActivate = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        onRepoActivate={onRepoActivate}
+        onRetry={onRetry}
+      />,
+    );
+
+    const ci = screen.getByRole('link', { name: /CI:.*octo\/repo-a/ });
+    expect(ci.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/repo-a\//);
+    await user.click(ci);
+    // Retry only applies to errored keys; a ready key navigates to GitHub.
+    expect(onRepoActivate).not.toHaveBeenCalled();
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+});
+
+describe('BoardView — per-tile hide (hiddenKeys)', () => {
+  it('treats an absent hiddenKeys set as "all visible"', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(keys(container)).toHaveLength(2 * 6);
+  });
+
+  it('omits only the hidden signals for a repo, keeping the rest in fixed order', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, ['ci', 'issues'])}
+      />,
+    );
+
+    const signals = keys(container).map((key) => key.getAttribute('data-signal'));
+    expect(signals).toEqual(['security', 'reviews', 'pullRequests', 'stale']);
+  });
+
+  it('renders repos×6 minus the hidden keys across multiple repos', () => {
+    const hiddenKeys = new Set([...hidden(repoA, ['ci']), ...hidden(repoB, ['stale', 'issues'])]);
+    const { container } = render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} hiddenKeys={hiddenKeys} />,
+    );
+
+    expect(keys(container)).toHaveLength(2 * 6 - 3);
+  });
+
+  it('applies repoFilter and hiddenKeys together', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        repoFilter={new Set([repoA.nameWithOwner])}
+        hiddenKeys={hidden(repoA, ['ci'])}
+      />,
+    );
+
+    expect(keys(container)).toHaveLength(5);
+    expect(screen.queryByText('octo/repo-b')).toBeNull();
+  });
+
+  it('announces the visible tile count when some tiles are hidden (plural)', () => {
+    render(
+      <BoardView repos={[repoA]} getRowData={getRowData} hiddenKeys={hidden(repoA, ['ci'])} />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('5 tiles');
+  });
+
+  it('uses the singular noun when exactly one tile is visible', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, ['ci', 'security', 'reviews', 'pullRequests', 'issues'])}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(/\b1 tile\b/);
+  });
+
+  it('does not annotate the tile count when no tiles are hidden', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 repositories');
+    expect(screen.getByRole('status').textContent).not.toMatch(/tile/i);
+  });
+
+  it('shows the all-tiles-hidden empty state, distinct from no-repos/filtered', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        hiddenKeys={hidden(repoA, SIGNAL_ORDER)}
+      />,
+    );
+
+    expect(keys(container)).toHaveLength(0);
+    expect(screen.getByText(/all tiles hidden/i)).toBeInTheDocument();
+    expect(screen.getByText(/customize/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No repositories/i)).toBeNull();
+  });
+});
+
+describe('BoardView — edit mode (× remove overlay)', () => {
+  it('renders no remove overlay when not editing', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} onToggleKey={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /remove .* tile for/i })).toBeNull();
+  });
+
+  it('overlays a remove button on every visible key when editing', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={vi.fn()} />);
+
+    expect(
+      screen.getAllByRole('button', { name: /remove .* tile for octo\/repo-a/i }),
+    ).toHaveLength(6);
+  });
+
+  it('renders no remove overlay when editing without a toggle handler', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing />);
+
+    expect(screen.queryByRole('button', { name: /remove .* tile for/i })).toBeNull();
+  });
+
+  it('labels each remove button and toggles that (repo, signal) on click', async () => {
+    const user = userEvent.setup();
+    const onToggleKey = vi.fn();
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={onToggleKey} />);
+
+    await user.click(screen.getByRole('button', { name: 'Remove CI tile for octo/repo-a' }));
+
+    expect(onToggleKey).toHaveBeenCalledTimes(1);
+    expect(onToggleKey).toHaveBeenCalledWith(repoA, 'ci');
+  });
+
+  it('uses the multi-word signal label in the remove aria-label', () => {
+    render(<BoardView repos={[repoA]} getRowData={getRowData} editing onToggleKey={vi.fn()} />);
+
+    expect(
+      screen.getByRole('button', { name: 'Remove Pull requests tile for octo/repo-a' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the remove button as a sibling overlay, not nested in the key button', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        editing
+        onRepoActivate={vi.fn()}
+        onToggleKey={vi.fn()}
+      />,
+    );
+
+    const removeCi = screen.getByRole('button', { name: 'Remove CI tile for octo/repo-a' });
+    expect(removeCi.closest('[data-signal]')).toBeNull();
+  });
+
+  it('overlays a remove button only on the visible keys', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        editing
+        hiddenKeys={hidden(repoA, ['ci', 'security'])}
+        onToggleKey={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: /remove .* tile for/i })).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Remove CI tile for octo/repo-a' })).toBeNull();
+  });
+});
+
+describe('BoardView — tile size', () => {
+  /** The first repo-row grid carries the per-column matrix template. */
+  function row(container: HTMLElement): HTMLElement {
+    const el = container.querySelector<HTMLElement>('[data-repo-row]');
+    if (!el) {
+      throw new Error('BoardView repo row not found');
+    }
+    return el;
+  }
+
+  it('defaults to the medium (152px) fixed per-column matrix template', () => {
+    const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 152px)');
+  });
+
+  it('widens the columns for the large size', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} size="large" />,
+    );
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 192px)');
+  });
+
+  it('keeps the x-small columns at a fixed (readable) width, not shrinking', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} size="x-small" />,
+    );
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(6, 104px)');
+  });
+
+  it('sizes a row to its visible signal count so a hidden tile leaves no empty track', () => {
+    const { container } = render(
+      <BoardView repos={[repoA]} getRowData={getRowData} hiddenKeys={hidden(repoA, ['stale'])} />,
+    );
+    // octo/repo-a has its last signal (stale) hidden → 5 columns, not 6.
+    expect(row(container).style.gridTemplateColumns).toBe('repeat(5, 152px)');
+  });
+});
+
+describe('BoardView — matrix layout', () => {
+  /** Repo-row ids in DOM order. */
+  function repoRows(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-repo-row]')).map(
+      (el) => el.getAttribute('data-repo-row') ?? '',
+    );
+  }
+
+  it('renders exactly one row per repo (one row per repo, never mixing)', () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    expect(repoRows(container)).toEqual(['octo/repo-a', 'octo/repo-b']);
+  });
+
+  it("groups each repo's six signal keys inside its own row", () => {
+    const { container } = render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    const rowA = container.querySelector<HTMLElement>('[data-repo-row="octo/repo-a"]');
+    expect(keys(rowA as HTMLElement)).toHaveLength(6);
+  });
+
+  it('orders the repo rows by the repoOrder prop', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        repoOrder={['octo/repo-b', 'octo/repo-a']}
+      />,
+    );
+    expect(repoRows(container)).toEqual(['octo/repo-b', 'octo/repo-a']);
+  });
+
+  it('appends visible repos missing from repoOrder after the ordered ones', () => {
+    const { container } = render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} repoOrder={['octo/repo-b']} />,
+    );
+    expect(repoRows(container)).toEqual(['octo/repo-b', 'octo/repo-a']);
+  });
+
+  it('orders the signal columns within a row by the signalOrder prop', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        signalOrder={['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']}
+      />,
+    );
+    const signals = keys(container).map((key) => key.getAttribute('data-signal'));
+    expect(signals).toEqual(['stale', 'ci', 'security', 'reviews', 'pullRequests', 'issues']);
+  });
+});
+
+describe('BoardView — repo row reorder', () => {
+  it('shows an accessible drag handle per repo row when editing and reorderable', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: /reorder octo\/repo-a/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reorder octo\/repo-b/i })).toBeInTheDocument();
+  });
+
+  it('renders no drag handles in read mode (not editing)', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} onMoveRepo={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+  });
+
+  it('disables reordering and shows a hint while a repo filter is active', () => {
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={vi.fn()}
+        repoFilter={new Set(['octo/repo-a'])}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+    expect(screen.getByText(/clear the filter to reorder/i)).toBeInTheDocument();
+  });
+
+  it('renders no drag handles when onMoveRepo is omitted', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onToggleKey={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: /reorder octo\/repo/i })).toBeNull();
+  });
+});
+
+describe('BoardView — repo row remove', () => {
+  it('shows a per-row remove control when editing with onRemoveRepo, calling it with the repo', async () => {
+    const user = userEvent.setup();
+    const onRemoveRepo = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={vi.fn()}
+        onRemoveRepo={onRemoveRepo}
+      />,
+    );
+    const removeA = screen.getByRole('button', { name: /remove repository octo\/repo-a/i });
+    await user.click(removeA);
+    expect(onRemoveRepo).toHaveBeenCalledTimes(1);
+    expect(onRemoveRepo).toHaveBeenCalledWith(repoA);
+  });
+
+  it('renders no row remove control in read mode', () => {
+    render(
+      <BoardView
+        repos={[repoA]}
+        getRowData={getRowData}
+        onMoveRepo={vi.fn()}
+        onRemoveRepo={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /remove repository octo\/repo-a/i })).toBeNull();
+  });
+});
+
+describe('BoardView — repo-block packing layout', () => {
+  it('places repo blocks in a wrapping (flex-wrap) container so they pack per line', () => {
+    render(<BoardView repos={[repoA, repoB]} getRowData={getRowData} />);
+    const rowA = document.querySelector('[data-repo-row="octo/repo-a"]') as HTMLElement;
+    const rowB = document.querySelector('[data-repo-row="octo/repo-b"]') as HTMLElement;
+    expect(rowA).not.toBeNull();
+    expect(rowB).not.toBeNull();
+    const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
+    expect(blocks).not.toBeNull();
+    expect(blocks.className).toContain('flex-wrap');
+    expect(blocks.className).toContain('justify-center');
+    // Full-width container centers each line (oversized single block overflows
+    // symmetrically); no w-fit, which mis-sized multi-per-line rows (medium).
+    expect(blocks.className).toContain('w-full');
+    expect(blocks.className).not.toContain('w-fit');
+    expect(blocks.contains(rowA)).toBe(true);
+    expect(blocks.contains(rowB)).toBe(true);
+  });
+});
+
+describe('BoardView — signal columns reorder via drawer (no on-grid header)', () => {
+  it('renders no on-grid signal-column header group in edit mode', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    expect(screen.queryByRole('group', { name: /reorder signal columns/i })).toBeNull();
+  });
+
+  it('keeps packing repos into the deck-blocks container while editing', () => {
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={vi.fn()} />,
+    );
+    const blocks = document.querySelector('[data-testid="deck-blocks"]') as HTMLElement;
+    expect(blocks.className).toContain('flex-wrap');
+    expect(blocks.querySelectorAll('[data-repo-row]').length).toBe(2);
+  });
+});
+
+describe('BoardView — drag dispatch seam (#634)', () => {
+  it('dispatches a repo row drag to onMoveRepo with the correct indices', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    // Invoke the captured DndContext onDragEnd with a synthetic repo-row drag.
+    mockBoardDragCapture.fn?.({
+      active: { id: 'octo/repo-a' },
+      over: { id: 'octo/repo-b' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveRepo).toHaveBeenCalledTimes(1);
+    expect(onMoveRepo).toHaveBeenCalledWith(0, 1);
+    expect(onMoveSignal).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a column drag to onMoveSignal with the correct indices', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    // Column ids use the 'col:' prefix from deckColumnId (deck-reorder.ts).
+    // Default signalOrder is DECK_SIGNALS: ci(0), security(1), …, stale(5).
+    mockBoardDragCapture.fn?.({
+      active: { id: 'col:ci' },
+      over: { id: 'col:stale' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveSignal).toHaveBeenCalledTimes(1);
+    expect(onMoveSignal).toHaveBeenCalledWith(0, 5);
+    expect(onMoveRepo).not.toHaveBeenCalled();
+  });
+
+  it('calls neither callback for a no-op drag (same source and target)', () => {
+    const onMoveRepo = vi.fn();
+    const onMoveSignal = vi.fn();
+    render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        editing
+        onMoveRepo={onMoveRepo}
+        onMoveSignal={onMoveSignal}
+      />,
+    );
+
+    mockBoardDragCapture.fn?.({
+      active: { id: 'octo/repo-a' },
+      over: { id: 'octo/repo-a' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveRepo).not.toHaveBeenCalled();
+    expect(onMoveSignal).not.toHaveBeenCalled();
+  });
+});

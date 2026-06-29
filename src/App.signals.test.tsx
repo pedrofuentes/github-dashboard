@@ -52,14 +52,16 @@ async function signIn(): Promise<void> {
   render(<App />);
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
   await user.click(screen.getByRole('button', { name: /connect/i }));
-  await screen.findByText(/authenticated as octocat/i);
+  await screen.findByRole('group', { name: /view mode/i });
 }
 
 describe('App fleet signal wiring', () => {
-  it('feeds the authenticated repos and token into the signal aggregator', async () => {
+  it('feeds the authenticated repos, token, and viewer login into the signal aggregator', async () => {
     await signIn();
 
-    expect(mockUseRepoSignals).toHaveBeenCalledWith(REPOS, 'ghp_valid');
+    // The viewer login (from the validated token) is threaded through so the
+    // issues signal can split open issues into "mine" vs "community".
+    expect(mockUseRepoSignals).toHaveBeenCalledWith(REPOS, 'ghp_valid', 'octocat');
   });
 
   it('passes the aggregator getRowData down to the fleet grid', async () => {
@@ -67,5 +69,17 @@ describe('App fleet signal wiring', () => {
     await signIn();
 
     expect(fleetGridSpy).toHaveBeenCalledWith(expect.objectContaining({ getRowData }));
+  });
+
+  it('shows the security-access notice when every repo security slice is settled without access', async () => {
+    mockUseRepoSignals.mockReturnValue({
+      getRowData: () => ({
+        security: { status: 'ready' },
+      }),
+    });
+
+    await signIn();
+
+    expect(screen.getByText(/security grades are unavailable/i)).toBeInTheDocument();
   });
 });

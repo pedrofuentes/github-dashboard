@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchLatestRelease, formatRelativeTime } from './issues-releases';
-import { GitHubApiError } from './index';
+import { fetchLatestRelease, formatRelativeTime, fetchViewerIssueCount } from './issues-releases';
+import { GitHubApiError, searchLimiter } from './index';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
@@ -29,6 +29,91 @@ function mockFetchResponse(status: number, body: unknown, headers?: Headers): Re
     text: () => Promise.resolve(JSON.stringify(body)),
   } as unknown as Response;
 }
+
+// ──────────────────────────────────────────────
+// fetchViewerIssueCount
+// ──────────────────────────────────────────────
+
+describe('fetchViewerIssueCount', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    searchLimiter.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+  });
+
+  it('returns total_count from the Search API', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 7 }));
+
+    const result = await fetchViewerIssueCount('owner', 'repo', 'alice');
+    expect(result).toBe(7);
+  });
+
+  it('retries through the shared Search limiter on a secondary-limit 403, then resolves', async () => {
+    // A 403 carrying Retry-After is a secondary rate limit: routed through the
+    // shared Search limiter it is reclassified RATE_LIMITED and retried, so the
+    // count resolves instead of erroring the repo (T-bf2 / #495).
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(
+        mockFetchResponse(
+          403,
+          { message: 'secondary rate limit' },
+          mockHeaders({ 'retry-after': '0' }),
+        ),
+      )
+      .mockResolvedValueOnce(mockFetchResponse(200, { total_count: 4 }));
+
+    const result = await fetchViewerIssueCount('owner', 'repo', 'alice', 'ghp_test');
+    expect(result).toBe(4);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds URL with repo, type:issue, is:open and author:<login> qualifiers', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 3 }));
+
+    await fetchViewerIssueCount('owner', 'repo', 'alice', 'ghp_test');
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain('repo:owner/repo');
+    expect(decoded).toContain('type:issue');
+    expect(decoded).toContain('is:open');
+    expect(decoded).toContain('author:alice');
+    expect(url).toContain('per_page=1');
+    // The token must be forwarded as an Authorization header so private-repo
+    // searches are authenticated; dropping it causes silent 401/under-counts.
+    const opts = vi.mocked(globalThis.fetch).mock.calls[0][1];
+    expect((opts?.headers as Record<string, string>)['Authorization']).toBe('Bearer ghp_test');
+  });
+
+  it('URL-encodes the search query so no raw spaces appear in the query param', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 0 }));
+
+    await fetchViewerIssueCount('my-org', 'my-repo', 'dev-bot');
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    const qIndex = url.indexOf('?q=');
+    expect(qIndex).toBeGreaterThan(0);
+    expect(url.slice(qIndex)).not.toContain(' ');
+  });
+
+  it('throws GitHubApiError on non-OK response', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(401, { message: 'Bad credentials' }),
+    );
+
+    await expect(fetchViewerIssueCount('owner', 'repo', 'alice', 'bad_token')).rejects.toThrow(
+      GitHubApiError,
+    );
+    await expect(fetchViewerIssueCount('owner', 'repo', 'alice', 'bad_token')).rejects.toThrow(
+      /Invalid or expired/,
+    );
+  });
+});
 
 describe('fetchLatestRelease — includePreReleases error path', () => {
   let originalFetch: typeof globalThis.fetch;

@@ -50,8 +50,11 @@ function Placeholder({ srLabel }: { srLabel: string }) {
 /**
  * Issues column cell: the repo's open-issue count as `N open`, with an amber,
  * icon-backed (never colour-only) indicator when the backlog is over the triage
- * threshold. Renders an accessible skeleton while loading and a neutral dash on
- * error or when no data is available (WCAG 2.1 AA).
+ * threshold. When the slice carries the viewer's author split (b2), a compact
+ * `· N community · N mine` annotation breaks the total down — informational, in
+ * neutral tones, never implying an error and never overriding the triage state.
+ * Renders an accessible skeleton while loading and a neutral dash on error or
+ * when no data is available (WCAG 2.1 AA).
  */
 export function IssuesCell({ slice }: IssuesCellProps) {
   if (!slice || slice.status === 'unknown') {
@@ -77,9 +80,20 @@ export function IssuesCell({ slice }: IssuesCellProps) {
   const openCount = slice.openCount ?? 0;
   const overThreshold = slice.overThreshold ?? false;
   const noun = openCount === 1 ? 'issue' : 'issues';
-  const label = overThreshold
-    ? `${openCount} open ${noun}, over the triage threshold`
-    : `${openCount} open ${noun}`;
+
+  // Community-vs-mine split (b2): present only when a viewer is authenticated,
+  // so both counts arrive together. Guard on presence — a viewer-less slice must
+  // render exactly as before. The annotation is informational, never an error.
+  const hasAuthorSplit =
+    typeof slice.communityCount === 'number' && typeof slice.mineCount === 'number';
+  const communityCount = slice.communityCount ?? 0;
+  const mineCount = slice.mineCount ?? 0;
+
+  const splitLabel = hasAuthorSplit
+    ? ` — ${communityCount} from the community, ${mineCount} yours`
+    : '';
+  const thresholdLabel = overThreshold ? ', over the triage threshold' : '';
+  const label = `${openCount} open ${noun}${splitLabel}${thresholdLabel}`;
 
   return (
     <span
@@ -91,6 +105,17 @@ export function IssuesCell({ slice }: IssuesCellProps) {
     >
       <IssueOpenedIcon />
       <span aria-hidden="true">{openCount} open</span>
+      {hasAuthorSplit ? (
+        <span
+          aria-hidden="true"
+          className="inline-flex items-center gap-1 font-normal text-text-muted"
+        >
+          <span aria-hidden="true">·</span>
+          <span>{communityCount} community</span>
+          <span aria-hidden="true">·</span>
+          <span className="font-medium text-text">{mineCount} mine</span>
+        </span>
+      ) : null}
       {overThreshold ? (
         <span
           title="over the triage threshold"

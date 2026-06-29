@@ -9,11 +9,14 @@
  * a `tone`, a `status`, and a body: the `data-status` attribute, the WAI-ARIA
  * grid cell semantics (`aria-colindex`/`aria-rowindex`), the roving tab stop,
  * the whole-tile activate overlay button (button semantics, Enter/Space, the
- * sky-600 focus ring), and the edit-mode Move/Resize control rail.
+ * `focus`-token focus ring), and the edit-mode Move/Resize control rail.
  */
 import type { ReactElement, ReactNode, RefObject } from 'react';
 
+import { useRepoOwner } from '../../hooks/useRepoOwner';
+import { cn } from '../../lib/cn';
 import type { MoveDirection, ResizeDimension } from '../../lib/grid-keyboard';
+import { formatRepoLabel } from '../../lib/repo-owner-preference';
 import type { TileSalience } from '../../lib/tile-salience';
 import type { Repo, SignalStatus } from '../../types/fleet';
 import { AccentBar } from './AccentBar';
@@ -45,6 +48,14 @@ export interface TileFrameProps {
   tileId: string;
   /** Opens the drill-down for the tile. */
   onActivate: () => void;
+  /**
+   * When set (and NOT editing), the whole-tile activate overlay becomes a link
+   * to this GitHub URL (opened in a new tab) instead of the drill-down button —
+   * so a press jumps straight to the matching GitHub page. In edit mode the
+   * overlay stays a button so keyboard reorder/resize and focus management are
+   * unaffected. Omitted ⇒ the legacy drill-down button.
+   */
+  activateHref?: string;
   /**
    * Whether this tile is the grid's single roving tab stop. When false the
    * tile's controls leave the tab order (`tabindex="-1"`); arrow keys on the
@@ -93,6 +104,15 @@ export interface TileFrameProps {
    * "View <signal> details for <repo>" label when omitted.
    */
   accessibleSummary?: string;
+  /**
+   * Drops the redundant visible repo header line (Phase 3 D1). When the
+   * dashboard is filtered to exactly one repo every tile shares that repo, so
+   * the per-tile repo name is noise. Only the VISIBLE heading is hidden
+   * (`sr-only`): the real `nameWithOwner` still rides the `title`, the activate
+   * `accessibleSummary`, and the visually-hidden alias note, so repo identity
+   * never leaves the accessibility tree (AC-10). Defaults to showing the header.
+   */
+  hideRepoHeader?: boolean;
   /** The signal-specific body content. */
   children: ReactNode;
 }
@@ -105,6 +125,7 @@ export function TileFrame({
   size,
   tileId,
   onActivate,
+  activateHref,
   active = true,
   editing = false,
   onTileFocus,
@@ -118,10 +139,12 @@ export function TileFrame({
   alias,
   identityTone,
   accessibleSummary,
+  hideRepoHeader = false,
   children,
 }: TileFrameProps): ReactElement {
+  const { display } = useRepoOwner();
   const tileName = `${signalLabel} · ${repo.nameWithOwner}`;
-  const displayName = alias ?? repo.nameWithOwner;
+  const displayName = alias ?? formatRepoLabel(repo, display);
 
   // Roving tabindex: only the grid's active tile is in the tab order; the rest
   // are reachable via the arrow keys handled by the grid (WAI-ARIA grid pattern).
@@ -178,7 +201,10 @@ export function TileFrame({
       <AccentBar tone={barTone} thickness={isProblem ? 'problem' : 'calm'} />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-4">
         <header className="flex items-baseline justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold text-text" title={repo.nameWithOwner}>
+          <h3
+            className={cn('truncate text-sm font-semibold text-text', hideRepoHeader && 'sr-only')}
+            title={repo.nameWithOwner}
+          >
             {displayName}
             {alias != null ? (
               <span className="sr-only"> (alias for {repo.nameWithOwner})</span>
@@ -207,15 +233,28 @@ export function TileFrame({
           />
         ) : null}
       </div>
-      <button
-        type="button"
-        data-tile-activate={tileId}
-        tabIndex={rovingTabIndex}
-        onClick={onActivate}
-        onFocus={() => onTileFocus?.(tileId)}
-        aria-label={activateLabel}
-        className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
-      />
+      {activateHref !== undefined && !editing ? (
+        <a
+          data-tile-activate={tileId}
+          href={activateHref}
+          target="_blank"
+          rel="noreferrer noopener"
+          tabIndex={rovingTabIndex}
+          onFocus={() => onTileFocus?.(tileId)}
+          aria-label={activateLabel}
+          className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      ) : (
+        <button
+          type="button"
+          data-tile-activate={tileId}
+          tabIndex={rovingTabIndex}
+          onClick={onActivate}
+          onFocus={() => onTileFocus?.(tileId)}
+          aria-label={activateLabel}
+          className="absolute inset-0 rounded-md focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      )}
     </article>
   );
 }

@@ -80,6 +80,43 @@ describe('SeverityBar', () => {
     expect(container.querySelectorAll('[data-tone]')).toHaveLength(0);
   });
 
+  it('pins a visible segment to 0% width when an explicit max of 0 zeroes the total', () => {
+    // A positive segment combined with `max={0}` drives the denominator to 0; the
+    // width guard must yield '0%' rather than an Infinity%/NaN% string.
+    const { container } = render(
+      <SeverityBar segments={[{ tone: 'failure', value: 2, label: 'Critical' }]} max={0} />,
+    );
+    const seg = container.querySelector<HTMLElement>('[data-tone]');
+    expect(seg).not.toBeNull();
+    expect(seg?.style.width).toBe('0%');
+  });
+
+  it('clamps a segment whose value exceeds the denominator to 100% width (#276)', () => {
+    // An upstream subset can hand a value larger than `max` (e.g. a projected
+    // subset count > the total it was projected from). The width must clamp to
+    // 100% rather than render a >100% string and overflow the track.
+    const { container } = render(
+      <SeverityBar segments={[{ tone: 'failure', value: 5, label: 'Critical' }]} max={2} />,
+    );
+    const seg = container.querySelector<HTMLElement>('[data-tone]');
+    expect(seg?.style.width).toBe('100%');
+  });
+
+  it('renders every visible segment even when two share a label (stable keys)', () => {
+    // Distinct segments may carry the same label; each must still render in both
+    // the decorative bar and the sr-only list (no key collision dropping one).
+    const { container } = render(
+      <SeverityBar
+        segments={[
+          { tone: 'failure', value: 1, label: 'Other' },
+          { tone: 'warning', value: 2, label: 'Other' },
+        ]}
+      />,
+    );
+    expect(container.querySelectorAll('[data-tone]')).toHaveLength(2);
+    expect(container.querySelectorAll('.sr-only li')).toHaveLength(2);
+  });
+
   it('marks the coloured bar decorative (aria-hidden) so meaning rests on the sr-only list', () => {
     const { container } = render(
       <SeverityBar segments={[{ tone: 'failure', value: 1, label: 'Critical' }]} />,

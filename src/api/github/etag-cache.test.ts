@@ -496,4 +496,28 @@ describe('fetchWithETag — rate-limit awareness', () => {
     expect(rateLimitStore.isPaused()).toBe(true);
     expect(rateLimitStore.pauseRemainingMs()).toBeGreaterThan(0);
   });
+
+  it('classifies a secondary-limit 403 (Retry-After present) as RATE_LIMITED', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse(
+        { message: 'secondary rate limit' },
+        403,
+        mockHeaders({ 'x-ratelimit-remaining': '4999', 'retry-after': '60' }),
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await fetchWithETag(URL_A, BodySchema, { token: 't' });
+    } catch (err) {
+      caught = err;
+    }
+
+    // A healthy x-ratelimit-remaining must not mask a secondary rate limit: the
+    // Retry-After makes this a recoverable RATE_LIMITED error (so the Search
+    // limiter can back off and retry), not a permanent ACCESS_DENIED.
+    expect(caught).toBeInstanceOf(GitHubApiError);
+    expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.RATE_LIMITED);
+    expect((caught as GitHubApiError).retryAfterSeconds).toBe(60);
+  });
 });

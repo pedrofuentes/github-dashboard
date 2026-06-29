@@ -27,6 +27,14 @@ export const MAX_TRIAGE_IDS = 2000;
 export const MAX_ID_LENGTH = 256;
 
 /**
+ * Generous watermark horizon (§3.3). A `lastVisitedAt` older than this — more
+ * than ~half a year stale — is reset by {@link pruneTriage} so the "new since
+ * last visit" highlight stays meaningful instead of marking a wall of events
+ * "new" after a long absence (#233).
+ */
+export const WATERMARK_HORIZON_MS = 180 * 24 * 60 * 60 * 1000;
+
+/**
  * Persistence schema (§3.2). Both id arrays are stored in insertion order
  * (oldest first) so the cap can evict LRU-style from the front. `.max()` is the
  * hard ceiling that rejects an oversized payload before it reaches the app.
@@ -113,25 +121,70 @@ function capOldestFirst(ids: string[]): string[] {
 }
 
 /**
+ * Resets a `lastVisitedAt` older than {@link WATERMARK_HORIZON_MS} to `null`
+ * (§3.3, #233), but only when a `now` instant is supplied; without it the
+ * watermark is carried through untouched so the prune stays a pure id-set GC. A
+ * `null` or unparseable watermark is left as-is.
+ */
+function resetStaleWatermark(lastVisitedAt: string | null, now: number | undefined): string | null {
+  if (lastVisitedAt === null || now === undefined) {
+    return lastVisitedAt;
+  }
+  const visited = Date.parse(lastVisitedAt);
+  if (Number.isNaN(visited)) {
+    return lastVisitedAt;
+  }
+  return now - visited > WATERMARK_HORIZON_MS ? null : lastVisitedAt;
+}
+
+/** Tuning knobs for {@link pruneTriage}; all optional and backward-compatible. */
+export interface PruneTriageOptions {
+  /**
+   * Retains a read/dismissed id whose item is absent from `liveIds` when this
+   * returns `true`. Used to protect a mark whose signal slice merely had a
+   * transient fetch failure this refresh, so a momentary error does not silently
+   * forget triage that will reappear once the fetch recovers (#249).
+   */
+  protect?: (id: string) => boolean;
+  /**
+   * Current epoch-ms instant. When supplied, a `lastVisitedAt` older than
+   * {@link WATERMARK_HORIZON_MS} resets to `null` so the watermark stays
+   * meaningful (§3.3, #233). Omitted (the default) carries the watermark through
+   * untouched, keeping the prune a pure id-set GC.
+   */
+  now?: number;
+}
+
+/**
  * Bounds the triage so storage cannot grow unbounded (§3.3). The `useInbox`
  * hook runs it on every load and before every save:
  *
  * 1. **GC absent ids** — drop any read/dismissed id not present in `liveIds`
- *    (the currently derived item set). A resolved run, merged PR, or fixed alert
- *    vanishes from derivation, so its triage mark is forgotten. This ties
- *    retention to live items and is the primary bound.
+ *    (the currently derived item set) unless `options.protect` retains it. A
+ *    resolved run, merged PR, or fixed alert vanishes from derivation, so its
+ *    triage mark is forgotten; a slice that merely failed to fetch this refresh
+ *    is protected so its marks survive the blip (#249). This ties retention to
+ *    live items and is the primary bound.
  * 2. **LRU backstop** — if, after GC, an id-set still exceeds
  *    {@link MAX_TRIAGE_IDS}, evict from the front (oldest insertion first) until
- *    it fits.
+ *    it fits. Protection cannot defeat this hard ceiling.
+ * 3. **Watermark horizon** — a `lastVisitedAt` older than
+ *    {@link WATERMARK_HORIZON_MS} resets to `null` when `options.now` is
+ *    supplied (§3.3, #233); otherwise it is carried through untouched.
  *
- * Insertion order is preserved, the watermark is carried through untouched, and
- * the input is not mutated.
+ * Insertion order is preserved and the input is not mutated.
  */
-export function pruneTriage(triage: InboxTriage, liveIds: Iterable<string>): InboxTriage {
+export function pruneTriage(
+  triage: InboxTriage,
+  liveIds: Iterable<string>,
+  options: PruneTriageOptions = {},
+): InboxTriage {
+  const { protect, now } = options;
   const live = new Set(liveIds);
+  const keep = (id: string): boolean => live.has(id) || (protect?.(id) ?? false);
   return {
-    readIds: capOldestFirst(triage.readIds.filter((id) => live.has(id))),
-    dismissedIds: capOldestFirst(triage.dismissedIds.filter((id) => live.has(id))),
-    lastVisitedAt: triage.lastVisitedAt,
+    readIds: capOldestFirst(triage.readIds.filter(keep)),
+    dismissedIds: capOldestFirst(triage.dismissedIds.filter(keep)),
+    lastVisitedAt: resetStaleWatermark(triage.lastVisitedAt, now),
   };
 }

@@ -1,15 +1,24 @@
 /**
- * Additional tests for fetchReviewRequestedPRs error branches that
- * github-api.test.ts does not exercise (429 retry exhaustion, 403
+ * Tests for pull-requests module functions.
+ *
+ * Covers fetchPullRequestCount Search-limiter routing (ensures the Search call
+ * is throttled through scheduleSearchRequest like the other Search callers),
+ * fetchReviewRequestedPRs error branches (429 retry exhaustion, 403
  * access-denied when the rate limit is not exhausted, and the generic
- * fallthrough error).
+ * fallthrough error), and fetchReviewRequestedPage pagination/identity
+ * behaviours.
  *
  * Mocks the global fetch so no real HTTP calls are made.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchReviewRequestedPRs, fetchReviewRequestedPage } from './pull-requests';
-import { GitHubApiError } from './index';
+import {
+  fetchOpenPullRequestCount,
+  fetchPullRequestCount,
+  fetchReviewRequestedPRs,
+  fetchReviewRequestedPage,
+} from './pull-requests';
+import { GitHubApiError, searchLimiter } from './index';
 
 function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
@@ -30,6 +39,113 @@ function mockFetchResponse(status: number, body: unknown, headers?: Headers): Re
     text: () => Promise.resolve(JSON.stringify(body)),
   } as unknown as Response;
 }
+
+// ──────────────────────────────────────────────
+// fetchPullRequestCount — Search-limiter routing
+// ──────────────────────────────────────────────
+
+describe('fetchPullRequestCount — Search-limiter routing', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    searchLimiter.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+  });
+
+  it('returns total_count from the Search API', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 5 }));
+
+    const result = await fetchPullRequestCount('owner', 'repo', 'ghp_test');
+    expect(result).toBe(5);
+  });
+
+  it('retries through the shared Search limiter on a secondary-limit 403, then resolves', async () => {
+    // A 403 carrying Retry-After is a secondary rate limit. When fetchPullRequestCount
+    // routes through the shared Search limiter, it is reclassified as RATE_LIMITED
+    // and retried, so the count resolves instead of throwing (mirrors #495 fix for
+    // fetchViewerIssueCount). Without the limiter, a 403 propagates as a GitHubApiError
+    // and no retry occurs — this test FAILS before the fix.
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(
+        mockFetchResponse(
+          403,
+          { message: 'secondary rate limit' },
+          mockHeaders({ 'retry-after': '0' }),
+        ),
+      )
+      .mockResolvedValueOnce(mockFetchResponse(200, { total_count: 3 }));
+
+    const result = await fetchPullRequestCount('owner', 'repo', 'ghp_test', 'open');
+    expect(result).toBe(3);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds a URL with type:pr and is:open qualifiers for the open state', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 2 }));
+
+    await fetchPullRequestCount('owner', 'repo', 'ghp_test', 'open');
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain('repo:owner/repo');
+    expect(decoded).toContain('type:pr');
+    expect(decoded).toContain('is:open');
+    expect(url).toContain('per_page=1');
+  });
+
+  it('omits the state qualifier when state is "all"', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 10 }));
+
+    await fetchPullRequestCount('owner', 'repo', 'ghp_test', 'all');
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain('type:pr');
+    expect(decoded).not.toContain('is:open');
+    expect(decoded).not.toContain('is:closed');
+  });
+
+  it('throws GitHubApiError on a non-retryable non-OK response', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      mockFetchResponse(401, { message: 'Bad credentials' }),
+    );
+
+    await expect(fetchPullRequestCount('owner', 'repo', 'bad_token')).rejects.toThrow(
+      GitHubApiError,
+    );
+  });
+});
+
+describe('fetchOpenPullRequestCount — Search-limiter routing', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    searchLimiter.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+    vi.restoreAllMocks();
+  });
+
+  it('schedules the open PR count Search request through the shared Search limiter', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 4 }));
+    const scheduleSpy = vi.spyOn(searchLimiter, 'schedule');
+
+    const result = await fetchOpenPullRequestCount('owner', 'repo', 'ghp_test');
+
+    expect(result).toBe(4);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy).toHaveBeenCalledWith(expect.any(Function), undefined);
+  });
+});
 
 describe('fetchReviewRequestedPRs — error branches', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -86,10 +202,13 @@ describe('fetchReviewRequestedPage', () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn();
+    searchLimiter.reset();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    searchLimiter.reset();
+    vi.restoreAllMocks();
   });
 
   const PAGE1_URL =
@@ -130,6 +249,21 @@ describe('fetchReviewRequestedPage', () => {
       'https://api.github.com/repos/octo/b',
     ]);
     expect(page.nextPageUrl).toBe(PAGE2_URL);
+  });
+
+  it('schedules the review-requested Search page through the shared Search limiter', async () => {
+    const controller = new AbortController();
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, pageBody(['octo/a'], 1)));
+    const scheduleSpy = vi.spyOn(searchLimiter, 'schedule');
+
+    const page = await fetchReviewRequestedPage(PAGE1_URL, {
+      token: 'ghp_test',
+      signal: controller.signal,
+    });
+
+    expect(page.totalCount).toBe(1);
+    expect(scheduleSpy).toHaveBeenCalledTimes(1);
+    expect(scheduleSpy).toHaveBeenCalledWith(expect.any(Function), controller.signal);
   });
 
   it('retains each PR\u2019s identity (number/title/url/created_at/login) for the inbox (AC-4)', async () => {
@@ -240,7 +374,6 @@ describe('fetchReviewRequestedPage', () => {
 
   it('requests the given URL and forwards the caller AbortSignal to fetch', async () => {
     const controller = new AbortController();
-    controller.abort();
     let receivedSignal: AbortSignal | undefined;
     vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
       receivedSignal = (init as RequestInit | undefined)?.signal ?? undefined;
@@ -251,7 +384,7 @@ describe('fetchReviewRequestedPage', () => {
 
     expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(PAGE1_URL);
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
-    expect(receivedSignal?.aborted).toBe(true);
+    expect(receivedSignal?.aborted).toBe(false);
   });
 
   it('throws GitHubApiError on a non-ok status', async () => {

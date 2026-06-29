@@ -51,6 +51,8 @@ const GLYPH_SIZE: Record<TileTier, number> = {
 };
 
 interface CiView {
+  /** Which presentational state the body settled into (drives `data-state`). */
+  state: 'ready' | 'unavailable' | 'loading' | 'error';
   /** Which status glyph to render as the hero. */
   glyph: SignalIconKind;
   /** Accent shared by glyph, glow and the status word. */
@@ -82,6 +84,7 @@ function plural(n: number, noun: string): string {
 function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
   if (!ci || ci.status === 'unknown') {
     return {
+      state: 'unavailable',
       glyph: 'neutral',
       tone: 'neutral',
       word: 'n/a',
@@ -92,6 +95,7 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
 
   if (ci.status === 'loading') {
     return {
+      state: 'loading',
       glyph: 'loading',
       tone: 'neutral',
       word: 'Loading…',
@@ -102,6 +106,7 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
 
   if (ci.status === 'error') {
     return {
+      state: 'error',
       glyph: 'failure',
       tone: 'failure',
       word: "Couldn't load CI",
@@ -113,9 +118,12 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
   // GitHub exposes conclusions beyond our 5-member enum (cancelled, skipped,
   // timed_out, action_required, neutral, stale). Guard the lookup so an
   // unexpected value falls back to the neutral 'none' render instead of
-  // throwing a TypeError → blank tile (#185).
+  // throwing a TypeError → blank tile (#185). `Object.hasOwn` (not the `in`
+  // operator) keeps the guard to the enum's own keys, so an inherited
+  // Object.prototype member ("toString", "constructor", …) cannot resolve to a
+  // prototype method and destructure an undefined glyph/word (#204).
   const raw = ci.conclusion ?? 'none';
-  const conclusion: Conclusion = raw in CONCLUSION ? raw : 'none';
+  const conclusion: Conclusion = Object.hasOwn(CONCLUSION, raw) ? raw : 'none';
   const { glyph, word } = CONCLUSION[conclusion];
   const tone = iconKindTone(glyph);
   const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;
@@ -126,7 +134,17 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
       ? `CI ${word.toLowerCase()} — ${plural(failing, 'workflow')} failing`
       : `CI ${word.toLowerCase()}`;
 
-  return { glyph, tone, word, detail, failing, runConclusion: conclusion, recency, sr };
+  return {
+    state: 'ready',
+    glyph,
+    tone,
+    word,
+    detail,
+    failing,
+    runConclusion: conclusion,
+    recency,
+    sr,
+  };
 }
 
 /**
@@ -190,7 +208,10 @@ export function CiTileBody({
   const showRecency = size !== 'compact' && view.recency !== undefined && showStandardExtras;
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-center">
+    <div
+      data-state={view.state}
+      className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-center"
+    >
       <div className="flex flex-col items-center gap-1">
         <StatusGlyph status={view.glyph} size={GLYPH_SIZE[size]} title={view.word} />
 
@@ -207,6 +228,12 @@ export function CiTileBody({
 
         {showRecency ? <span className="text-xs text-text-muted">{view.recency}</span> : null}
 
+        {/*
+          INTERIM (§4.1): the canonical "View latest run" affordance belongs in
+          the tile footer, but footer action wiring is not yet in place, so the
+          expanded tier renders the deep link in-body. Move to the footer once
+          that affordance lands; the GitHub-origin gate (`safeGitHubHref`) stays.
+        */}
         {href ? (
           <a
             href={href}

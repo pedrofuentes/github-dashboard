@@ -16,8 +16,13 @@ afterEach(() => {
 });
 
 describe('loadDefaultView', () => {
-  it('defaults to "dashboard" when nothing is stored', () => {
-    expect(loadDefaultView()).toBe('dashboard');
+  it('defaults to "triage" when nothing is stored', () => {
+    expect(loadDefaultView()).toBe('triage');
+  });
+
+  it('reads a stored "triage" default', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'triage');
+    expect(loadDefaultView()).toBe('triage');
   });
 
   it('reads a stored "grid" default', () => {
@@ -35,22 +40,32 @@ describe('loadDefaultView', () => {
     expect(loadDefaultView()).toBe('inbox');
   });
 
-  it('falls back to "dashboard" for an unrecognised value', () => {
-    localStorage.setItem(DEFAULT_VIEW_KEY, 'cards');
-    expect(loadDefaultView()).toBe('dashboard');
+  it('reads a stored "matrix" default', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'matrix');
+    expect(loadDefaultView()).toBe('matrix');
   });
 
-  it('falls back to "dashboard" when localStorage.getItem throws', () => {
+  it('reads a stored "deck" default', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'deck');
+    expect(loadDefaultView()).toBe('deck');
+  });
+
+  it('falls back to "triage" for an unrecognised value', () => {
+    localStorage.setItem(DEFAULT_VIEW_KEY, 'cards');
+    expect(loadDefaultView()).toBe('triage');
+  });
+
+  it('falls back to "triage" when localStorage.getItem throws', () => {
     vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    expect(loadDefaultView()).toBe('dashboard');
+    expect(loadDefaultView()).toBe('triage');
   });
 });
 
 describe('saveDefaultView', () => {
   it('persists the default under fleet:default-view', () => {
-    saveDefaultView('inbox');
+    expect(saveDefaultView('inbox')).toBe(true);
     expect(localStorage.getItem(DEFAULT_VIEW_KEY)).toBe('inbox');
   });
 
@@ -65,20 +80,25 @@ describe('saveDefaultView', () => {
     expect(loadDefaultView()).toBe('dashboard');
   });
 
-  it('swallows localStorage.setItem throwing', () => {
+  it('returns failure when localStorage.setItem throws', () => {
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded');
     });
-    expect(() => saveDefaultView('grid')).not.toThrow();
+
+    expect(saveDefaultView('grid')).toBe(false);
+    expect(loadDefaultView()).toBe('triage');
   });
 });
 
 // Folded guard coverage (view-preference.test.ts is deleted in a later PR).
 describe('isFleetView', () => {
-  it('accepts the three valid views', () => {
+  it('accepts the six valid views', () => {
+    expect(isFleetView('triage')).toBe(true);
     expect(isFleetView('grid')).toBe(true);
     expect(isFleetView('dashboard')).toBe(true);
     expect(isFleetView('inbox')).toBe(true);
+    expect(isFleetView('matrix')).toBe(true);
+    expect(isFleetView('deck')).toBe(true);
   });
 
   it('rejects unknown values and null', () => {

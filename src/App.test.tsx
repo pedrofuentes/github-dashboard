@@ -41,7 +41,7 @@ const getRowDataWithFailingCi: GetRowData = (target: Repo): RepoSignalData => ({
     updatedAt: CI_TIMESTAMP,
     latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/42`,
   },
-  security: { status: 'ready' },
+  security: { status: 'ready', grade: 'A', counts: { critical: 0, high: 0, medium: 0, low: 0 } },
   reviews: { status: 'ready' },
   pullRequests: { status: 'ready' },
   issues: { status: 'ready' },
@@ -75,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   forgetToken();
   sessionStorage.clear();
   localStorage.clear();
@@ -93,11 +94,42 @@ describe('App', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
-  it('exposes the density toggle beside the theme toggle', () => {
+  it('exposes a Settings button that opens an overlay with the appearance controls', async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
-    expect(screen.getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+    // The scattered theme/density controls are no longer directly in the header.
+    expect(screen.queryByRole('radiogroup', { name: /theme/i })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: /density/i })).toBeNull();
+
+    const settings = screen.getByRole('button', { name: /settings/i });
+    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(settings);
+
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(settings).toHaveAttribute('aria-expanded', 'true');
+    expect(within(dialog).getByRole('radiogroup', { name: /theme/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('radiogroup', { name: /density/i })).toBeInTheDocument();
+    // Auth-gating: Account and Defaults sections must NOT appear when unauthenticated.
+    expect(within(dialog).queryByRole('heading', { name: /^account$/i })).toBeNull();
+    expect(within(dialog).queryByRole('heading', { name: /^defaults$/i })).toBeNull();
+  });
+
+  it('closes the settings overlay on Escape and returns focus to the Settings button', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const settings = screen.getByRole('button', { name: /settings/i });
+    await user.click(settings);
+    await screen.findByRole('dialog', { name: /settings/i });
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(settings).toHaveFocus();
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('exposes a top-level banner landmark that holds the dashboard heading', () => {
@@ -130,7 +162,7 @@ describe('App', () => {
     expect(screen.getByLabelText(/personal access token/i)).toBeInTheDocument();
   });
 
-  it('shows the authenticated identity and a forget control after sign-in', async () => {
+  it('shows the authenticated identity and a forget control in the settings overlay after sign-in', async () => {
     mockValidate.mockResolvedValue({
       ok: true,
       login: 'octocat',
@@ -141,9 +173,12 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByRole('group', { name: /view mode/i });
 
-    expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /forget token/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(within(dialog).getByText(/authenticated as octocat/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /forget token/i })).toBeInTheDocument();
   });
 
   it('renders a neutral placeholder without an external image when the avatar is dropped', async () => {
@@ -153,8 +188,11 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
+    await screen.findByRole('group', { name: /view mode/i });
 
-    expect(await screen.findByText(/authenticated as octocat/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    expect(within(dialog).getByText(/authenticated as octocat/i)).toBeInTheDocument();
     expect(container.querySelector('img')).toBeNull();
   });
 
@@ -186,7 +224,7 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
 
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
     expect(mockUseRepos).toHaveBeenCalledWith('ghp_valid');
   });
 
@@ -232,7 +270,7 @@ describe('App', () => {
     mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
   }
 
   it('offers an accessible Grid/Dashboard view toggle once authenticated', async () => {
@@ -242,10 +280,41 @@ describe('App', () => {
 
     const toggle = screen.getByRole('group', { name: /view/i });
     expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
-    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /boards/i })).toBeInTheDocument();
   });
 
-  it('defaults to the dashboard view (AC1)', async () => {
+  it('labels the demoted RGL view "Boards" (not "Dashboard") and places it after Matrix/Grid', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    const toggle = screen.getByRole('group', { name: /view/i });
+    const boards = within(toggle).getByRole('button', { name: /boards/i });
+    expect(boards).toBeInTheDocument();
+    expect(within(toggle).queryByRole('button', { name: /^dashboard$/i })).toBeNull();
+
+    // Secondary, not the default: ordered after Matrix and Grid.
+    const labels = within(toggle)
+      .getAllByRole('button')
+      .map((button) => button.textContent ?? '');
+    expect(labels.indexOf('Boards')).toBeGreaterThan(labels.indexOf('Matrix'));
+    expect(labels.indexOf('Boards')).toBeGreaterThan(labels.indexOf('Grid'));
+  });
+
+  it('renders the RGL grid when the Boards view is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'grid');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    expect(await screen.findByRole('grid')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('renders the dashboard view when configured as the default (AC1)', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -261,7 +330,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByRole('region', { name: /dashboard/i })).toBeInTheDocument();
 
@@ -279,7 +348,8 @@ describe('App', () => {
     expect(localStorage.getItem('fleet:view')).toBeNull();
   });
 
-  it('opens to the dashboard default after authenticating (AC1)', async () => {
+  it('opens to the dashboard view when configured as default (AC1)', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
@@ -288,21 +358,25 @@ describe('App', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('opens the drill-down drawer from a dashboard tile', async () => {
+  it('navigates a dashboard tile to its GitHub page instead of the drawer', async () => {
     localStorage.setItem('fleet:default-view', 'grid');
     const user = userEvent.setup();
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
-    const tile = screen.getAllByRole('button', {
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    const tile = screen.getAllByRole('link', {
       name: /: .*\u2014 octo\/hello-world/i,
     })[0];
+    // Each Boards tile is an anchor to its signal's GitHub page (opened in a new
+    // tab), so a press jumps to GitHub rather than opening the in-app drill-down.
+    expect(tile.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/hello-world\//);
+    expect(tile).toHaveAttribute('target', '_blank');
+    expect(tile).toHaveAttribute('rel', 'noreferrer noopener');
+    // Clicking the tile must NOT open the in-app drill-down drawer.
     await user.click(tile);
-
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('does not offer the customize-layout control in the grid view', async () => {
@@ -322,7 +396,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
 
     const customize = screen.getByRole('button', { name: /customize layout/i });
     expect(customize).toHaveAttribute('aria-pressed', 'false');
@@ -339,7 +413,7 @@ describe('App', () => {
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
     await screen.findByRole('table');
 
-    await user.click(screen.getByRole('button', { name: /dashboard/i }));
+    await user.click(screen.getByRole('button', { name: /boards/i }));
     // Static before editing.
     expect(container.querySelector('.react-grid-item.react-draggable')).toBeNull();
 
@@ -354,10 +428,11 @@ describe('App', () => {
     mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
-    await screen.findByText(/authenticated as octocat/i);
+    await screen.findByRole('group', { name: /view mode/i });
   }
 
   it('shows a loading skeleton in the dashboard view while repos load', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     mockUseRepos.mockReturnValue({
       status: 'loading',
       repos: [],
@@ -374,6 +449,7 @@ describe('App', () => {
   });
 
   it('shows an error + retry in the dashboard view and calls reload on retry', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
     const reload = vi.fn();
     mockUseRepos.mockReturnValue({
       status: 'error',
@@ -405,7 +481,7 @@ describe('App', () => {
 
     const toggle = viewToggle();
     expect(within(toggle).getByRole('button', { name: /grid/i })).toBeInTheDocument();
-    expect(within(toggle).getByRole('button', { name: /dashboard/i })).toBeInTheDocument();
+    expect(within(toggle).getByRole('button', { name: /boards/i })).toBeInTheDocument();
     expect(within(toggle).getByRole('button', { name: /inbox/i })).toBeInTheDocument();
   });
 
@@ -446,11 +522,68 @@ describe('App', () => {
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    const defaultGroup = screen.getByRole('radiogroup', { name: /default view/i });
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    const defaultGroup = within(dialog).getByRole('radiogroup', { name: /default view/i });
     await user.click(within(defaultGroup).getByRole('radio', { name: /inbox/i }));
 
     expect(localStorage.getItem('fleet:default-view')).toBe('inbox');
     expect(screen.getByRole('region', { name: /notifications inbox/i })).toBeInTheDocument();
+  });
+
+  it('does not show a failed default-view save as persisted', async () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    const defaultGroup = within(dialog).getByRole('radiogroup', { name: /default view/i });
+    await user.click(within(defaultGroup).getByRole('radio', { name: /inbox/i }));
+
+    expect(localStorage.getItem('fleet:default-view')).toBeNull();
+    expect(within(defaultGroup).getByRole('radio', { name: /triage/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(defaultGroup).getByRole('radio', { name: /inbox/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
+  });
+
+  it('resets the live view to the configured default after forget + re-auth (no reload)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    // The session opens on the configured default (Triage).
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+
+    // Switch the live view away from the default via the ViewToggle.
+    await user.click(within(viewToggle()).getByRole('button', { name: /grid/i }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    // Forget the token (sign out) from the Settings overlay — no page reload.
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    const dialog = await screen.findByRole('dialog', { name: /settings/i });
+    await user.click(within(dialog).getByRole('button', { name: /forget token/i }));
+
+    // Back to the unauthenticated token input; close the overlay and re-auth.
+    await user.click(screen.getByRole('button', { name: /close settings/i }));
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    // The new session must open on the configured DEFAULT (Triage), not the
+    // previously-selected Grid view.
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('ignores a legacy fleet:view value on load (AC7)', async () => {
@@ -459,7 +592,7 @@ describe('App', () => {
     render(<App />);
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
-    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /notifications inbox/i })).toBeNull();
   });
 
@@ -552,7 +685,11 @@ describe('App', () => {
         updatedAt: CI_TIMESTAMP,
         latestRunUrl: `https://github.com/${target.nameWithOwner}/actions/runs/1`,
       },
-      security: { status: 'ready' },
+      security: {
+        status: 'ready',
+        grade: 'A',
+        counts: { critical: 0, high: 0, medium: 0, low: 0 },
+      },
       reviews: { status: 'ready' },
       pullRequests: { status: 'ready' },
       issues: { status: 'ready' },
@@ -673,6 +810,392 @@ describe('App', () => {
       expect(stored.readIds).toContain('stale:octo/one:issue:#9');
       expect(stored.lastVisitedAt).not.toBeNull();
       expect(Date.parse(stored.lastVisitedAt as string)).toBeGreaterThan(Date.parse(seeded));
+    });
+  });
+
+  function matrixToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /matrix/i });
+  }
+
+  it('offers a Matrix option in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(matrixToggleButton()).toBeInTheDocument();
+  });
+
+  it('falls back to the triage view when no default is stored', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+  });
+
+  it('honours a persisted default over the matrix fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('renders the fleet matrix and hides the dashboard when Matrix is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('region', { name: /dashboard/i });
+
+    await user.click(matrixToggleButton());
+
+    expect(screen.getByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /repository/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/hello-world/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /dashboard/i })).toBeNull();
+  });
+
+  function deckToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /deck/i });
+  }
+
+  it('offers a Deck option in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(deckToggleButton()).toBeInTheDocument();
+  });
+
+  it('renders the Stream Deck board and hides the matrix when Deck is selected', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(deckToggleButton());
+
+    const board = screen.getByRole('region', { name: /repository board/i });
+    expect(board).toBeInTheDocument();
+    // One repo contributes its six fixed signal keys (CI · Security · Reviews ·
+    // Pull requests · Issues · Stale), each a GitHub deep link carrying the repo.
+    const keys = within(board).getAllByRole('link');
+    expect(keys).toHaveLength(6);
+    keys.forEach((key) => {
+      expect(key).toHaveAccessibleName(/octo\/hello-world/i);
+      expect(key.getAttribute('href')).toMatch(/^https:\/\/github\.com\/octo\/hello-world\//);
+    });
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('renders the deck board when configured as the default view', async () => {
+    localStorage.setItem('fleet:default-view', 'deck');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /repository board/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('narrows the matrix rows via the faceted repo filter', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/beta/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    const search = await screen.findByRole('combobox', { name: /search repositories/i });
+    await user.type(search, 'alpha');
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /view details for octo\/beta/i })).toBeNull();
+  });
+
+  it('opens the drill-down drawer from a matrix row', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello-world/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  function triageToggleButton(): HTMLElement {
+    return within(viewToggle()).getByRole('button', { name: /triage/i });
+  }
+
+  it('offers a Triage option listed first in the view toggle', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(triageToggleButton()).toBeInTheDocument();
+    const buttons = within(viewToggle()).getAllByRole('button');
+    expect(buttons[0]).toHaveAccessibleName(/triage/i);
+  });
+
+  it('renders the triage view when it is the fallback default and hides the matrix/grid', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /needs attention/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /repository/i })).toBeNull();
+  });
+
+  it('selects the triage view from another view and hides the matrix', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('table', { name: /fleet matrix/i });
+
+    await user.click(triageToggleButton());
+
+    expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /fleet matrix/i })).toBeNull();
+  });
+
+  it('honours a persisted matrix default over the triage fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'matrix');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('table', { name: /fleet matrix/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /triage/i })).toBeNull();
+  });
+
+  it('honours a persisted dashboard default over the triage fallback', async () => {
+    localStorage.setItem('fleet:default-view', 'dashboard');
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+
+    expect(await screen.findByRole('region', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /triage/i })).toBeNull();
+  });
+
+  it('narrows the triage repos via the faceted repo filter', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+    await screen.findByRole('region', { name: /triage/i });
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/beta/i }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    const search = await screen.findByRole('combobox', { name: /search repositories/i });
+    await user.type(search, 'alpha');
+
+    expect(
+      screen.getByRole('button', { name: /view details for octo\/alpha/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /view details for octo\/beta/i })).toBeNull();
+  });
+
+  it('opens the drill-down drawer from a triage row', async () => {
+    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateWithRepos(user, [repo('octo/hello-world')]);
+    await screen.findByRole('region', { name: /triage/i });
+
+    await user.click(screen.getByRole('button', { name: /view details for octo\/hello-world/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  // The faceted repo filter is a GLOBAL scope (ADR-027): the active filter must
+  // narrow EVERY view — including Grid and Inbox — and the filter control must be
+  // reachable from those views, exactly as it already is for Matrix/Triage.
+  describe('global repo scope (ADR-027)', () => {
+    function inboxItemsList(): HTMLElement {
+      return screen.getByRole('list', { name: /inbox items/i });
+    }
+
+    it('offers the faceted repo filter control on the Grid view', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      expect(screen.getByRole('button', { name: /filter repositories/i })).toBeInTheDocument();
+    });
+
+    it('offers the faceted repo filter control on the Inbox view', async () => {
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      expect(screen.getByRole('button', { name: /filter repositories/i })).toBeInTheDocument();
+    });
+
+    it('narrows the Grid rows via the faceted repo filter', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      // No filter: every repo is a row.
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: /octo\/beta/i })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'alpha');
+
+      // Active filter: only the matching repo row remains.
+      await waitFor(() =>
+        expect(screen.queryByRole('rowheader', { name: /octo\/beta/i })).toBeNull(),
+      );
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+    });
+
+    it('narrows the Inbox items via the faceted repo filter', async () => {
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      // No filter: one failing-CI item per repo.
+      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'alpha');
+
+      // Active filter: only the matching repo's item survives.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+      const list = inboxItemsList();
+      expect(within(list).getByText('octo/alpha')).toBeInTheDocument();
+      expect(within(list).queryByText('octo/beta')).toBeNull();
+    });
+
+    it('shows all repos in Grid and Inbox when no filter is active', async () => {
+      localStorage.setItem('fleet:default-view', 'grid');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/alpha'), repo('octo/beta')]);
+      await screen.findByRole('table');
+
+      // Grid: every repo without a filter.
+      expect(screen.getByRole('rowheader', { name: /octo\/alpha/i })).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: /octo\/beta/i })).toBeInTheDocument();
+
+      // Inbox: every repo's item without a filter.
+      await user.click(inboxToggleButton());
+      await screen.findByRole('region', { name: /notifications inbox/i });
+      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+    });
+
+    it('keeps the fleet-wide unread badge count even when a global repo scope hides some repos (AC-16)', async () => {
+      // #444: unreadCount is computed over the full fleet (not the scoped view), so
+      // the toggle badge must not drop when the scope hides repos.
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      // Two repos, one failing-CI item each → 2 fleet-wide unread.
+      expect(inboxToggleButton()).toHaveTextContent('2');
+
+      // Activate scope to show only octo/one (hides octo/two's item from the view).
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'one');
+
+      // Wait for the scope to take effect: only one item in the inbox list.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+
+      // Close the filter panel (Escape) so viewToggle() finds exactly one group.
+      await user.keyboard('{Escape}');
+
+      // Badge must still show the fleet-wide count (2), not the scoped count (1).
+      await waitFor(() => expect(inboxToggleButton()).toHaveTextContent('2'));
+    });
+
+    it('dismissing an item under an active repo scope decrements the fleet-wide badge (AC-16)', async () => {
+      // #445: mark-read/dismiss operates on the full inbox (not scoped), so the
+      // fleet-wide badge must update correctly even with a scope active.
+      localStorage.setItem('fleet:default-view', 'inbox');
+      mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataWithFailingCi });
+      const user = userEvent.setup();
+      render(<App />);
+      await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
+      await screen.findByRole('region', { name: /notifications inbox/i });
+
+      expect(inboxToggleButton()).toHaveTextContent('2');
+
+      // Activate scope to show only octo/one.
+      await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+      const search = await screen.findByRole('combobox', { name: /search repositories/i });
+      await user.type(search, 'one');
+
+      // Wait for scope: one inbox item visible; then close the panel.
+      await waitFor(() =>
+        expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(1),
+      );
+      await user.keyboard('{Escape}');
+
+      // Dismiss the sole visible item (octo/one's unread CI failure).
+      const dismissButtons = await screen.findAllByRole('button', { name: /^dismiss/i });
+      await user.click(dismissButtons[0]);
+
+      // The fleet-wide badge decrements 2 → 1 because the dismissed item was unread.
+      await waitFor(() => expect(inboxToggleButton()).toHaveTextContent('1'));
     });
   });
 });

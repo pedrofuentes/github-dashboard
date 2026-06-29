@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SIGNAL_FETCH_CONCURRENCY } from '../../api/concurrency';
-import { fetchWithETag } from '../../api/github';
+import { GitHubApiError, GitHubErrorCode, fetchWithETag, searchLimiter } from '../../api/github';
 import type { Repo } from '../../types/fleet';
 import {
   STALE_THRESHOLD_DAYS,
@@ -11,11 +11,14 @@ import {
   staleSearchUrl,
   useStaleSignal,
 } from './useStaleSignal';
+import type { StaleSignalSlice } from '../../types/fleet';
 
-vi.mock('../../api/github', () => ({
-  GITHUB_API_BASE: 'https://api.github.com',
-  fetchWithETag: vi.fn(),
-}));
+vi.mock('../../api/github', async (importActual) => {
+  const actual = await importActual<typeof import('../../api/github')>();
+  // Keep the real api/github (Search limiter, error types) but stub the network
+  // boundary so the hook's fan-out is driven entirely by the test.
+  return { ...actual, fetchWithETag: vi.fn() };
+});
 
 const mockFetchWithETag = vi.mocked(fetchWithETag);
 
@@ -75,10 +78,12 @@ const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 
 beforeEach(() => {
   mockFetchWithETag.mockReset();
+  searchLimiter.reset();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  searchLimiter.reset();
 });
 
 describe('staleCutoffDate', () => {
@@ -234,6 +239,19 @@ describe('useStaleSignal', () => {
         type: 'issue',
       },
     ]);
+    // INBOX-2A (#229): the POPULATED stale path is a request-free retain. The
+    // per-item identity is parsed from the SAME bounded `search/issues` page
+    // that yields `total_count` — never a second request nor a per-item fetch.
+    // The AC-5 (empty-items) test asserts the single call only when the page is
+    // empty; without this a regression issuing a follow-up request on the
+    // populated path would slip through.
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+    const staleUrl = mockFetchWithETag.mock.calls[0][0] as string;
+    expect(staleUrl).toMatch(/^https:\/\/api\.github\.com\/search\/issues\?q=/);
+    const staleParams = new URL(staleUrl).searchParams;
+    expect(Number(staleParams.get('per_page'))).toBeLessThanOrEqual(30);
+    expect(staleParams.get('sort')).toBe('updated');
+    expect(staleParams.get('order')).toBe('desc');
   });
 
   it('keeps the stale search to a single call per repo on the same endpoint (AC-5)', async () => {
@@ -460,6 +478,33 @@ describe('useStaleSignal', () => {
     errorSpy.mockRestore();
   });
 
+  it('recovers from a transient Search secondary rate limit and settles ready', async () => {
+    // A secondary-limit 403 (RATE_LIMITED + short Retry-After) must be retried
+    // by the shared Search limiter, not surfaced as a per-repo error (T-bf2).
+    let calls = 0;
+    mockFetchWithETag.mockImplementation((() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(
+          new GitHubApiError(
+            'secondary rate limit',
+            403,
+            undefined,
+            0,
+            GitHubErrorCode.RATE_LIMITED,
+          ),
+        );
+      }
+      return Promise.resolve({ total_count: 3 });
+    }) as never);
+
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token'));
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+
+    expect(result.current.get('octo/a')).toMatchObject({ status: 'ready', staleCount: 3 });
+    expect(calls).toBe(2);
+  });
+
   it('stays quiet (no log, no error slice) when a request rejects with AbortError', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockFetchWithETag.mockRejectedValue(
@@ -474,5 +519,45 @@ describe('useStaleSignal', () => {
     expect(result.current.get('octo/a')?.status).not.toBe('error');
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+describe('useStaleSignal — override param', () => {
+  it('returns the override map directly and never calls fetchWithETag', () => {
+    const override = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 4, score: 4 }],
+    ]);
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token', override));
+
+    expect(result.current).toBe(override);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
+  });
+
+  it('falls back to REST behavior when override is undefined', async () => {
+    mockFetchWithETag.mockResolvedValue({ total_count: 3 });
+    const { result } = renderHook(() => useStaleSignal(ONE_REPO, 'ghp_token', undefined));
+
+    await waitFor(() => expect(result.current.get('octo/a')?.status).toBe('ready'));
+    expect(result.current.get('octo/a')?.staleCount).toBe(3);
+    expect(mockFetchWithETag).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips REST and stays on override when override changes to a new map', () => {
+    const overrideA = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 1, score: 1 }],
+    ]);
+    const overrideB = new Map<string, StaleSignalSlice>([
+      ['octo/a', { status: 'ready', staleCount: 9, score: 9 }],
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ override }) => useStaleSignal(ONE_REPO, 'ghp_token', override),
+      { initialProps: { override: overrideA } },
+    );
+    expect(result.current).toBe(overrideA);
+
+    rerender({ override: overrideB });
+    expect(result.current).toBe(overrideB);
+    expect(mockFetchWithETag).not.toHaveBeenCalled();
   });
 });

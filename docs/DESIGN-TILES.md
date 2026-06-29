@@ -35,7 +35,7 @@ white space. We are fixing two things at once:
 | Default tile | `w: 3, h: 2` → ≈ 287×208px at the `lg` (≥1200px) breakpoint | `dashboard-layout.ts` `TILE_WIDTH`/`TILE_HEIGHT` |
 | Breakpoints | `lg 1200 / md 996 / sm 768 / xs 480 / xxs 0` | `DashboardView.tsx` `BREAKPOINTS` |
 
-So the smallest reasonable tile (`w:2, h:1` ≈ 175×96px) is still bigger than a
+So the smallest reasonable tile (`w:2, h:1` ≈ 181×96px) is still bigger than a
 Stream Deck key, and a stretched tile (`w:6, h:4` ≈ 590×432px) has room for rich
 visuals. **Tiles must adapt their content to their measured size** (§3.4).
 
@@ -69,6 +69,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     --color-warning: #b45309;       /* amber-700 */
     --color-info: #0369a1;          /* sky-700 */
     --color-neutral: #475569;       /* slate-600 */
+    --color-warning-ink: #92400e;   /* amber-800 — tinted-badge text (§1.5) */
+    --color-coral-ink: #9a3412;     /* orange-800 — tinted-badge text (§1.5) */
+    --color-coral: #c2410c;         /* orange-700 — extended accent */
+    --color-purple: #7e22ce;        /* purple-700 — extended accent */
+    --color-gold: #a16207;          /* yellow-700 — extended accent */
+    --color-ochre: #7c5e10;         /* age-led stale, AA-corrected (ADR-020) */
     --color-focus: #0369a1;         /* sky-700 */
   }
   .dark {
@@ -84,6 +90,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     --color-warning: #d29922;
     --color-info: #58a6ff;
     --color-neutral: #8b949e;
+    --color-warning-ink: #d29922;
+    --color-coral-ink: #f78166;
+    --color-coral: #f78166;
+    --color-purple: #a371f7;
+    --color-gold: #e3b341;
+    --color-ochre: #bfa05a;
     --color-focus: #58a6ff;
   }
   ```
@@ -103,6 +115,12 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
     'accent-warning': 'var(--color-warning)',
     'accent-info': 'var(--color-info)',
     'accent-neutral': 'var(--color-neutral)',
+    'accent-warning-ink': 'var(--color-warning-ink)',
+    'accent-coral': 'var(--color-coral)',
+    'accent-coral-ink': 'var(--color-coral-ink)',
+    'accent-purple': 'var(--color-purple)',
+    'accent-gold': 'var(--color-gold)',
+    'accent-ochre': 'var(--color-ochre)',
     focus: 'var(--color-focus)',
   }
   ```
@@ -139,7 +157,7 @@ visuals. **Tiles must adapt their content to their measured size** (§3.4).
 > that conveys meaning (selected, focused, the keyboard Move/Resize controls, a
 > chip outline) uses **`border-strong`** which clears 3:1 (dark `#6e7681` on
 > `#161b22` = **3.77:1**; light `#64748b` on white = **4.76:1**). Today’s
-> `slate-300` control borders (`#cbd5e1` ≈ 1.6:1) and `slate-400` (**2.56:1**)
+> `slate-300` control borders (`#cbd5e1` ≈ 1.48:1) and `slate-400` (**2.56:1**)
 > both **fail** and must move to `border-strong`.
 
 ### 1.3 Status / accent tokens
@@ -172,7 +190,7 @@ escalates to `warning`/`failure` on threshold breach.
 | CI / Actions | by run status (§2.1) | `accent-failure` on failure |
 | Security | by grade (§4.2) | `accent-failure` at grade D–F |
 | Pull requests | `accent-info` | `accent-coral` when external/new-contributor PRs present |
-| Reviews | `accent-neutral` (none) | `accent-warning` when `requestedCount > 0` (urgency, §4.4) |
+| Reviews | `accent-neutral` (none) | urgency scale (§4.4): `accent-info` (1–2) → `accent-warning` (3–4) → `accent-failure` (5+) |
 | Issues | `accent-neutral` | `accent-warning` when over triage threshold |
 | Stale | `accent-neutral` | `accent-warning` when `staleCount > 0` |
 | Activity | `accent-success` (sparkline/heatmap ink) | — (informational; no alarm state) |
@@ -303,7 +321,7 @@ SVG primitives (`StatusGlyph`, §5) so they scale crisply on large tiles.
 | stale / inactive | `accent-warning` | ◷ clock | “Stale” | Stale |
 | neutral / none / skipped | `accent-neutral` | — minus line | “No runs” / “None” | CI, all empty states |
 | new-contributor / external | `accent-coral` | ★ star | “External” | Pull requests |
-| review-requested | `accent-warning` | ◉ eye / target | “Awaiting you” | Reviews |
+| review-requested | urgency scale (§4.4): `accent-info` → `accent-warning` → `accent-failure` | ◉ eye / target | “Awaiting you” | Reviews |
 | loading | `accent-neutral` | skeleton shimmer or spinner | sr-only “Loading…” | all |
 | unknown / no-access | `accent-neutral` | — / “n/a” | “Unavailable” | all |
 
@@ -387,7 +405,7 @@ density. **Three tiers**, keyed off width × height in grid units:
 
 | Tier | Trigger (approx) | Body content |
 | --- | --- | --- |
-| **Compact** | `w ≤ 2` or `h ≤ 1` (≈ ≤175px wide / ≤96px tall) | Hero glyph **or** big value + one-line label. No sparkline/gauge. Footer hidden. This is the closest analog to the 144px Stream Deck key. |
+| **Compact** | `w ≤ 2` or `h ≤ 1` (≈ ≤181px wide / ≤96px tall) | Hero glyph **or** big value + one-line label. No sparkline/gauge. Footer hidden. This is the closest analog to the 144px Stream Deck key. |
 | **Standard** (default) | `w 3–4, h 2–3` | Glyph/value + secondary detail (counts, mini-list, small gauge/sparkline) + footer meta. |
 | **Expanded** | `w ≥ 5` or `h ≥ 4` | Full visual (large arc gauge / full sparkline + heatmap / multi-row breakdown) + footer with deep link and last-updated. |
 
@@ -403,7 +421,7 @@ Rules:
 ### 3.5 Edit-mode controls
 
 Unchanged behavior from today: in edit mode the active tile exposes the activate
-overlay + 8 Move/Resize buttons (`TileControls` in `SignalTile.tsx`). Restyle
+overlay + 8 Move/Resize buttons (`TileControls` in `TileFrame.tsx`). Restyle
 only: control buttons use `surface` bg, `text` ink, **`border-strong`** outline
 (replacing today’s failing `slate-300`), and the `focus` ring token. Persistently
 visible resize handles (the `.dashboard-editing` rule in `index.css`) move from
@@ -477,22 +495,42 @@ follows §3.4. The underlying slice types are in `src/types/fleet.ts`.
 
 ### 4.3 Pull requests
 
-- **Data** (`PullRequestsSignalSlice`): `openCount`, `externalCount`. (Oldest /
-  blocked mini-list is a **future** enrichment — design the slot now; render it
-  only when the slice gains the fields, otherwise omit.)
-- **Primary visual:** `BigValue` open-PR count with the PR `StatusGlyph` (the
-  branch icon from `PullRequestsCell`). When `externalCount > 0`, a prominent
-  **new-contributor `Chip`** (`accent-coral`, ★ glyph, “N external”). Expanded
-  tier reserves a **mini-list** region for oldest/blocked PRs (title + age),
-  rendered when data is available.
-- **Tokens:** identity accent `accent-info`; external highlight `accent-coral`
-  (light: orange-800 ink on orange-100 tint — the existing badge; dark: coral
-  text/border on coral tint).
-- **Redundant encoding:** count text + PR glyph; external chip = ★ icon + word
-  “external” + sr “from new outside contributors” + hover title (carried from
-  `PullRequestsCell`).
-- **States:** `0/0` → — “No open pull requests”; loading skeleton; error → —
-  “Pull request data unavailable”.
+Implemented by `PrsTileBody` (`src/components/tiles/bodies/PrsTileBody.tsx`).
+
+- **Data** (`PullRequestsSignalSlice`): `openCount`, `externalCount`, and
+  `externalPullRequests` (each carrying `author_association` + `created_at`). The
+  body re-derives the **new-contributor** count from `author_association ∈
+  {NONE, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER}`, falling back to `externalCount`
+  when the identity array is absent.
+- **Primary visual:** a `BigValue` open-PR count hero — **no `StatusGlyph`/branch
+  icon**, because tile identity already lives in the `TileFrame` header icon (this
+  is a CALM tile that paints no edge/glow). The hero tone escalates to
+  `accent-coral` when new-contributor PRs exist, otherwise `accent-info`. New
+  contributors are called out by a redundant **`Chip`** (`accent-coral`, ★ star,
+  “N new contributors”; the compact tier shows just the number).
+- **Micro-viz:** a **2-segment `SeverityBar`** (`max = openCount`) — coral
+  “New-contributor” + info “Other open”, where
+  `otherOpen = max(0, openCount − newContributorCount)`. It is **not** a
+  3-segment review/new/draft bar: the slice carries no draft or review-state
+  counts (see Data gaps).
+- **Density** (§3.4): compact = hero + new-contributor flag; standard adds the
+  2-segment bar; expanded adds an “Oldest new-contributor PR {age}” line plus a
+  descriptive “{N} open · {M} new contributors” summary. In the `glanceable`
+  density the standard tier drops the bar (hero + flag only); `balanced` (default)
+  and expanded keep it.
+- **Tokens:** identity accent `accent-info`; new-contributor highlight
+  `accent-coral` (light: orange-800 ink on orange tint — the existing badge;
+  dark: coral text/border on coral tint).
+- **Redundant encoding:** count text + sr-only “{N} open pull requests in
+  {repo}”; the new-contributor chip = ★ icon + words + sr “… from new outside
+  contributors” + hover title — never colour alone.
+- **Data gaps (honest fallbacks, never fabricated):** no draft count → the
+  2-segment (not 3-segment) bar; no historical open-PR count → no `▲` delta on the
+  hero; no overall-oldest open-PR timestamp → the age shown is the oldest
+  _external_ (new-contributor) PR, explicitly labelled as such.
+- **States** (§3.6): `openCount` 0 → ✓ “All clear / No open pull requests”;
+  loading → spinner “Loading…”; error → — “Couldn’t load”; not-ready / no-access
+  → — “n/a / No pull request data”.
 
 ### 4.4 Reviews
 
@@ -502,9 +540,10 @@ follows §3.4. The underlying slice types are in `src/types/fleet.ts`.
   Urgency scales the accent (mirrors the Stream Deck PR-queue thresholds
   blue→amber→red): `0` neutral/clear · `1–2` info · `3–4` warning · `5+` failure
   emphasis. The count sits in an emphasized `Chip` when `> 0` (“N awaiting you”).
-- **Tokens:** `0` → `accent-neutral`; escalating per the thresholds above. Light
-  retains the existing rose badge for the “awaiting you” chip; dark uses the
-  warning/failure tint.
+- **Tokens:** `0` → `accent-neutral`; escalating per the thresholds above
+  (`accent-info` → `accent-warning` → `accent-failure`). The “awaiting you” chip
+  is tinted by the active urgency accent in both themes via the §1.5 accent-tint
+  pattern — semantic tokens only, never a raw `rose-*` / hard-coded colour.
 - **Redundant encoding:** eye icon + “awaiting you” text + sr-label
   (“N pull requests awaiting your review”). Urgency never rests on color — the
   count itself and the word convey it.

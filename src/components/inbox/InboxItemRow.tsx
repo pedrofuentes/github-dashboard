@@ -12,17 +12,20 @@
  *
  * The title is an origin-gated GitHub link (`safeGitHubHref`, §6.2): a value
  * that fails the guard degrades to inert text instead of an off-origin link.
- * Opening the link (pointer, Enter, or Space) marks the item read. Dismiss /
- * Restore are real, labelled buttons reachable in tab order with a visible
- * `focus-visible` ring. All colour comes from semantic theme tokens so the row
- * recolours with a single `.dark` flip and stays within the AA budget in both
- * themes — warning/coral text uses the `-ink` variants (DESIGN-TILES §1.5).
+ * A pointer click or Enter opens the link and marks the item read (via the
+ * anchor's click); Space marks read without navigating. Dismiss / Restore are
+ * real, labelled buttons reachable in tab order with a visible `focus-visible`
+ * ring. All colour comes from semantic theme tokens so the row recolours with a
+ * single `.dark` flip and stays within the AA budget in both themes —
+ * warning/coral text uses the `-ink` variants (DESIGN-TILES §1.5).
  */
 import type { KeyboardEvent, ReactElement } from 'react';
 
 import { cn } from '../../lib/cn';
 import { formatRelativeTime } from '../../lib/format';
 import { safeGitHubHref } from '../../lib/github-url';
+import { formatRepoLabel } from '../../lib/repo-owner-preference';
+import { useRepoOwner } from '../../hooks/useRepoOwner';
 import type { InboxItemView } from '../../hooks/useInbox';
 import type { InboxKind } from '../../types/inbox';
 import { StatusGlyph } from '../tiles/StatusGlyph';
@@ -87,6 +90,13 @@ export interface InboxItemRowProps {
   onDismiss: (id: string) => void;
   /** Restores a previously dismissed item. */
   onRestore: (id: string) => void;
+  /** Whether this row is currently selected (only meaningful with `onToggleSelect`). */
+  selected?: boolean;
+  /**
+   * Toggles this row's selection. When provided, a leading, labelled selection
+   * checkbox is rendered; when omitted the row's DOM and behaviour are unchanged.
+   */
+  onToggleSelect?: (id: string) => void;
 }
 
 export function InboxItemRow({
@@ -94,22 +104,24 @@ export function InboxItemRow({
   onMarkRead,
   onDismiss,
   onRestore,
+  selected = false,
+  onToggleSelect,
 }: InboxItemRowProps): ReactElement {
   const href = safeGitHubHref(item.url);
   const label = kindLabel(item);
+  const { display } = useRepoOwner();
 
   function activate(): void {
     onMarkRead(item.id);
   }
 
-  // Keep the row keyboard-operable: Enter keeps the anchor's native open (and
-  // also marks read via the activation click); Space marks read and is stopped
-  // from scrolling the page.
+  // Anchors do not natively activate on Space (the key scrolls the page), so
+  // handle Space here: mark read and prevent the scroll. Enter is deliberately
+  // left to the browser's native activation, which fires the click — `onClick`
+  // marks read — so handling Enter here too would mark read twice (#246).
   function handleKeyDown(event: KeyboardEvent<HTMLAnchorElement>): void {
-    if (event.key === 'Enter' || event.key === ' ') {
-      if (event.key === ' ') {
-        event.preventDefault();
-      }
+    if (event.key === ' ') {
+      event.preventDefault();
       activate();
     }
   }
@@ -131,6 +143,16 @@ export function InboxItemRow({
         data-tone={item.accent}
         className={cn('w-1 shrink-0 self-stretch rounded-full', toneBgClass(item.accent))}
       />
+
+      {onToggleSelect !== undefined ? (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(item.id)}
+          aria-label={`Select ${item.title}`}
+          className="mt-0.5 h-4 w-4 shrink-0 self-start rounded border-border-strong text-accent-info focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        />
+      ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
@@ -177,7 +199,9 @@ export function InboxItemRow({
             <span>{label}</span>
           </span>
           <span aria-hidden="true">·</span>
-          <span className="truncate">{item.repo.nameWithOwner}</span>
+          <span className="truncate" title={item.repo.nameWithOwner}>
+            {formatRepoLabel(item.repo, display)}
+          </span>
           <span aria-hidden="true">·</span>
           <time dateTime={item.timestamp}>{formatRelativeTime(item.timestamp)}</time>
         </div>

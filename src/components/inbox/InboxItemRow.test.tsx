@@ -1,10 +1,13 @@
-import { render, screen, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __resetRepoOwnerStoreForTests } from '../../hooks/useRepoOwner';
 import type { InboxItemView } from '../../hooks/useInbox';
 import type { Repo } from '../../types/fleet';
 import { InboxItemRow } from './InboxItemRow';
+
+const REPO_OWNER_KEY = 'fleet:repo-owner';
 
 function repo(nameWithOwner = 'octo/app'): Repo {
   const slash = nameWithOwner.indexOf('/');
@@ -51,6 +54,11 @@ function renderRow(item: InboxItemView) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
 });
 
 describe('InboxItemRow content', () => {
@@ -153,6 +161,50 @@ describe('InboxItemRow keyboard + pointer activation', () => {
     await user.keyboard(' ');
     expect(onMarkRead).toHaveBeenCalledWith(item.id);
   });
+
+  it('marks read exactly once on Enter — no double-activate via keydown + click (#246)', async () => {
+    const user = userEvent.setup();
+    const item = makeItem();
+    const { onMarkRead } = renderRow(item);
+    const link = screen.getByRole('link', { name: /CI failing/i });
+
+    link.focus();
+    await user.keyboard('{Enter}');
+
+    // Enter triggers the anchor's native click (which marks read). Handling Enter
+    // in onKeyDown too would mark read a second time — exactly one activation.
+    expect(onMarkRead).toHaveBeenCalledTimes(1);
+    expect(onMarkRead).toHaveBeenCalledWith(item.id);
+  });
+
+  it('leaves Enter to native activation: onKeyDown does not mark read or preventDefault (#246)', () => {
+    const item = makeItem();
+    const { onMarkRead } = renderRow(item);
+    const link = screen.getByRole('link', { name: /CI failing/i });
+
+    // A bare keydown carries no native click; the row must NOT treat Enter as an
+    // activation (that is the browser's job via the click), nor swallow it.
+    const event = createEvent.keyDown(link, { key: 'Enter' });
+    fireEvent(link, event);
+
+    expect(onMarkRead).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('handles Space itself: marks read once and prevents the page scroll (#246)', () => {
+    const item = makeItem();
+    const { onMarkRead } = renderRow(item);
+    const link = screen.getByRole('link', { name: /CI failing/i });
+
+    // Anchors do not natively activate on Space (they scroll), so the row marks
+    // read and prevents the default scroll.
+    const event = createEvent.keyDown(link, { key: ' ' });
+    fireEvent(link, event);
+
+    expect(onMarkRead).toHaveBeenCalledTimes(1);
+    expect(onMarkRead).toHaveBeenCalledWith(item.id);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
 
 describe('InboxItemRow triage controls', () => {
@@ -193,5 +245,70 @@ describe('InboxItemRow accent + reduced motion', () => {
     expect(
       within(container.querySelector('li') as HTMLElement).getByText(/new/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe('InboxItemRow selection (multi-select, optional)', () => {
+  it('renders no selection checkbox when onToggleSelect is omitted (DOM unchanged)', () => {
+    renderRow(makeItem());
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('renders a labelled checkbox reflecting `selected` and toggling by id when onToggleSelect is provided', async () => {
+    const user = userEvent.setup();
+    const onToggleSelect = vi.fn();
+    const item = makeItem();
+    render(
+      <ul>
+        <InboxItemRow
+          item={item}
+          selected={false}
+          onToggleSelect={onToggleSelect}
+          onMarkRead={vi.fn()}
+          onDismiss={vi.fn()}
+          onRestore={vi.fn()}
+        />
+      </ul>,
+    );
+
+    const checkbox = screen.getByRole('checkbox', { name: /select ci failing/i });
+    expect(checkbox).not.toBeChecked();
+
+    await user.click(checkbox);
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onToggleSelect).toHaveBeenCalledWith(item.id);
+  });
+
+  it('reflects selected=true as a checked checkbox', () => {
+    render(
+      <ul>
+        <InboxItemRow
+          item={makeItem()}
+          selected
+          onToggleSelect={vi.fn()}
+          onMarkRead={vi.fn()}
+          onDismiss={vi.fn()}
+          onRestore={vi.fn()}
+        />
+      </ul>,
+    );
+
+    expect(screen.getByRole('checkbox', { name: /select ci failing/i })).toBeChecked();
+  });
+});
+
+describe('InboxItemRow repo-owner display preference', () => {
+  it('hides the owner in the visible repo label when "hide", keeping the full name in the title', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    renderRow(makeItem({ repo: repo('octo/api-server') }));
+    const repoLabel = screen.getByText('api-server');
+    expect(repoLabel).toHaveAttribute('title', 'octo/api-server');
+  });
+
+  it('shows the full owner/repo (with a full-name title) in the visible label when "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
+    renderRow(makeItem({ repo: repo('octo/api-server') }));
+    const repoLabel = screen.getByText('octo/api-server');
+    expect(repoLabel).toHaveAttribute('title', 'octo/api-server');
   });
 });

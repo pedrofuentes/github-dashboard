@@ -500,3 +500,79 @@ describe('every url is GitHub-origin-gated via safeGitHubHref (AC-8)', () => {
     }
   });
 });
+
+describe('a malformed row degrades to a skip, not a fleet-wide throw (#238)', () => {
+  it('skips only the row whose id cannot be built and keeps the rest of the slice', () => {
+    const repo = makeRepo('octocat/hello-world');
+    const rows = new Map<string, RepoSignalData>([
+      [
+        repo.nameWithOwner,
+        {
+          ci: {
+            status: 'ready',
+            conclusion: 'failure',
+            failingCount: 1,
+            latestRunUrl: 'https://github.com/octocat/hello-world/actions/runs/100',
+            runId: 100,
+            updatedAt: '2024-03-10T10:00:00Z',
+          },
+          security: {
+            status: 'ready',
+            grade: 'F',
+            counts: { critical: 1, high: 0, medium: 0, low: 1 },
+            alerts: [
+              // A non-safe-integer alert number makes buildSecurityId throw (#226)...
+              {
+                number: 1e21,
+                type: 'dependabot',
+                severity: 'critical',
+                html_url: 'https://github.com/octocat/hello-world/security/dependabot/1',
+                created_at: '2024-03-13T07:00:00Z',
+              },
+              // ...but a well-formed alert in the SAME slice still emits its row.
+              {
+                number: 7,
+                type: 'dependabot',
+                severity: 'low',
+                html_url: 'https://github.com/octocat/hello-world/security/dependabot/7',
+                created_at: '2024-03-12T06:00:00Z',
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const run = () => deriveInboxItems([repo], fixtureGetRowData(rows));
+    expect(run).not.toThrow();
+
+    const ids = run().map((item) => item.id);
+    expect(ids).toContain('ci:octocat/hello-world:100');
+    expect(ids).toContain('security:octocat/hello-world:dependabot:7');
+    expect(ids).not.toContain('security:octocat/hello-world:dependabot:1e+21');
+    expect(ids).toHaveLength(2);
+  });
+
+  it('skips a malformed repo without failing the rest of the fleet', () => {
+    const good = makeRepo('octocat/hello-world');
+    const bad = makeRepo('no-slash-here'); // fails the repo guard in every builder
+    const ciFailure = (url: string, runId: number): RepoSignalData => ({
+      ci: {
+        status: 'ready',
+        conclusion: 'failure',
+        failingCount: 1,
+        latestRunUrl: url,
+        runId,
+        updatedAt: '2024-03-10T10:00:00Z',
+      },
+    });
+    const rows = new Map<string, RepoSignalData>([
+      [good.nameWithOwner, ciFailure('https://github.com/octocat/hello-world/actions/runs/1', 1)],
+      [bad.nameWithOwner, ciFailure('https://github.com/no-slash-here/actions/runs/2', 2)],
+    ]);
+
+    const run = () => deriveInboxItems([good, bad], fixtureGetRowData(rows));
+    expect(run).not.toThrow();
+    expect(run().map((item) => item.id)).toEqual(['ci:octocat/hello-world:1']);
+  });
+});

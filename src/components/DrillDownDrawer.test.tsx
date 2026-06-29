@@ -1,12 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { __resetRepoOwnerStoreForTests } from '../hooks/useRepoOwner';
 import type { CiSignalSlice, Repo, RepoSignalData } from '../types/fleet';
 import { DrillDownDrawer } from './DrillDownDrawer';
 
 const REPO: Repo = { nameWithOwner: 'octo/hello', owner: 'octo', name: 'hello', isPrivate: false };
+const REPO_OWNER_KEY = 'fleet:repo-owner';
 
 const FULL_DATA: RepoSignalData = {
   ci: {
@@ -47,6 +49,11 @@ function Harness({ data = {}, repo = REPO }: { data?: RepoSignalData; repo?: Rep
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  __resetRepoOwnerStoreForTests();
 });
 
 describe('DrillDownDrawer accessibility', () => {
@@ -261,5 +268,26 @@ describe('DrillDownDrawer unknown CI conclusion (#205)', () => {
     const scoped = within(dialog as HTMLElement);
     expect(scoped.getByText(/Conclusion: No runs/i)).toBeInTheDocument();
     expect(scoped.queryByText(/undefined/i)).toBeNull();
+  });
+});
+
+describe('DrillDownDrawer repo-owner display preference', () => {
+  it('hides the owner in the header label when "hide", keeping the full name in the anchor title and href', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    render(<DrillDownDrawer repo={REPO} data={{}} onClose={vi.fn()} />);
+    const link = screen.getByRole('link');
+    expect(link).toHaveTextContent('hello');
+    expect(link).not.toHaveTextContent('octo/hello');
+    expect(link).toHaveAttribute('title', 'octo/hello');
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/hello');
+  });
+
+  it('shows the full owner/repo header (with a full title + href) when "show"', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'show');
+    render(<DrillDownDrawer repo={REPO} data={{}} onClose={vi.fn()} />);
+    const link = screen.getByRole('link');
+    expect(link).toHaveTextContent('octo/hello');
+    expect(link).toHaveAttribute('title', 'octo/hello');
+    expect(link).toHaveAttribute('href', 'https://github.com/octo/hello');
   });
 });

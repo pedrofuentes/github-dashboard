@@ -23,7 +23,7 @@ describe('RunStrip', () => {
     expect(shape(container)).toBe('solid');
   });
 
-  it('encodes queued and running with distinct shapes from each other and from pass/fail', () => {
+  it('encodes queued and running with their literal shapes (distinct from pass/fail)', () => {
     const { container: queued } = render(
       <RunStrip conclusion="queued" srLabel="Latest run queued" />,
     );
@@ -31,10 +31,14 @@ describe('RunStrip', () => {
       <RunStrip conclusion="in_progress" srLabel="Latest run running" />,
     );
 
+    // Literal shape tokens — not merely "distinct" — so a future SHAPE remap
+    // that still happened to differ would not silently pass (#273).
+    expect(shape(queued)).toBe('queued');
+    expect(shape(running)).toBe('running');
+
     const shapes = new Set([shape(queued), shape(running), 'solid', 'notch']);
     // Four distinct conclusions → four distinct shape values.
     expect(shapes.size).toBe(4);
-    expect(shape(queued)).not.toBe(shape(running));
   });
 
   it('renders the "none" conclusion with its own shape', () => {

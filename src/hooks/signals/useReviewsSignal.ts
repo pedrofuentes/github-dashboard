@@ -3,7 +3,19 @@ import { useEffect, useRef, useState } from 'react';
 import { GITHUB_API_BASE, fetchReviewRequestedPage } from '../../api/github';
 import type { ReviewRequestedSearchItem } from '../../api/github';
 import { isAbortError } from '../../lib/abort';
+import {
+  MAX_REVIEW_PAGES,
+  REVIEW_REQUESTED_QUERY,
+  REVIEW_SCORE_WEIGHT,
+} from '../../lib/reviews-constants';
 import type { Repo, ReviewRequestedPullRequest, ReviewsSignalSlice } from '../../types/fleet';
+
+/**
+ * Re-exported from `lib/reviews-constants` so the REST hook and the GraphQL
+ * deriver share one source of truth while existing call sites keep importing
+ * from here.
+ */
+export { MAX_REVIEW_PAGES, REVIEW_REQUESTED_QUERY, REVIEW_SCORE_WEIGHT };
 
 /**
  * Reviews signal — PRs awaiting the authenticated user's review (issue #15).
@@ -22,26 +34,13 @@ import type { Repo, ReviewRequestedPullRequest, ReviewsSignalSlice } from '../..
  * never overwrite the current one, and threads an {@link AbortSignal} so a
  * repos/token change or unmount cancels the in-flight pages.
  *
- * This replaces the stub and edits nothing shared — `useRepoSignals` composes it
- * exactly as before.
+ * When the batched GraphQL loader is enabled (see {@link useRepoSignals}), an
+ * `override` map is supplied and the hook returns it directly, skipping all REST
+ * work — mirroring {@link useCiSignal}.
  */
-
-/** Awaiting *your* review is high urgency: weight the score accordingly. */
-export const REVIEW_SCORE_WEIGHT = 10;
-
-/** Cross-repo Search query for open PRs requesting the viewer's review. */
-const REVIEW_REQUESTED_QUERY = 'is:open is:pr review-requested:@me';
 
 /** One Search page covers most fleets; further pages are followed via `Link`. */
 const SEARCH_PAGE_SIZE = 100;
-
-/**
- * Cap on pages followed via `Link: rel="next"`. At {@link SEARCH_PAGE_SIZE}
- * results per page this counts up to 1,000 review requests — far beyond any
- * realistic review queue — while guaranteeing pagination can never loop
- * indefinitely on a malformed or adversarial `Link` header.
- */
-export const MAX_REVIEW_PAGES = 10;
 
 /** Separator for the repo-set dependency key (repo names can't contain it). */
 const KEY_SEPARATOR = '\n';
@@ -165,17 +164,25 @@ async function collectReviewRequestedItems(
  *
  * @param repos - Repositories to surface review counts for.
  * @param token - Auth token; `null` yields an empty map and skips the network.
+ * @param override - When provided, the hook returns it immediately and makes
+ *   zero network calls (used by {@link useRepoSignals} to inject slices from the
+ *   batched GraphQL loader when the `reviews` flag is enabled). `undefined`
+ *   restores normal REST behavior.
  * @returns A map keyed by `repo.nameWithOwner` of {@link ReviewsSignalSlice}.
  */
 export function useReviewsSignal(
   repos: Repo[],
   token: string | null,
+  override?: Map<string, ReviewsSignalSlice>,
 ): Map<string, ReviewsSignalSlice> {
   const [slices, setSlices] = useState<Map<string, ReviewsSignalSlice>>(() => new Map());
   const generationRef = useRef(0);
   const reposKey = repos.map((repo) => repo.nameWithOwner).join(KEY_SEPARATOR);
 
   useEffect(() => {
+    // When an override is supplied the caller owns the data; skip all REST work.
+    if (override) return;
+
     const generation = (generationRef.current += 1);
     const repoNames = reposKey.length === 0 ? [] : reposKey.split(KEY_SEPARATOR);
 
@@ -211,7 +218,7 @@ export function useReviewsSignal(
       });
 
     return () => controller.abort();
-  }, [token, reposKey]);
+  }, [token, reposKey, override]);
 
-  return slices;
+  return override ?? slices;
 }

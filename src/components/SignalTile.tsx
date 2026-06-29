@@ -19,6 +19,7 @@ import type { ReactElement } from 'react';
 import { SIGNAL_LABELS } from '../lib/grid-keyboard';
 import type { MoveDirection, ResizeDimension } from '../lib/grid-keyboard';
 import type { Density } from '../lib/density-preference';
+import { signalDeepLinkUrl } from '../lib/github-deep-link';
 import { resolveSalience } from '../lib/tile-salience';
 import type { TileSalience } from '../lib/tile-salience';
 import { signalHeroSummary } from '../lib/tile-summary';
@@ -82,12 +83,24 @@ export interface SignalTileProps {
    * expanded tiers are unaffected.
    */
   density?: Density;
+  /**
+   * Drops the redundant visible repo header line (Phase 3 D1). Forwarded to the
+   * frame; set by {@link DashboardView} when the repo-scope filter is narrowed
+   * to a single repo. The real `nameWithOwner` is still announced via the title,
+   * the activate summary, and the visually-hidden alias note (AC-10).
+   */
+  hideRepoHeader?: boolean;
 }
 
 /**
  * Map the data lifecycle status to the status glyph kind whose tone the accent
  * bar paints (DESIGN-TILES §3.6). The per-signal escalation accents (§1.4) land
- * with the bespoke bodies; for now the frame reflects the lifecycle state.
+ * with the bespoke bodies; for now the frame reflects only the lifecycle state.
+ *
+ * Note `ready` maps to `info`, not §3.6's success/neutral all-clear tone: the
+ * generic frame cannot yet tell "all-clear" from "has items" without the
+ * per-signal slice, so it holds a neutral "data loaded" cue until the bespoke
+ * bodies own that distinction. Deliberate and transitional, not a §3.6 miss.
  */
 const STATUS_ICON_KIND: Record<SignalStatus, SignalIconKind> = {
   loading: 'loading',
@@ -162,6 +175,7 @@ export function SignalTile({
   rowIndex,
   alias,
   density = 'balanced',
+  hideRepoHeader,
 }: SignalTileProps): ReactElement {
   const isActivity = tile.signal === 'activity';
   // Narrow inline (not via `isActivity`) so `data[...]` is keyed by a non-activity
@@ -184,6 +198,12 @@ export function SignalTile({
   // The frame measures its own box to pick a density tier (DESIGN-TILES §3.4).
   const { ref, tier } = useTileSize<HTMLElement>();
 
+  // Each tile is one (repo, signal) pair, so a press jumps straight to the
+  // matching GitHub page (in a new tab) instead of the in-app drill-down. The
+  // frame swaps the activate overlay to a link in display mode and keeps the
+  // drill-down button in edit mode (so keyboard reorder/resize is unaffected).
+  const activateHref = signalDeepLinkUrl(repo, tile.signal, data);
+
   return (
     <TileFrame
       containerRef={ref}
@@ -194,6 +214,7 @@ export function SignalTile({
       size={tier}
       tileId={tile.i}
       onActivate={() => onActivate(repo)}
+      activateHref={activateHref}
       active={active}
       editing={editing}
       onTileFocus={onTileFocus}
@@ -205,6 +226,7 @@ export function SignalTile({
       identityTone={identityTone}
       alias={alias}
       accessibleSummary={accessibleSummary}
+      hideRepoHeader={hideRepoHeader}
     >
       <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
     </TileFrame>

@@ -9,10 +9,25 @@ describe('Chip', () => {
     expect(screen.getByText('12 open')).toBeInTheDocument();
   });
 
-  it('colours text with the accent token (tint pattern, AA in both themes)', () => {
+  it('colours coral chip text with the -ink token (AA over the tint)', () => {
     const { container } = render(<Chip tone="coral">External</Chip>);
     const chip = container.firstElementChild as HTMLElement;
-    expect(chip.className).toContain('text-accent-coral');
+    expect(chip.className).toContain('text-accent-coral-ink');
+    expect(chip.className).not.toMatch(/text-accent-coral(?![\w-])/);
+  });
+
+  it('colours warning chip text with the -ink token (AA over the tint)', () => {
+    const { container } = render(<Chip tone="warning">Stale</Chip>);
+    const chip = container.firstElementChild as HTMLElement;
+    expect(chip.className).toContain('text-accent-warning-ink');
+    expect(chip.className).not.toMatch(/text-accent-warning(?![\w-])/);
+  });
+
+  it('keeps the plain accent text token for tones that already clear AA', () => {
+    const { container } = render(<Chip tone="info">12 open</Chip>);
+    const chip = container.firstElementChild as HTMLElement;
+    expect(chip.className).toContain('text-accent-info');
+    expect(chip.className).not.toContain('-ink');
   });
 
   it('applies a low-opacity accent tint background via the tone variable', () => {

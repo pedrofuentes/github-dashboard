@@ -4,8 +4,16 @@
  * label (never colour alone), a `focus`-token focus ring, and tokenised colours
  * so it meets WCAG AA in both themes. Wired to {@link useTheme}, which persists
  * the choice and flips the `.dark` class on `<html>`.
+ *
+ * Keyboard (WAI-ARIA APG radio-group pattern): a single roving tab stop — only
+ * the checked radio is in the tab order (`tabindex="0"`); the others are
+ * `tabindex="-1"` and reached with the arrow keys. `ArrowRight`/`ArrowDown`
+ * select the next option and `ArrowLeft`/`ArrowUp` the previous (both wrap),
+ * `Home`/`End` jump to the first/last, and selection moves focus with it.
+ * `Space`/`Enter` activate the focused radio via its native button semantics.
  */
-import type { ReactElement, ReactNode } from 'react';
+import type { KeyboardEvent, ReactElement, ReactNode } from 'react';
+import { useRef } from 'react';
 
 import { useTheme } from '../hooks/useTheme';
 import type { ThemeChoice } from '../lib/theme-preference';
@@ -61,6 +69,41 @@ const INACTIVE_BUTTON = 'text-text-muted hover:bg-surface-raised';
 
 export function ThemeToggle(): ReactElement {
   const { choice, setChoice } = useTheme();
+  const radioRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // WAI-ARIA APG radio-group keyboard model: arrows move selection AND focus
+  // (wrapping), Home/End jump to the ends. Selecting an option also moves the
+  // roving tab stop to it (only the checked radio stays `tabindex="0"`).
+  function focusOption(index: number): void {
+    const next = THEME_OPTIONS[index];
+    setChoice(next.value);
+    radioRefs.current[index]?.focus();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    const last = THEME_OPTIONS.length - 1;
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextIndex = index === last ? 0 : index + 1;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextIndex = index === 0 ? last : index - 1;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = last;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    focusOption(nextIndex);
+  }
 
   return (
     <div
@@ -68,15 +111,20 @@ export function ThemeToggle(): ReactElement {
       aria-label="Theme"
       className="inline-flex w-fit rounded-md border border-border-strong bg-surface p-0.5"
     >
-      {THEME_OPTIONS.map((option) => {
+      {THEME_OPTIONS.map((option, index) => {
         const isActive = choice === option.value;
         return (
           <button
             key={option.value}
+            ref={(node) => {
+              radioRefs.current[index] = node;
+            }}
             type="button"
             role="radio"
             aria-checked={isActive}
+            tabIndex={isActive ? 0 : -1}
             onClick={() => setChoice(option.value)}
+            onKeyDown={(event) => handleKeyDown(event, index)}
             className={`${BASE_BUTTON} ${isActive ? ACTIVE_BUTTON : INACTIVE_BUTTON}`}
           >
             {option.icon}

@@ -157,6 +157,11 @@ export function TokenInput(): ReactElement {
             </li>
           ))}
         </ul>
+        <p className="mt-2">
+          Those two alert permissions unlock the Security grade; classic PAT users need{' '}
+          <code className="font-mono text-text">security_events</code>, otherwise Security shows
+          n/a.
+        </p>
       </div>
     </div>
   );

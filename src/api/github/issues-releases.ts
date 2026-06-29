@@ -19,6 +19,7 @@ import {
 import { SearchCountResponseSchema, ReleaseResponseSchema } from './schemas';
 import { fetchRepoStats } from './repos';
 import { fetchPullRequestCount } from './pull-requests';
+import { scheduleSearchRequest } from './search-limiter';
 
 /** Release information from the GitHub API */
 export interface ReleaseInfo {
@@ -64,21 +65,31 @@ export async function fetchIssueCount(
 
   // For "closed" or "all", use the GitHub Search API with type:issue qualifier.
   // This returns total_count which accurately excludes PRs in a single call,
-  // avoiding unreliable pagination-based counting via Link headers.
+  // avoiding unreliable pagination-based counting via Link headers. Routed
+  // through the shared Search limiter so it shares the fleet's ~30 req/min
+  // Search budget and recovers from a secondary-limit 403 (#495).
   const stateQualifier = state === 'all' ? '' : ` is:${state}`;
   const query = `repo:${owner}/${repo} type:issue${stateQualifier}`;
   const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
   const headers = buildHeaders(token);
 
-  const response = await fetchWithRetry(url, { headers, signal }, 'fetchIssueCount');
-  const rateLimitInfo = parseRateLimitHeaders(response.headers);
+  return scheduleSearchRequest(async () => {
+    const response = await fetchWithRetry(url, { headers, signal }, 'fetchIssueCount');
+    const rateLimitInfo = parseRateLimitHeaders(response.headers);
 
-  if (!response.ok) {
-    handleApiError(response.status, rateLimitInfo, owner, repo, parseRetryAfter(response.headers));
-  }
+    if (!response.ok) {
+      handleApiError(
+        response.status,
+        rateLimitInfo,
+        owner,
+        repo,
+        parseRetryAfter(response.headers),
+      );
+    }
 
-  const data = SearchCountResponseSchema.parse(await response.json());
-  return data.total_count;
+    const data = SearchCountResponseSchema.parse(await response.json());
+    return data.total_count;
+  }, signal);
 }
 
 /**
@@ -153,6 +164,52 @@ export async function fetchLatestRelease(
     prerelease: data.prerelease,
     draft: data.draft,
   };
+}
+
+/**
+ * Fetches the count of open issues authored by the authenticated viewer in a repository.
+ * Uses the GitHub Search API with `author:<login>` qualifier to isolate the viewer's
+ * own issues from community issues.
+ *
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param login - GitHub username of the authenticated viewer
+ * @param token - GitHub personal access token
+ * @param signal - Optional signal to cancel the in-flight request
+ * @returns Number of open issues authored by the viewer
+ * @throws {GitHubApiError} on API errors
+ */
+export async function fetchViewerIssueCount(
+  owner: string,
+  repo: string,
+  login: string,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const query = `repo:${owner}/${repo} type:issue is:open author:${login}`;
+  const url = `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(query)}&per_page=1`;
+  const headers = buildHeaders(token);
+
+  // Routed through the shared Search limiter so this per-repo viewer count (the
+  // "extra" Search request behind the Issues signal) shares the fleet's
+  // ~30 req/min Search budget and recovers from a secondary-limit 403 (#495).
+  return scheduleSearchRequest(async () => {
+    const response = await fetchWithRetry(url, { headers, signal }, 'fetchViewerIssueCount');
+    const rateLimitInfo = parseRateLimitHeaders(response.headers);
+
+    if (!response.ok) {
+      handleApiError(
+        response.status,
+        rateLimitInfo,
+        owner,
+        repo,
+        parseRetryAfter(response.headers),
+      );
+    }
+
+    const data = SearchCountResponseSchema.parse(await response.json());
+    return data.total_count;
+  }, signal);
 }
 
 /**

@@ -126,14 +126,22 @@ export function DashboardView({
   error = null,
   onRetry,
 }: DashboardViewProps): ReactElement {
-  // A narrowing repo filter is active only when a non-empty selection is set.
-  // The tile projection below is purely presentational; while it is active every
-  // arrange affordance is also guarded so a filtered (partial) layout can never
-  // be compacted and persisted over the real geometry (red-team B1).
-  const filterActive = repoFilter !== undefined && repoFilter.size > 0;
+  // A narrowing repo filter is active whenever a Set is provided — including an
+  // EMPTY one. `repoFilter === undefined` is the only "no filter" state (whole
+  // fleet, arrange enabled); any defined Set narrows the projection (an empty Set
+  // matches nothing ⇒ 0 tiles), making the App↔DashboardView contract explicit so
+  // a zero-match query can never re-show the fleet or re-enable arrange (ADR-025).
+  const filterActive = repoFilter !== undefined;
   // Drag, resize, the keyboard rail and the editing visual all gate on this so a
   // filtered layout can be neither rearranged nor compacted.
   const editControlsActive = editing && !filterActive;
+  // D1: when the filter narrows to exactly ONE repo, every visible tile shares
+  // that repo, so the per-tile repo header line is redundant — drop it from each
+  // tile (identity still rides the title/activate summary/alias note, AC-10).
+  // Guarded on `repoFilter` directly (not the `filterActive` boolean) so TS
+  // narrows it; `size === 1` implies `size > 0`, so this equals `filterActive &&
+  // size === 1`.
+  const filteredToOneRepo = repoFilter !== undefined && repoFilter.size === 1;
 
   // The active tile density (DESIGN-TILES §6; T15). Threaded to every SignalTile
   // so `glanceable` sheds the standard-tier micro-viz while `balanced` keeps it.
@@ -167,10 +175,12 @@ export function DashboardView({
         continue;
       }
       // Presentational repo-scope projection: drop tiles whose repo is outside a
-      // non-empty selection. Applied AFTER the visibility check and BEFORE the
+      // defined selection. Applied AFTER the visibility check and BEFORE the
       // RGL layout is built, so it never mutates `layout` or `visible` (AC-7).
-      // An empty selection (size 0) means "all shown", so it filters nothing.
-      if (repoFilter !== undefined && repoFilter.size > 0 && !repoFilter.has(tile.repo)) {
+      // A defined-but-empty selection matches nothing, so it filters EVERY tile
+      // (zero-match ⇒ 0 tiles); `undefined` means "no filter" and is handled by
+      // the guard above (this block is skipped entirely).
+      if (repoFilter !== undefined && !repoFilter.has(tile.repo)) {
         continue;
       }
       const repo = repoIndex.get(tile.repo);
@@ -396,9 +406,9 @@ export function DashboardView({
               key={`skeleton-${index}`}
               className="flex h-40 flex-col gap-4 rounded-md border border-border bg-surface p-4"
             >
-              <span className="block h-3 w-24 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
-              <span className="block h-8 w-16 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
-              <span className="block h-3 w-32 animate-pulse rounded bg-surface-raised motion-reduce:animate-none" />
+              <span className="block h-3 w-24 animate-pulse rounded bg-border motion-reduce:animate-none" />
+              <span className="block h-8 w-16 animate-pulse rounded bg-border motion-reduce:animate-none" />
+              <span className="block h-3 w-32 animate-pulse rounded bg-border motion-reduce:animate-none" />
             </div>
           ))}
         </div>
@@ -493,6 +503,7 @@ export function DashboardView({
                 colIndex={tile.x + 1}
                 density={density}
                 alias={aliases?.[tile.repo]}
+                hideRepoHeader={filteredToOneRepo}
               />
             </div>
           ))}
