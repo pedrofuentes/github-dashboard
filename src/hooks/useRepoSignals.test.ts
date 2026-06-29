@@ -702,6 +702,22 @@ describe('useRepoSignals', () => {
     });
   });
 
+  it('reports ready < total when only one of two repos has a settled slice (#571)', () => {
+    vi.mocked(useFleetBatchLoader).mockReturnValue({
+      result: new Map([['ci', new Map([[REPO.nameWithOwner, ci]])]]),
+      loading: true,
+      error: false,
+    });
+
+    const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
+
+    expect(result.current.fleet).toEqual({
+      loading: true,
+      ready: 1,
+      total: 2,
+    });
+  });
+
   it('keeps a stable fleet identity across re-renders when batch inputs are unchanged', () => {
     vi.mocked(useFleetBatchLoader).mockReturnValue({
       result: new Map([['ci', new Map([[REPO.nameWithOwner, ci]])]]),
