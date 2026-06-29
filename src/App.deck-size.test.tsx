@@ -86,6 +86,19 @@ describe('App — Deck tile-size wiring', () => {
     expect(screen.queryByRole('radiogroup', { name: /tile size/i })).toBeNull();
   });
 
+  it('renders the Deck full-bleed (uncapped) so blocks center, but caps other views', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    const main = document.getElementById('main-content');
+    expect(main?.className).not.toContain('max-w-5xl');
+
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    await screen.findByRole('region', { name: /dashboard/i });
+    expect(document.getElementById('main-content')?.className).toContain('max-w-5xl');
+  });
+
   it('resizes the live Deck grid when a new size is chosen', async () => {
     const user = userEvent.setup();
     render(<App />);
