@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest';
 import type { AccentTone } from '../../components/tiles/types';
 import type { RepoSignalData } from '../../types/fleet';
 import { parseColorTokens } from '../css-tokens';
-import { BOARD_KEY_ACCENT_VAR, boardKeyAccentVar, boardKeySpec, formatCount } from './board-key-spec';
+import {
+  BOARD_KEY_ACCENT_VAR,
+  boardKeyAccentVar,
+  boardKeySpec,
+  formatCount,
+} from './board-key-spec';
 
 describe('formatCount (SD design-spec §4.1)', () => {
   it('returns values below 1000 unchanged', () => {
@@ -342,7 +347,7 @@ describe('boardKeySpec — security no-access key explains missing-scope reason'
     );
   });
 
-  it('sets srLabel when ready with a grade but still no counts (no-access by counts check)', () => {
+  it('does NOT set srLabel when ready with a grade (grade is authoritative access signal)', () => {
     const data: RepoSignalData = { security: { status: 'ready', grade: 'A' } };
     // grade is the authoritative access signal: if grade is present the feeds
     // were accessible, regardless of counts — no srLabel for a graded key.

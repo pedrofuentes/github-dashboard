@@ -49,7 +49,7 @@ export interface BoardKeySpec {
   accent: AccentTone;
   line2: string;
   line3: string;
-  status?: string;
+  status?: CiStatus;
   /**
    * Optional accessible-status override. When set, replaces the default
    * `"${line2} ${line3}"` phrase in the key's accessible name and is rendered
@@ -170,7 +170,7 @@ const CI_STATE_LABEL: Record<NonReadyState, string> = {
 };
 
 /** Stream Deck workflow status derivable from {@link CiSignalSlice.conclusion}. */
-type CiStatus = 'success' | 'failure' | 'in_progress' | 'queued' | 'neutral';
+export type CiStatus = 'success' | 'failure' | 'in_progress' | 'queued' | 'neutral';
 
 const CI_STATUS_ACCENT: Record<CiStatus, AccentTone> = {
   success: 'success',
