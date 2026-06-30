@@ -490,7 +490,9 @@ const FleetPanel = memo(function FleetPanel({
     (id: string) => {
       setCommandRecents((current) => {
         const next = addCommandRecent(current, id);
-        recentsStore.save(next);
+        if (!recentsStore.save(next)) {
+          console.warn('[command-recents] failed to persist recent commands');
+        }
         return next;
       });
     },
