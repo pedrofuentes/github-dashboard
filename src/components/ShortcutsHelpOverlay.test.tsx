@@ -114,4 +114,53 @@ describe('ShortcutsHelpOverlay', () => {
       expect(dialog).toContainElement(document.activeElement as HTMLElement);
     }
   });
+
+  it('prevents Tab from doing anything when there are no focusable elements', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<ShortcutsHelpOverlay onClose={onClose} />);
+
+    const closeButton = screen.getByRole('button', { name: /close/i });
+
+    // Remove all focusable elements to test the empty-focusables edge
+    closeButton.setAttribute('disabled', 'true');
+
+    await user.tab();
+
+    // The dialog should still be open
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('wraps focus from last to first element on Tab', async () => {
+    const user = userEvent.setup();
+    render(<ShortcutsHelpOverlay onClose={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const closeButton = screen.getByRole('button', { name: /close/i });
+
+    // Focus the close button (the only focusable element)
+    closeButton.focus();
+    expect(closeButton).toHaveFocus();
+
+    // Press Tab — should wrap to the beginning (the close button itself)
+    await user.tab();
+
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it('wraps focus from first to last element on Shift+Tab', async () => {
+    const user = userEvent.setup();
+    render(<ShortcutsHelpOverlay onClose={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const closeButton = screen.getByRole('button', { name: /close/i });
+
+    // Focus should start on the close button
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
+    // Press Shift+Tab — should wrap to the last element (the close button itself)
+    await user.tab({ shift: true });
+
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
 });
