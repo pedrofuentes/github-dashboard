@@ -223,6 +223,23 @@ export class SearchLimiter {
     }
   }
 
+  /**
+   * Re-acquires a Search token on the retry path — after a secondary-limit
+   * `Retry-After` back-off in {@link runWithRetry}, before the task is
+   * re-issued. The re-acquire waits its turn through the same token bucket as a
+   * fresh {@link schedule} call, so a retry never jumps the queue or exceeds the
+   * rate budget; it resolves as soon as a token is free, or stalls until the
+   * bucket refills when none is (that extra wait is logged once for visibility).
+   *
+   * Abort: a `signal` already aborted on entry rejects synchronously with
+   * `AbortError`. This guard also closes the #600 race where
+   * {@link abortableSleep} resolves *after* removing its own abort listener — an
+   * abort landing in that window would otherwise be missed here and waste a
+   * token. An abort that instead arrives while the re-acquire is queued is
+   * delivered to {@link abortWaiter} (wired via {@link enqueueWaiter}), which
+   * splices the waiter out and rejects it; acquireToken relies on that handler
+   * to free a queued re-acquire that would otherwise wait forever.
+   */
   private acquireToken(signal?: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted) {
