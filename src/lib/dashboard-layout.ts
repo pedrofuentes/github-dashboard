@@ -1,7 +1,8 @@
 /**
- * Layout model + localStorage persistence for the at-a-glance Dashboard view
- * (M10). The dashboard renders one tile per (repo, signal); this module owns the
- * default layout, the react-grid-layout mapping, and defensive persistence.
+ * Layout model + localStorage persistence for the at-a-glance Boards view (M10).
+ * (The UI was renamed from "Dashboard" to "Boards"; storage keys remain unchanged
+ * for back-compat.) The view renders one tile per (repo, signal); this module owns
+ * the default layout, the react-grid-layout mapping, and defensive persistence.
  *
  * All storage access mirrors `src/lib/fleet-preferences.ts`: every read is
  * validated and every failure (unavailable / full / corrupt storage) degrades to
@@ -15,8 +16,9 @@ import type { Repo } from '../types/fleet';
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 
 /**
- * Legacy (v1) key: an unversioned bare `DashboardTile[]`. Kept for rollback —
- * the migration reads it but never deletes it.
+ * Legacy (v1) key: an unversioned bare `DashboardTile[]`. Kept as a migration-time
+ * snapshot (the migration reads it once but never updates or deletes it), allowing
+ * downgrades before the v2 envelope shipped. Not a live mirror of current layout.
  */
 const STORAGE_KEY = 'fleet:dashboard-layout';
 /** Current versioned key holding the `{ version, tiles }` envelope. */
@@ -253,6 +255,10 @@ export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
  * tiles are re-validated against {@link DashboardLayoutSchema} first; an invalid
  * layout is skipped rather than written, so corrupt geometry never reaches
  * storage. The legacy v1 key is left untouched. Never throws.
+ *
+ * Note: JSON.stringify is called outside the storage try/catch; validated tiles
+ * won't throw, but pathological input (circular refs, BigInt, etc.) would surface.
+ * The pre-validation makes this unreachable in practice.
  */
 export function saveDashboardLayout(tiles: DashboardTile[]): void {
   if (!DashboardLayoutSchema.safeParse(tiles).success) {
