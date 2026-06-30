@@ -91,7 +91,10 @@ const PullRequestNodeSchema = z
 
 /** Zod schema for the `pullRequests { nodes [...] }` connection. */
 const PullRequestsConnectionSchema = z
-  .object({ nodes: z.array(PullRequestNodeSchema) })
+  .object({
+    nodes: z.array(PullRequestNodeSchema),
+    pageInfo: z.object({ hasNextPage: z.boolean() }).passthrough().optional(),
+  })
   .passthrough();
 
 /**
@@ -190,6 +193,45 @@ export function buildErrorIndex(errors: GraphQLError[]): FleetErrorIndex {
       return false;
     },
   };
+}
+
+/**
+ * Reports a per-repo GraphQL field error for one signal: returns whether the
+ * repo's `alias` OR any of its `ownedFields` (or their subtrees) errored and,
+ * when so, emits a `console.warn` naming the signal, alias, and the matched
+ * dot-joined error paths.
+ *
+ * Detection semantics are unchanged from inlining the checks — the boolean is
+ * exactly `has(alias) || ownedFields.some((f) => coversField(`${alias}.${f}`))`.
+ * The added warning mirrors the batch-level breadcrumb style (see the
+ * `console.error` calls in {@link executeFleetBatch}) so a partial field failure
+ * that downgrades one repo's slice to `{ status: 'error' }` is no longer silent,
+ * matching the REST hooks which already log their failures.
+ *
+ * @param signal - The deriving signal (e.g. `'ci'`, `'issues'`, `'pullRequests'`).
+ * @param alias - The repo's chunk alias (e.g. `'r2'`).
+ * @param ownedFields - The signal-owned child fields under the alias to inspect.
+ * @param errors - The chunk's path-scoped error index.
+ * @returns `true` when the alias or an owned field (sub)path errored.
+ */
+function reportRepoFieldError(
+  signal: string,
+  alias: string,
+  ownedFields: readonly string[],
+  errors: FleetErrorIndex,
+): boolean {
+  const errored =
+    errors.has(alias) || ownedFields.some((field) => errors.coversField(`${alias}.${field}`));
+  if (!errored) return false;
+  const ownedPrefixes = ownedFields.map((field) => `${alias}.${field}`);
+  const matched = [...errors.paths]
+    .filter(
+      (path) =>
+        path === alias || ownedPrefixes.some((pre) => path === pre || path.startsWith(`${pre}.`)),
+    )
+    .sort();
+  console.warn(`fleet-query: ${signal} field error for ${alias} (${matched.join(', ')})`);
+  return true;
 }
 
 // ── SignalDeriver registry ───────────────────────────────────────────────────
@@ -324,7 +366,7 @@ function deriveCiSlice(
   alias: string,
   errors: FleetErrorIndex,
 ): CiSignalSlice {
-  if (errors.has(alias) || errors.coversField(`${alias}.defaultBranchRef`)) {
+  if (reportRepoFieldError('ci', alias, ['defaultBranchRef'], errors)) {
     return { status: 'error' };
   }
   // A null node WITHOUT a matching error is "no data", not a failure.
@@ -427,11 +469,7 @@ function deriveIssuesSlice(
   alias: string,
   errors: FleetErrorIndex,
 ): IssuesSignalSlice {
-  if (
-    errors.has(alias) ||
-    errors.coversField(`${alias}.openIssues`) ||
-    errors.coversField(`${alias}.myIssues`)
-  ) {
+  if (reportRepoFieldError('issues', alias, ['openIssues', 'myIssues'], errors)) {
     return { status: 'error' };
   }
   if (!node || !node.openIssues) return issuesReadySlice(0);
@@ -459,17 +497,28 @@ export const issuesDeriver: SignalDeriver = {
 // ── PR deriver (open / new-contributor pull requests) ────────────────────────
 
 /**
+ * Shared cap for the open-PR page size. Matches the REST hook's `per_page=100`
+ * so `openCount` is the non-draft subset of ≤ this many, never an uncapped
+ * server total. A repo with more than this many open PRs is surfaced via the
+ * derived slice's `truncated` flag (see {@link derivePrSlice}).
+ */
+const OPEN_PR_PAGE_SIZE = 100;
+
+/**
  * Per-repo PR selection fragment.
  *
- * Fetches the first 100 OPEN pull requests — matching the REST hook's
- * `per_page=100` cap — so `openCount` is the non-draft subset of ≤100, never
- * an uncapped server total. `totalCount` is intentionally omitted: it would
- * include drafts and exceed the 100-item cap, diverging from REST semantics.
+ * Fetches the first {@link OPEN_PR_PAGE_SIZE} OPEN pull requests — matching the
+ * REST hook's `per_page=100` cap — so `openCount` is the non-draft subset of
+ * ≤100, never an uncapped server total. `totalCount` is intentionally omitted:
+ * it would include drafts and exceed the 100-item cap, diverging from REST
+ * semantics. `pageInfo { hasNextPage }` is selected so {@link derivePrSlice} can
+ * surface a `truncated` flag when a repo has more open PRs than the cap.
  */
 function prRepoFragment(): string {
   return [
-    'pullRequests(states: OPEN, first: 100) {',
+    `pullRequests(states: OPEN, first: ${OPEN_PR_PAGE_SIZE}) {`,
     '  nodes { number title url createdAt isDraft authorAssociation author { login } }',
+    '  pageInfo { hasNextPage }',
     '}',
   ].join('\n');
 }
@@ -482,13 +531,16 @@ function prRepoFragment(): string {
  * externalCount = non-draft PRs whose authorAssociation ∈ OUTSIDE_CONTRIBUTOR_ASSOCIATIONS
  * score = externalCount * 5 + openCount  (new-contributor PRs weighted 5×)
  * externalPullRequests = identity list present only when externalCount > 0
+ * truncated = `true` only when the connection's `pageInfo.hasNextPage` reports
+ *   the repo has more open PRs than {@link OPEN_PR_PAGE_SIZE}; omitted otherwise
+ *   so existing callers that ignore the flag are unaffected.
  */
 function derivePrSlice(
   node: FleetRepoNode | null,
   alias: string,
   errors: FleetErrorIndex,
 ): PullRequestsSignalSlice {
-  if (errors.has(alias) || errors.coversField(`${alias}.pullRequests`)) {
+  if (reportRepoFieldError('pullRequests', alias, ['pullRequests'], errors)) {
     return { status: 'error' };
   }
   if (!node?.pullRequests) return { status: 'ready', openCount: 0, externalCount: 0, score: 0 };
@@ -502,6 +554,9 @@ function derivePrSlice(
   const score = externalCount * 5 + openCount;
 
   const slice: PullRequestsSignalSlice = { status: 'ready', openCount, externalCount, score };
+  if (node.pullRequests.pageInfo?.hasNextPage === true) {
+    slice.truncated = true;
+  }
   if (externalCount > 0) {
     slice.externalPullRequests = external.map((p) => ({
       number: p.number,
