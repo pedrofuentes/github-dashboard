@@ -31,7 +31,10 @@ interface SettingsOverlayProps {
   onDefaultViewChange: (view: FleetView) => void;
   /** The signed-in identity, or `null` when unauthenticated (hides Account + Defaults). */
   user: AuthUser | null;
-  /** Forgets the stored token (signs out). */
+  /**
+   * Forgets the stored token (signs out). Expected to be SYNCHRONOUS — an async
+   * implementation would race with `onClose()`.
+   */
   onForget: () => void;
   /** Closes the overlay and returns focus to the opener. */
   onClose: () => void;
@@ -190,8 +193,13 @@ export function SettingsOverlay({
                 <button
                   type="button"
                   onClick={() => {
-                    onForget();
-                    onClose();
+                    try {
+                      onForget();
+                    } catch {
+                      // Suppress any synchronous errors (e.g. localStorage SecurityError)
+                    } finally {
+                      onClose();
+                    }
                   }}
                   className="w-fit rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
