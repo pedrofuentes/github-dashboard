@@ -95,6 +95,24 @@ describe('createVersionedStore — migrate', () => {
     expect(store.load()).toEqual({ version: 1, items: [] });
     expect(migrate).toHaveBeenCalledWith(['x', 'y']);
   });
+
+  it('warns on console.warn when migrate throws (#374)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    localStorage.setItem(KEY, JSON.stringify(['x', 'y']));
+    const migrateError = new Error('migrate boom');
+    const migrate = vi.fn((): unknown => {
+      throw migrateError;
+    });
+    const store = createVersionedStore<Value>({ key: KEY, schema: Schema, fallback, migrate });
+    
+    store.load();
+    
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('versioned-storage'),
+      expect.stringContaining(KEY),
+      migrateError,
+    );
+  });
 });
 
 describe('createVersionedStore — save', () => {
