@@ -11,6 +11,9 @@ vi.mock('../hooks/useCommitActivity', () => ({ useCommitActivity: vi.fn() }));
 
 const mockActivity = vi.mocked(useCommitActivity);
 
+/** Number of skeleton rows shown during loading (mirrors FleetMatrix.tsx). */
+const SKELETON_ROWS = 6;
+
 const OK_ACTIVITY: CommitActivityState = {
   state: 'ok',
   weeks: [
@@ -212,7 +215,7 @@ describe('FleetMatrix states', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
     expect(container.querySelector('tbody')).toHaveAttribute('aria-busy', 'true');
-    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.animate-pulse').length).toBe(SKELETON_ROWS * 8);
     expect(screen.queryAllByRole('rowheader')).toHaveLength(0);
   });
 
@@ -238,6 +241,19 @@ describe('FleetMatrix states', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
     await user.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders an error alert without retry control when onRetry is absent', () => {
+    render(
+      <FleetMatrix
+        repos={[]}
+        getRowData={() => EMPTY}
+        error="Could not load your repositories."
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
   });
 
   it('shows a friendly empty state when the fleet has no repos', () => {
@@ -376,6 +392,10 @@ describe('FleetMatrix health groups', () => {
     // Expand with Enter
     await user.keyboard('{Enter}');
     expect(screen.getByRole('rowheader', { name: /octo\/healthy1/i })).toBeInTheDocument();
+
+    // Collapse with Space
+    await user.keyboard(' ');
+    expect(screen.queryByRole('rowheader', { name: /octo\/healthy1/i })).toBeNull();
   });
 });
 
