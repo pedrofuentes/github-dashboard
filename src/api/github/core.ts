@@ -137,7 +137,12 @@ export async function fetchWithTimeout(
 /** Maximum retry attempts for transient failures. */
 const MAX_RETRIES = 3;
 
-/** Base delay between retries in ms (exponential: 1s, 2s, 4s). */
+/**
+ * Base delay between retries in ms (exponential: 1s, 2s, 4s before jitter).
+ * When a `Retry-After` header is present, the client honors it verbatim instead
+ * of computing an exponential delay. Otherwise, 50–100% jitter is applied to the
+ * exponential backoff (see {@link jitterRetryDelayMs}).
+ */
 const RETRY_BASE_DELAY_MS = 1000;
 
 /** HTTP status codes that are safe to retry. */
@@ -190,7 +195,10 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
 
 /**
  * Fetch with automatic retry for transient failures.
- * Retries up to 3 times with exponential backoff (1s, 2s, 4s).
+ * Retries up to 3 times with exponential backoff (1s, 2s, 4s before jitter).
+ * When the server provides a `Retry-After` header, the client honors it verbatim
+ * instead of computing an exponential delay. Otherwise, 50–100% jitter is applied
+ * to the exponential backoff (see {@link jitterRetryDelayMs}).
  * Only retries network errors, timeouts, and specific HTTP status codes (429, 502-504).
  * Non-retryable errors (401, 403, 404, 422) fail immediately.
  *
