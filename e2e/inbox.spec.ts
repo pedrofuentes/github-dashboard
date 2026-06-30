@@ -247,14 +247,14 @@ test.describe('notifications inbox', () => {
     await signIn(page);
 
     // The outside-contributor PR derives one unread item, so the toggle grows a badge —
-    // a web-first assertion that waits for the CI signal to settle.
+    // a web-first assertion that waits for the new-PR signal to settle.
     const tab = inboxTab(page);
     await expect(tab).toContainText('1');
     await expect(tab).toHaveAccessibleName(/unread/);
 
     const inbox = await openInbox(page);
 
-    // The single derived `ci` item renders, attributed to its repo.
+    // The single derived `new-pr` item renders, attributed to its repo.
     const items = inbox.getByRole('listitem');
     await expect(items).toHaveCount(1);
     await expect(items.first()).toContainText(EXTERNAL_PR_TITLE);
