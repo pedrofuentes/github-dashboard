@@ -109,8 +109,29 @@ function emptyQuery(): RepoFilterQueryV2 {
   };
 }
 
-/** The canonical empty query: text '', mode 'all', empty facets ⇒ "all repos shown". */
-export const EMPTY_QUERY: RepoFilterQueryV2 = emptyQuery();
+/**
+ * The canonical empty query: text '', mode 'all', empty facets ⇒ "all repos shown".
+ * Deeply frozen to prevent accidental mutation by consumers.
+ */
+export const EMPTY_QUERY: RepoFilterQueryV2 = (function deepFreeze() {
+  const query = emptyQuery();
+  Object.freeze(query);
+  Object.freeze(query.repoSelection);
+  Object.freeze(query.repoSelection.names);
+  Object.freeze(query.facets);
+  Object.freeze(query.facets.owners);
+  Object.freeze(query.facets.health);
+  Object.freeze(query.facets.ci);
+  Object.freeze(query.facets.security);
+  Object.freeze(query.facets.security.grades);
+  Object.freeze(query.facets.security.severities);
+  Object.freeze(query.facets.pullRequests);
+  Object.freeze(query.facets.reviews);
+  Object.freeze(query.facets.issues);
+  Object.freeze(query.facets.stale);
+  Object.freeze(query.facets.visibility);
+  return query;
+})();
 
 function safeGet(key: string): string | null {
   try {
@@ -167,7 +188,8 @@ export function createRepoFilterQueryStore(): VersionedStore<RepoFilterQueryV2> 
  * One-time cross-key migration: if no v2 payload exists yet, read the legacy
  * `string[]` (under the OLD key), and seed the v2 store with an equivalent
  * `include` query. The legacy key is preserved for rollback. Prefers an existing
- * v2 payload and never throws. Returns `true` only when it wrote a v2 value.
+ * v2 payload and never throws. Returns `true` only when it successfully wrote
+ * and persisted a v2 value; returns `false` if the write failed (e.g., quota).
  */
 export function migrateLegacyRepoFilter(
   store: VersionedStore<RepoFilterQueryV2> = createRepoFilterQueryStore(),
@@ -187,8 +209,7 @@ export function migrateLegacyRepoFilter(
   const result = LegacyRepoFilterSchema.safeParse(parsed);
   if (!result.success) return false;
 
-  store.save(legacyArrayToQuery(result.data));
-  return true;
+  return store.save(legacyArrayToQuery(result.data));
 }
 
 function matchesText(text: string, repo: Repo): boolean {
