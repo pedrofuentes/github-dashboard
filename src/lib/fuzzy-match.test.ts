@@ -378,6 +378,30 @@ describe('fuzzyRankBy', () => {
     });
   });
 
+  describe('best-key tie-break (#579)', () => {
+    it('keeps the shorter key length when one item has two equal-scoring keys', () => {
+      // Within a single item, two keys whose scores both clamp to 0 (a >1000-char
+      // length penalty exhausts the base score via Math.max(0, …)) tie on score, so
+      // the in-loop best-key selection must keep the SHORTER key's length as the
+      // item's best-key length. Item 2 lists its longer key first to prove the
+      // tie-break replaces it with the shorter one rather than keeping the first.
+      const shortKey = 'x'.repeat(1000) + 'z'; // 1001 chars → score clamps to 0
+      const midKey = 'x'.repeat(1001) + 'z'; // 1002 chars → score clamps to 0
+      const longKey = 'x'.repeat(1002) + 'z'; // 1003 chars → score clamps to 0
+      const items = [
+        { id: 1, keys: [midKey] }, // best-key length 1002
+        { id: 2, keys: [longKey, shortKey] }, // tie → best-key length must become 1001
+      ];
+
+      const results = fuzzyRankBy('z', items, (item) => item.keys);
+
+      // All three keys score 0; item 2's shorter key (1001) beats item 1's only key
+      // (1002) on the length tie-break, so item 2 ranks first. Were the in-loop
+      // tie-break to keep item 2's first (longer, 1003) key, item 1 would rank first.
+      expect(results.map((r) => r.id)).toEqual([2, 1]);
+    });
+  });
+
   describe('edge cases', () => {
     it('handles empty keys array', () => {
       const results = fuzzyRankBy('test', repos, () => []);
