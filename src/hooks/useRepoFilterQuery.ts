@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
+import type { GetRowData, Repo, RepoSignalData, SecuritySignalSlice } from '../types/fleet';
 import {
   createRepoFilterQueryStore,
   evaluateRepoFilterQuery,
@@ -155,8 +155,47 @@ function persistQuery(store: VersionedStore<RepoFilterQueryV2>, query: RepoFilte
   }
 }
 
+/** The two stale-item kinds the filter distinguishes (`pr` vs `issue`). */
+type StaleType = 'pr' | 'issue';
+
+/** Returns `value` only when it is a finite number, otherwise `undefined`. */
+function finiteOrUndefined(value: number | undefined): number | undefined {
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Projects the security alert counts into a fixed-shape, finite-only record so a
+ * malformed slice (reordered or stray keys, non-numeric / non-finite values)
+ * yields a stable memo key instead of leaking that instability into the
+ * stringified key. Returns `undefined` when no usable counts object is present.
+ */
+function normalizeSecurityCounts(
+  counts: SecuritySignalSlice['counts'],
+): Record<'critical' | 'high' | 'medium' | 'low', number | undefined> | undefined {
+  if (typeof counts !== 'object' || counts === null) {
+    return undefined;
+  }
+  return {
+    critical: finiteOrUndefined(counts.critical),
+    high: finiteOrUndefined(counts.high),
+    medium: finiteOrUndefined(counts.medium),
+    low: finiteOrUndefined(counts.low),
+  };
+}
+
+/**
+ * Builds a stable per-repo memo key from exactly the signal fields the filter
+ * evaluates, so a fleet's filter projection only recomputes when one of them
+ * changes. Keep in sync with evaluateRepoFilterQuery: every signal field a facet
+ * matches on must appear here. Defensive guards (`Array.isArray` for the stale
+ * legs, `Number.isFinite` for the security counts) keep a malformed slice from
+ * throwing during render or producing an unstable key.
+ */
 function signalFilterKey(data: RepoSignalData): string {
-  const staleItems = data.stale?.staleItems ?? [];
+  const rawStaleItems = data.stale?.staleItems;
+  const staleItems: readonly unknown[] = Array.isArray(rawStaleItems) ? rawStaleItems : [];
+  const staleHasType = (type: StaleType): boolean =>
+    staleItems.some((item) => (item as { type?: unknown } | null)?.type === type);
   return JSON.stringify({
     ci: {
       status: data.ci?.status,
@@ -165,7 +204,7 @@ function signalFilterKey(data: RepoSignalData): string {
     security: {
       status: data.security?.status,
       grade: data.security?.grade,
-      counts: data.security?.counts,
+      counts: normalizeSecurityCounts(data.security?.counts),
       truncated: data.security?.truncated,
     },
     pullRequests: {
@@ -185,8 +224,8 @@ function signalFilterKey(data: RepoSignalData): string {
     stale: {
       status: data.stale?.status,
       staleCount: data.stale?.staleCount,
-      hasPullRequest: staleItems.some((item) => item.type === 'pr'),
-      hasIssue: staleItems.some((item) => item.type === 'issue'),
+      hasPullRequest: staleHasType('pr'),
+      hasIssue: staleHasType('issue'),
     },
   });
 }
