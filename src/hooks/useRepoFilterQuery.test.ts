@@ -435,3 +435,176 @@ describe('persistence failure observability', () => {
     expect(warnSpy).not.toHaveBeenCalledWith('[repo-filter] failed to persist filter query');
   });
 });
+
+// Item 6 (#587): signalFilterKey backs the derivedSelected memo, so a malformed
+// signal slice must neither throw during render nor desestabilise the key.
+describe('signalFilterKey defensive guards', () => {
+  // A stable single-repo fleet reference so derivedSelected only recomputes when
+  // the signal memo key changes (a fresh array would recompute every render).
+  const single: Repo[] = [repoC];
+  const makeGet =
+    (data: RepoSignalData): GetRowData =>
+    () =>
+      data;
+
+  it('does not throw when stale.staleItems is not an array', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const malformed = {
+      stale: { status: 'ready', staleCount: 1, staleItems: 'not-an-array' },
+    } as unknown as RepoSignalData;
+
+    expect(() => renderHook(() => useRepoFilterQuery(single, makeGet(malformed)))).not.toThrow();
+  });
+
+  it('does not throw when a stale item is null', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const malformed = {
+      stale: {
+        status: 'ready',
+        staleCount: 1,
+        staleItems: [null, { type: 'pr', number: 1, title: 't', html_url: 'u', updated_at: 'd' }],
+      },
+    } as unknown as RepoSignalData;
+
+    expect(() => renderHook(() => useRepoFilterQuery(single, makeGet(malformed)))).not.toThrow();
+  });
+
+  it('does not throw when security counts is malformed', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const malformed = {
+      security: { status: 'ready', grade: 'F', counts: 'oops' },
+    } as unknown as RepoSignalData;
+
+    expect(() => renderHook(() => useRepoFilterQuery(single, makeGet(malformed)))).not.toThrow();
+  });
+
+  it('keeps a stable memo key when security counts differ only in key order', () => {
+    const ordered: RepoSignalData = {
+      security: {
+        status: 'ready',
+        grade: 'C',
+        counts: { critical: 0, high: 1, medium: 2, low: 3 },
+      },
+    };
+    const reordered: RepoSignalData = {
+      security: {
+        status: 'ready',
+        grade: 'C',
+        counts: { low: 3, medium: 2, high: 1, critical: 0 },
+      },
+    };
+
+    const { result, rerender } = renderHook(({ getData }) => useRepoFilterQuery(single, getData), {
+      initialProps: { getData: makeGet(ordered) },
+    });
+    const before = result.current.derivedSelected;
+
+    rerender({ getData: makeGet(reordered) });
+    expect(result.current.derivedSelected).toBe(before);
+  });
+
+  it('keeps a stable memo key when security counts hold non-finite numbers', () => {
+    const a: RepoSignalData = {
+      security: {
+        status: 'ready',
+        grade: 'C',
+        counts: { critical: Number.NaN, high: Number.POSITIVE_INFINITY, medium: 2, low: 3 },
+      },
+    };
+
+    const { result, rerender } = renderHook(({ getData }) => useRepoFilterQuery(single, getData), {
+      initialProps: { getData: makeGet(a) },
+    });
+    const before = result.current.derivedSelected;
+
+    rerender({
+      getData: makeGet({
+        security: {
+          status: 'ready',
+          grade: 'C',
+          counts: { critical: Number.NaN, high: Number.POSITIVE_INFINITY, medium: 2, low: 3 },
+        },
+      }),
+    });
+    expect(result.current.derivedSelected).toBe(before);
+  });
+});
+
+describe('signalFilterKey memo stability (table-driven)', () => {
+  const single: Repo[] = [repoC];
+  const makeGet =
+    (data: RepoSignalData): GetRowData =>
+    () =>
+      data;
+  const clone = (data: RepoSignalData): RepoSignalData =>
+    JSON.parse(JSON.stringify(data)) as RepoSignalData;
+
+  const base: RepoSignalData = {
+    security: { status: 'ready', grade: 'C', counts: { critical: 0, high: 1, medium: 2, low: 3 } },
+    stale: {
+      status: 'ready',
+      staleCount: 2,
+      staleItems: [
+        { type: 'pr', number: 1, title: 'p', html_url: 'u1', updated_at: 'd1' },
+        { type: 'issue', number: 2, title: 'i', html_url: 'u2', updated_at: 'd2' },
+      ],
+    },
+  };
+
+  const cases: { name: string; changed: RepoSignalData }[] = [
+    {
+      name: 'security grade',
+      changed: {
+        ...base,
+        security: {
+          status: 'ready',
+          grade: 'A',
+          counts: { critical: 0, high: 1, medium: 2, low: 3 },
+        },
+      },
+    },
+    {
+      name: 'security counts',
+      changed: {
+        ...base,
+        security: {
+          status: 'ready',
+          grade: 'C',
+          counts: { critical: 9, high: 1, medium: 2, low: 3 },
+        },
+      },
+    },
+    {
+      name: 'stale pr↔issue legs',
+      changed: {
+        ...base,
+        stale: {
+          status: 'ready',
+          staleCount: 2,
+          staleItems: [{ type: 'pr', number: 1, title: 'p', html_url: 'u1', updated_at: 'd1' }],
+        },
+      },
+    },
+  ];
+
+  it.each(cases)(
+    'is stable across equivalent inputs and recomputes when $name changes',
+    ({ changed }) => {
+      const { result, rerender } = renderHook(
+        ({ getData }) => useRepoFilterQuery(single, getData),
+        {
+          initialProps: { getData: makeGet(base) },
+        },
+      );
+      const before = result.current.derivedSelected;
+
+      // Equivalent input (fresh deep clone, same values) → memo key unchanged.
+      rerender({ getData: makeGet(clone(base)) });
+      expect(result.current.derivedSelected).toBe(before);
+
+      // A relevant signal field changes → memo key changes → recompute.
+      rerender({ getData: makeGet(changed) });
+      expect(result.current.derivedSelected).not.toBe(before);
+    },
+  );
+});
