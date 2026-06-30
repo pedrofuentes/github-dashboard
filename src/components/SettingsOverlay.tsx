@@ -11,7 +11,8 @@
  * {@link ThemeToggle} / {@link DensityToggle} / {@link RepoOwnerToggle} /
  * {@link DefaultViewToggle} components unchanged. The Defaults + Account sections
  * only render when a user is authenticated (`user !== null`); Appearance is
- * always available. Tokens only and reduced-motion safe (no transitions).
+ * always available. Auth requires a stored GitHub personal access token (PAT);
+ * reduced-motion safe (no transitions).
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
@@ -30,7 +31,10 @@ interface SettingsOverlayProps {
   onDefaultViewChange: (view: FleetView) => void;
   /** The signed-in identity, or `null` when unauthenticated (hides Account + Defaults). */
   user: AuthUser | null;
-  /** Forgets the stored token (signs out). */
+  /**
+   * Forgets the stored token (signs out). Expected to be SYNCHRONOUS — an async
+   * implementation would race with `onClose()`.
+   */
   onForget: () => void;
   /** Closes the overlay and returns focus to the opener. */
   onClose: () => void;
@@ -57,9 +61,6 @@ export function SettingsOverlay({
 }: SettingsOverlayProps): ReactElement {
   const titleId = useId();
   const appearanceLabelId = useId();
-  const themeLabelId = useId();
-  const densityLabelId = useId();
-  const repoOwnerLabelId = useId();
   const accountLabelId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -138,21 +139,15 @@ export function SettingsOverlay({
               Appearance
             </h3>
             <div className="flex flex-col gap-2">
-              <span id={themeLabelId} className="text-sm font-medium text-text">
-                Theme
-              </span>
+              <span className="text-sm font-medium text-text">Theme</span>
               <ThemeToggle />
             </div>
             <div className="flex flex-col gap-2">
-              <span id={densityLabelId} className="text-sm font-medium text-text">
-                Density
-              </span>
+              <span className="text-sm font-medium text-text">Density</span>
               <DensityToggle />
             </div>
             <div className="flex flex-col gap-2">
-              <span id={repoOwnerLabelId} className="text-sm font-medium text-text">
-                Repository names
-              </span>
+              <span className="text-sm font-medium text-text">Repository names</span>
               <RepoOwnerToggle />
             </div>
           </section>
@@ -197,7 +192,15 @@ export function SettingsOverlay({
                 </div>
                 <button
                   type="button"
-                  onClick={onForget}
+                  onClick={() => {
+                    try {
+                      onForget();
+                    } catch {
+                      // Suppress any synchronous errors (e.g. localStorage SecurityError)
+                    } finally {
+                      onClose();
+                    }
+                  }}
                   className="w-fit rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
                   Forget token

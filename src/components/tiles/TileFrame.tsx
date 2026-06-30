@@ -99,8 +99,9 @@ export interface TileFrameProps {
    */
   identityTone?: AccentTone;
   /**
-   * Full scope+metric+state phrase used as the activate-button `aria-label`
-   * (e.g. `CI: 2 failing, problem — octo/a`). Falls back to the legacy
+   * Full scope+metric+state phrase used as the `aria-label` for the tile's
+   * activate overlay (link in display mode, button in edit mode; e.g.
+   * `CI: 2 failing, problem — octo/a`). Falls back to the legacy
    * "View <signal> details for <repo>" label when omitted.
    */
   accessibleSummary?: string;

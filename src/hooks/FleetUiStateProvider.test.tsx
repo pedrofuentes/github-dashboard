@@ -10,10 +10,13 @@ function wrapper({ children }: { children: ReactNode }): ReactElement {
 }
 
 describe('useFleetSelection', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('throws a helpful error when used outside a FleetUiStateProvider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => renderHook(() => useFleetSelection())).toThrow(/FleetUiStateProvider/);
-    vi.restoreAllMocks();
   });
 
   it('starts empty', () => {
@@ -121,6 +124,20 @@ describe('useFleetSelection', () => {
     act(() => result.current.toggle('b/y'));
 
     expect(previous).not.toBe(result.current.selected);
+    expect(previous.has('b/y')).toBe(false);
+    expect(previous.size).toBe(1);
+  });
+
+  it('does not mutate the previous selected set when inverting', () => {
+    const { result } = renderHook(() => useFleetSelection(), { wrapper });
+
+    act(() => result.current.toggle('a/x'));
+    const previous = result.current.selected;
+
+    act(() => result.current.invert(['a/x', 'b/y', 'c/z']));
+
+    expect(previous).not.toBe(result.current.selected);
+    expect(previous.has('a/x')).toBe(true);
     expect(previous.has('b/y')).toBe(false);
     expect(previous.size).toBe(1);
   });

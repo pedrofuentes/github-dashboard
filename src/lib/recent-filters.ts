@@ -1,8 +1,9 @@
 /**
- * Recent repo-filter queries. Persists the last 5 DISTINCT non-empty queries
- * to `fleet:repo-filter:recent:v1` using {@link createVersionedStore}. The list
- * is capped, deduped, and defensively validated on load — a corrupt payload
- * degrades to an empty array. {@link EMPTY_QUERY} is never recorded.
+ * Recent repo-filter queries. Persists the last {@link MAX_RECENT_FILTERS}
+ * DISTINCT non-empty queries to `fleet:repo-filter:recent:v1` using
+ * {@link createVersionedStore}. The list is capped, deduped, and defensively
+ * validated on load — a corrupt payload degrades to an empty array. Inactive
+ * queries (per {@link isQueryActive}) are never recorded.
  */
 import { z } from 'zod';
 
@@ -57,14 +58,15 @@ function queriesEqual(a: RepoFilterQueryV2, b: RepoFilterQueryV2): boolean {
 
 /**
  * Adds a non-empty query to the recent list: deduplicates (moves existing to
- * front), prepends new queries (most recent first), and caps at 5. Does NOT
- * record {@link EMPTY_QUERY} (the canonical "all repos shown" state). Persists
- * synchronously; never throws.
+ * front), prepends new queries (most recent first), and caps at
+ * {@link MAX_RECENT_FILTERS}. Does NOT record inactive queries (per
+ * {@link isQueryActive}). Persists synchronously. Degrades gracefully on
+ * storage errors (no throw).
  *
  * @param query - The query to record. Must be active (non-empty) to be saved.
  */
 export function addRecentFilter(query: RepoFilterQueryV2): void {
-  // Don't record EMPTY_QUERY or inactive queries
+  // Don't record inactive queries (empty filters)
   if (!isQueryActive(query)) {
     return;
   }
