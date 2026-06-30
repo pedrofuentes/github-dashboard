@@ -116,10 +116,11 @@ describe('role tokens — chart-track contrast exemption', () => {
       expect(tokens['--color-chart-track']).toBeDefined();
       expect(tokens['--color-surface']).toBeDefined();
       const ratio = contrastRatio(tokens['--color-chart-track'], tokens['--color-surface']);
-      // Chart tracks are background grid/guideline elements (not UI controls or
-      // informational graphics per WCAG 2.1 SC 1.4.11), so no minimum contrast is
-      // required. This test documents the actual ratio for visibility review.
-      expect(ratio).toBeGreaterThan(0); // Present but low-contrast by design
+      // Chart tracks are decorative: intentionally below the 3:1 non-text-UI contrast
+      // threshold (WCAG 2.1 SC 1.4.11 exemption), but must remain visible against surface.
+      // This locks in the design: not invisible (ratio > 1) and not high-contrast (ratio < 3).
+      expect(ratio).toBeGreaterThan(1); // Prevents invisible (identical to surface)
+      expect(ratio).toBeLessThan(3);    // Prevents accidental high-contrast (e.g., text color)
     });
   }
 });
