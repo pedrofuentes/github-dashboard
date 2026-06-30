@@ -10,8 +10,37 @@ first.
 
 ## [Unreleased]
 
+### Added
+
+- **Role design tokens** — new semantic surface/accent role tokens
+  (`--color-surface-overlay`, `--color-surface-hover`, `--color-surface-selected`,
+  `--color-selection`, `--color-attention`) defined and verified in both light and
+  dark themes. These back elevated surfaces (drawers, modals), hover and selected
+  row/cell states, selection controls (checkboxes, active outlines), and the
+  attention-level accent (more urgent than warning). All ink-on-surface pairings
+  clear WCAG 2.1 AA 4.5:1 (normal text) or 3:1 (non-text UI). (#361)
+- **Fleet-loading progress banner** — a `role="status"` live-region banner
+  displayed while the fleet is loading, reporting how many repositories have
+  resolved so far (e.g. "Loading… 12 of 30 repositories ready"). Announces
+  progress to screen readers and disappears once all repos are settled. (#565)
+- **Update-available reload prompt** — an in-app toast that appears when a new
+  deploy is detected. The client polls `version.json` every 5 minutes and on
+  window focus / tab visibility change, comparing the deployed SHA against the
+  running build; if they differ, a prompt invites the user to reload to get the
+  latest version. The check is skipped in the local dev environment. (#568)
+- **Security-access notice** — a dismissible in-app notice shown when the
+  connected token lacks the permissions needed to fetch security alert feeds
+  (Dependabot alerts or code-scanning alerts), linking to GitHub's PAT docs so
+  users can update their token scope. Dismissed state persists to
+  `sessionStorage`. (#566)
+
 ### Changed
 
+- **Configurable default view: Matrix, Triage, and Deck are also selectable.**
+  The **Default view** control accepts **Triage**, **Matrix**, and **Deck** in
+  addition to Grid, Dashboard, and Inbox. (The 2026-06-28 entry listed only
+  "Grid / Dashboard / Inbox"; Matrix, Triage, and Deck were selectable by that
+  deploy but were omitted from the entry.) (#414)
 - **Deck and Boards tiles open the signal's GitHub page on click.** Clicking any
   signal tile on the Deck or Boards view now navigates to the corresponding
   GitHub page (Actions run, PR, security alert, etc.) in a new tab, replacing
