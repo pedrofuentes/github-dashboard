@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { AppFooter } from './components/AppFooter';
@@ -220,7 +220,10 @@ interface FleetPanelProps {
   onOpenSettings: () => void;
 }
 
-function FleetPanel({
+// Memoized so a Shell re-render (e.g. toggling the Settings overlay) does not
+// reconcile the whole authenticated panel: every prop below is a primitive or a
+// stable callback, so the default shallow comparison is correct (#425).
+const FleetPanel = memo(function FleetPanel({
   token,
   viewerLogin,
   view,
@@ -707,7 +710,7 @@ function FleetPanel({
       )}
     </FleetUiStateProvider>
   );
-}
+});
 
 interface CustomizeLayoutToggleProps {
   editing: boolean;
