@@ -386,3 +386,52 @@ describe('legacy migration observability', () => {
     expect(warnSpy).not.toHaveBeenCalledWith('[repo-filter] legacy migration failed to persist');
   });
 });
+
+describe('persistence failure observability', () => {
+  // Inject a store whose save always reports failure (quota / disabled storage),
+  // so the now-meaningful boolean returned by save() must be surfaced rather than
+  // silently dropped (the #595 save-boolean data-loss class).
+  const injectFailingStore = (): ReturnType<typeof vi.fn> => {
+    const failingSave = vi.fn(() => false);
+    vi.spyOn(repoFilterQuery, 'createRepoFilterQueryStore').mockReturnValueOnce({
+      load: () => EMPTY_QUERY,
+      save: failingSave,
+      clear: () => {},
+    });
+    return failingSave;
+  };
+
+  it('warns when persisting a user-driven query update is dropped', () => {
+    const failingSave = injectFailingStore();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
+    act(() => result.current.toggleOwner('acme'));
+
+    expect(failingSave).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('[repo-filter] failed to persist filter query');
+  });
+
+  it('warns when persisting a fleet-reconcile update is dropped', () => {
+    const failingSave = injectFailingStore();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { rerender } = renderHook(({ repos }) => useRepoFilterQuery(repos, getRowData), {
+      initialProps: { repos: [] as Repo[] },
+    });
+    // The fleet identity changes empty→non-empty, driving the reconcile persist.
+    rerender({ repos: [repoA] });
+
+    expect(failingSave).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('[repo-filter] failed to persist filter query');
+  });
+
+  it('does not warn when a query update persists successfully', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
+    act(() => result.current.toggleOwner('acme'));
+
+    expect(warnSpy).not.toHaveBeenCalledWith('[repo-filter] failed to persist filter query');
+  });
+});
