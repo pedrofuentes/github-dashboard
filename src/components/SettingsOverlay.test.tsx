@@ -272,6 +272,30 @@ describe('SettingsOverlay', () => {
     expect(within(dialog).getByRole('button', { name: /forget token/i })).toHaveFocus();
   });
 
+  it('wraps focus to the last control on Shift+Tab when unauthenticated', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsOverlay
+        user={null}
+        onForget={vi.fn()}
+        defaultView="triage"
+        onDefaultViewChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const closeButton = within(dialog).getByRole('button', { name: /close settings/i });
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
+    await user.tab({ shift: true });
+
+    // When unauthenticated, the last focusable is in the Repository names radiogroup
+    const repoGroup = within(dialog).getByRole('radiogroup', { name: /repository names/i });
+    const lastRadio = within(repoGroup).getAllByRole('radio').at(-1);
+    expect(lastRadio).toHaveFocus();
+  });
+
   it('closes the overlay after clicking Forget token', async () => {
     const user = userEvent.setup();
     render(<Harness />);
