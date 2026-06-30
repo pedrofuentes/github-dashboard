@@ -34,11 +34,11 @@ describe('fuzzyMatch', () => {
       expect(result1.matched).toBe(true);
       expect(result1.score).toBeGreaterThan(0);
       expect(result1.indices).toEqual([0, 7]);
-      
+
       expect(result2.matched).toBe(true);
       expect(result2.score).toBeGreaterThan(0);
       expect(result2.indices).toEqual([0, 7]);
-      
+
       expect(result3.matched).toBe(true);
       expect(result3.score).toBeGreaterThan(0);
       expect(result3.indices).toEqual([0, 7]);
