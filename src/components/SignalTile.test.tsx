@@ -330,14 +330,14 @@ describe('SignalTile — TileBodyErrorBoundary wiring', () => {
     // Issues tile body threw — boundary shows graceful fallback
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(container.textContent).toMatch(/couldn.*t display/i);
-    // Both tiles' frames rendered (error isolated to issues body, sibling ci tile unaffected)
-    expect(container.querySelectorAll('[data-status]')).toHaveLength(2);
+    // Both tiles' frames rendered (error isolated; sibling ci tile unaffected)
+    expect(container.querySelectorAll('[role="gridcell"]')).toHaveLength(2);
     expect(screen.getByText('octo/b')).toBeInTheDocument();
   });
 
   it('key change remounts boundary and clears error state (recovery)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(IssuesTileBodyModule, 'IssuesTileBody').mockImplementationOnce(() => {
+    const bodySpy = vi.spyOn(IssuesTileBodyModule, 'IssuesTileBody').mockImplementation(() => {
       throw new Error('transient render error');
     });
 
@@ -352,6 +352,9 @@ describe('SignalTile — TileBodyErrorBoundary wiring', () => {
 
     // Initial render: body threw, fallback shown
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+
+    // Stop throwing so the remounted boundary can render normally
+    bodySpy.mockRestore();
 
     // Changing repo changes the key (octo/a:issues → octo/b:issues) → boundary remounts
     rerender(
