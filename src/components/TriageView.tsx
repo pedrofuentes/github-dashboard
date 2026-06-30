@@ -11,8 +11,11 @@
  * the Fleet Matrix). The per-repo status indicators REUSE the existing per-signal
  * cell atoms, so this surface never invents a new status vocabulary.
  *
- * It mirrors {@link FleetGrid}/{@link FleetMatrix} for the shared loading
- * (skeletons), error (alert + retry), and empty states, and exposes the same
+ * Loading states: (1) first load with zero repos → animated skeletons;
+ * (2) loaded repos but signals still resolving → "Loading fleet signals…" text
+ * (same pattern as FleetLoadingBanner for the grid/matrix); (3) background
+ * refresh with visible bands → bands remain interactive. Error and empty states
+ * mirror {@link FleetGrid}/{@link FleetMatrix}, and it exposes the same
  * `onRepoActivate(repo)` drill-down contract. When the whole fleet is healthy it
  * shows a friendly "All clear" state instead of an empty Healthy band.
  */
@@ -41,8 +44,10 @@ import { SecurityCell } from './columns/SecurityCell';
 import { StaleCell } from './columns/StaleCell';
 
 const SKELETON_ROWS = 5;
+/** Alpha blend ratio for error alert backgrounds (10% accent on surface). */
+const ERROR_ALERT_BG_BLEND = '10%';
 
-interface TriageViewProps {
+export interface TriageViewProps {
   /** Repositories to triage (already adapted by `useRepos`). */
   repos: Repo[];
   /** Resolves per-repo signal data (same contract as the grid/matrix). */
@@ -215,7 +220,7 @@ export function TriageView({
       <section aria-label="Triage" className="flex flex-col gap-3">
         <div
           role="alert"
-          className="rounded-md border border-accent-failure bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] px-4 py-3 text-sm text-accent-failure"
+          className={`rounded-md border border-accent-failure bg-[color-mix(in_srgb,var(--color-failure)_${ERROR_ALERT_BG_BLEND},var(--color-surface))] px-4 py-3 text-sm text-accent-failure`}
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
@@ -223,7 +228,7 @@ export function TriageView({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 inline-flex items-center rounded border border-accent-failure px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-failure"
+              className={`mt-3 inline-flex items-center rounded border border-accent-failure px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_${ERROR_ALERT_BG_BLEND},var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-failure`}
             >
               Retry
             </button>
