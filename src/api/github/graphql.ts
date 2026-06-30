@@ -233,6 +233,14 @@ function abortError(): DOMException {
  * `search-limiter.ts` but with constants tuned for the GraphQL endpoint.
  * Construct a fresh instance for isolated tests; the application shares the
  * {@link graphqlLimiter} singleton via {@link scheduleGraphQLRequest}.
+ *
+ * Configuration contract: {@link GQL_BURST} and {@link GQL_MIN_INTERVAL_MS} are
+ * the burst/interval defaults and the only runtime-overridable knobs — pass
+ * `capacity`/`intervalMs` to the constructor (as the tests do). {@link
+ * GQL_MAX_RETRIES} and {@link GQL_MAX_RETRY_WAIT_SECONDS} are compile-time
+ * constants read directly by the retry path, so they are exported for tests to
+ * reference rather than to inject; retune them at the source. The endpoint URL
+ * is the module-private `GRAPHQL_URL` and is intentionally not configurable.
  */
 export class GraphQLLimiter {
   private readonly capacity: number;
@@ -400,7 +408,7 @@ export function scheduleGraphQLRequest<T>(task: GQLTask<T>, signal?: AbortSignal
  * Validated by {@link GraphQLRateLimitPartSchema}.
  */
 export interface GraphQLRateLimitPart {
-  /** Points consumed by this query. */
+  /** Points consumed by this query. Accepted but not persisted by {@link recordGraphQLCost}. */
   cost?: number;
   /** Points remaining in the current window. */
   remaining: number;
@@ -431,14 +439,20 @@ export const GraphQLRateLimitPartSchema = z
 export const graphqlRateLimitStore = new RateLimitStore();
 
 /**
- * Records a GraphQL response's `rateLimit` fragment into
+ * Records a GraphQL response's `rateLimit` budget snapshot into
  * {@link graphqlRateLimitStore}.
  *
- * Call this from any GraphQL loader that includes `rateLimit { cost remaining
- * resetAt }` in its query. The store notifies subscribers and updates the
- * pause window when the budget is critically low.
+ * Call this from any GraphQL loader that includes `rateLimit { remaining
+ * resetAt limit }` in its query. Only the standing-budget fields are persisted:
+ * `remaining`, `resetAt`, and `limit` derive the store's limit/remaining/used/
+ * reset. The optional per-query `cost` field is accepted on the fragment but
+ * intentionally NOT recorded — the store tracks the budget, not per-call spend —
+ * so despite the name this records the budget snapshot rather than the cost.
+ * The store notifies subscribers and updates the pause window when the budget
+ * is critically low.
  *
- * @param snapshotPart - The validated `rateLimit` object from the response data.
+ * @param snapshotPart - The validated `rateLimit` object from the response data;
+ *   its optional `cost` field is ignored.
  */
 export function recordGraphQLCost(snapshotPart: GraphQLRateLimitPart): void {
   const limit = snapshotPart.limit ?? 5000;
