@@ -129,11 +129,21 @@ describe('DensityToggle — keyboard (WAI-ARIA radiogroup roving tabindex)', () 
     const user = userEvent.setup();
     render(<DensityToggle />);
 
+    // ArrowDown mirrors ArrowRight (forward): it must move selection AND focus
+    // and persist the choice, not merely shift focus — assert all three so the
+    // test discriminates a real selection change from a focus-only move.
     screen.getByRole('radio', { name: /balanced/i }).focus();
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('radio', { name: /glanceable/i })).toHaveFocus();
+    const glanceable = screen.getByRole('radio', { name: /glanceable/i });
+    expect(glanceable).toHaveFocus();
+    expect(glanceable).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DENSITY_KEY)).toBe('glanceable');
+
     await user.keyboard('{ArrowUp}');
-    expect(screen.getByRole('radio', { name: /balanced/i })).toHaveFocus();
+    const balanced = screen.getByRole('radio', { name: /balanced/i });
+    expect(balanced).toHaveFocus();
+    expect(balanced).toHaveAttribute('aria-checked', 'true');
+    expect(localStorage.getItem(DENSITY_KEY)).toBe('balanced');
   });
 
   it('jumps to the first and last option with Home and End', async () => {
