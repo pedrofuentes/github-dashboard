@@ -1159,7 +1159,10 @@ describe('App', () => {
       // Inbox: every repo's item without a filter.
       await user.click(inboxToggleButton());
       await screen.findByRole('region', { name: /notifications inbox/i });
-      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+      const list = inboxItemsList();
+      expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+      expect(within(list).getByText('octo/alpha')).toBeInTheDocument();
+      expect(within(list).getByText('octo/beta')).toBeInTheDocument();
     });
 
     it('keeps the fleet-wide unread badge count even when a global repo scope hides some repos (AC-16)', async () => {
