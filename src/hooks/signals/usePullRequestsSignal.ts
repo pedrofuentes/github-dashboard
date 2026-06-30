@@ -3,21 +3,9 @@ import { z } from 'zod';
 
 import { SIGNAL_FETCH_CONCURRENCY, mapWithConcurrency } from '../../api/concurrency';
 import { fetchWithETag, GITHUB_API_BASE } from '../../api/github';
+import { OUTSIDE_CONTRIBUTOR_ASSOCIATIONS } from '../../api/github/contributor-associations';
 import { isAbortError } from '../../lib/abort';
 import type { PullRequestsSignalSlice, Repo } from '../../types/fleet';
-
-/**
- * `author_association` values GitHub assigns to a PR author who is NOT a member,
- * owner, or collaborator — i.e. a *new* outside contributor. `CONTRIBUTOR`
- * (a returning external contributor) is deliberately excluded: this signal
- * highlights brand-new arrivals that most warrant a maintainer's attention.
- */
-const OUTSIDE_CONTRIBUTOR_ASSOCIATIONS = new Set([
-  'FIRST_TIME_CONTRIBUTOR',
-  'FIRST_TIMER',
-  'NONE',
-  'MANNEQUIN',
-]);
 
 /**
  * Minimal shape of a `GET /repos/{owner}/{repo}/pulls` item. Validated locally

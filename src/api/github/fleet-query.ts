@@ -48,6 +48,7 @@ import type {
   StaleItem,
   StaleSignalSlice,
 } from '../../types/fleet';
+import { OUTSIDE_CONTRIBUTOR_ASSOCIATIONS } from './contributor-associations';
 import {
   GraphQLRateLimitPartSchema,
   fetchGraphQL,
@@ -456,19 +457,6 @@ export const issuesDeriver: SignalDeriver = {
 };
 
 // ── PR deriver (open / new-contributor pull requests) ────────────────────────
-
-/**
- * `author_association` values that identify a new outside contributor (not a
- * member, owner, collaborator, or returning `CONTRIBUTOR`). Value-identical to
- * the same constant in `usePullRequestsSignal` so both REST and GraphQL paths
- * produce identical externalCount values.
- */
-const OUTSIDE_CONTRIBUTOR_ASSOCIATIONS = new Set([
-  'FIRST_TIME_CONTRIBUTOR',
-  'FIRST_TIMER',
-  'NONE',
-  'MANNEQUIN',
-]);
 
 /**
  * Per-repo PR selection fragment.
