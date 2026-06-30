@@ -114,11 +114,7 @@ export class SearchLimiter {
       }
 
       const waiter: Waiter<T> = { task, signal, resolve, reject };
-      if (signal) {
-        waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
-        signal.addEventListener('abort', waiter.onAbort, { once: true });
-      }
-      this.enqueue(waiter as Waiter);
+      this.enqueueWaiter(waiter);
     });
   }
 
@@ -129,6 +125,20 @@ export class SearchLimiter {
     this.queue.length = 0;
     this.queueWarned = false;
     this.tokens = this.capacity;
+  }
+
+  /**
+   * Wires `waiter`'s abort handling — so an abort fired while it is queued is
+   * delivered to {@link abortWaiter}, which removes and rejects it — then hands
+   * the waiter to {@link enqueue}. The single home for the abort/enqueue wiring
+   * shared by {@link schedule} and the retry path's {@link acquireToken}.
+   */
+  private enqueueWaiter<T>(waiter: Waiter<T>): void {
+    if (waiter.signal) {
+      waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
+      waiter.signal.addEventListener('abort', waiter.onAbort, { once: true });
+    }
+    this.enqueue(waiter as Waiter);
   }
 
   /**
@@ -221,11 +231,7 @@ export class SearchLimiter {
       }
 
       const waiter: Waiter<void> = { task: () => undefined, signal, resolve, reject };
-      if (signal) {
-        waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
-        signal.addEventListener('abort', waiter.onAbort, { once: true });
-      }
-      this.enqueue(waiter as Waiter);
+      this.enqueueWaiter(waiter);
     });
   }
 
