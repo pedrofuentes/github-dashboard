@@ -274,6 +274,9 @@ describe('CiTileBody', () => {
       // timed_out, action_required, neutral, stale). An unexpected value must
       // not throw a TypeError (→ blank tile, violating never-blank); it falls
       // back to the neutral "No runs" render.
+      // The fallback now also emits a dev warn (#365 🟢#2); silence it so this
+      // render-focused case keeps clean output.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const slice = { status: 'ready', conclusion: 'cancelled' } as unknown as CiSignalSlice;
       let container: HTMLElement | undefined;
       expect(() => {
@@ -281,6 +284,7 @@ describe('CiTileBody', () => {
       }).not.toThrow();
       expect(glyph(container as HTMLElement, 'neutral')).not.toBeNull();
       expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
+      warn.mockRestore();
     });
 
     it('an Object.prototype member as the conclusion still falls back to neutral (#204)', () => {
@@ -289,6 +293,8 @@ describe('CiTileBody', () => {
       // guard would resolve it to `Object.prototype.toString` and destructure an
       // undefined glyph/word — a blank/garbage hero. The own-property guard must
       // reject it and fall back to the neutral "No runs" render.
+      // The fallback now also emits a dev warn (#365 🟢#2); silence it here.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const slice = { status: 'ready', conclusion: 'toString' } as unknown as CiSignalSlice;
       let container: HTMLElement | undefined;
       expect(() => {
@@ -296,6 +302,43 @@ describe('CiTileBody', () => {
       }).not.toThrow();
       expect(glyph(container as HTMLElement, 'neutral')).not.toBeNull();
       expect(screen.getByText('No runs', { selector: 'span' })).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
+    it('warns once with the offending value when the conclusion is out-of-enum (#365 🟢#2)', () => {
+      // The conclusion is normalized to one of the 5 enum members upstream by
+      // useCiSignal.summarize(), so this guard is effectively unreachable in
+      // production. The dev warn is defense-in-depth: should that normalization
+      // ever regress, the otherwise-silent neutral fallback becomes observable
+      // instead of masking the bug — mirroring the unexpected-value warns in
+      // useTileSize / useReviewsSignal / useIssuesSignal. The message must name
+      // the offending value so the regression is diagnosable.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const slice = { status: 'ready', conclusion: 'cancelled' } as unknown as CiSignalSlice;
+
+      render(<CiTileBody repo={repo} data={data(slice)} size="standard" />);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatch(/cancelled/);
+      warn.mockRestore();
+    });
+
+    it('does not warn for an in-enum conclusion (no false positives) (#365 🟢#2)', () => {
+      // The warn must fire ONLY on the out-of-enum fallback; a legitimate enum
+      // member (here the neutral "none") must stay silent so the signal is not
+      // diluted by noise on every ordinary render.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      render(
+        <CiTileBody
+          repo={repo}
+          data={data({ status: 'ready', conclusion: 'none' })}
+          size="standard"
+        />,
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('all-clear ready state is never blank', () => {
