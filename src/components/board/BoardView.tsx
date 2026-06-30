@@ -3,11 +3,11 @@
  *
  * Where {@link FleetGrid} lays the fleet out as a repo-per-row table, this view
  * paints it as a wall of square keys: one {@link BoardKey} per (repo × signal)
- * pairing, in a responsive CSS grid. Each repo contributes the same six keys in
- * a fixed order (CI · Security · Reviews · Pull requests · Issues · Stale), so a
- * repo's row of keys reads identically across the fleet. The seventh signal,
- * `activity`, is intentionally excluded here — it has no {@link RepoSignalData}
- * slice and needs a separate commit-activity source.
+ * pairing, in a responsive CSS grid. Each repo contributes up to six keys
+ * (CI · Security · Reviews · Pull requests · Issues · Stale) in a fixed order;
+ * per-key `hiddenKeys` filtering can reduce the count, so repos may render fewer
+ * than six. The seventh signal, `activity`, is intentionally excluded here — it
+ * has no {@link RepoSignalData} slice and needs a separate commit-activity source.
  *
  * It is a drop-in sibling of the other top-level views: it mirrors their shared
  * loading (skeletons), error (alert + retry), and empty states, applies the same
@@ -46,11 +46,11 @@ import { BoardKey } from './BoardKey';
 import { SortableRepoRow } from './SortableRepoRow';
 
 /**
- * Responsive Stream Deck grid: square keys flow via `auto-fill`, so the column
- * count follows the container width and the chosen {@link DeckTileSize} (its
- * minimum key width — see {@link DECK_TILE_MIN_PX}). `medium` reproduces the
- * legacy two-to-six-column breakpoints; the inline `grid-template-columns`
- * supplies the per-size minimum.
+ * Per-repo-row matrix grid: each repo's visible signal keys render as an explicit
+ * `repeat(N, minmax(0, <size>px))` column grid, where N is the repo's non-hidden
+ * key count and `<size>` is the {@link DeckTileSize} minimum width from
+ * {@link DECK_TILE_MIN_PX}. The inline `grid-template-columns` sets the per-size
+ * minimum; the `gap-3` matches the block-to-block spacing.
  */
 const GRID_CLASS = 'grid gap-3';
 
@@ -351,6 +351,26 @@ export function BoardView({
     });
   };
 
+  /**
+   * Plain deck-block render: a wrapping container of repo rows, each a fixed-column
+   * grid of its visible signal keys. Used for the non-reorderable states: when dnd
+   * is inactive (!dndActive) or when repo rows aren't sortable (!rowsReorderable).
+   */
+  const renderPlainDeckBlocks = (): ReactElement => (
+    <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
+      {visibleKeysByRepo.map(({ repo, signals }) => (
+        <div
+          key={repo.nameWithOwner}
+          data-repo-row={repo.nameWithOwner}
+          className={GRID_CLASS}
+          style={rowStyleFor(signals.length)}
+        >
+          {renderRepoCells(repo, signals)}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
       <p role="status" aria-live="polite" className="text-sm text-text-muted">
@@ -415,33 +435,11 @@ export function BoardView({
                   </div>
                 </SortableContext>
               ) : (
-                <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
-                  {visibleKeysByRepo.map(({ repo, signals }) => (
-                    <div
-                      key={repo.nameWithOwner}
-                      data-repo-row={repo.nameWithOwner}
-                      className={GRID_CLASS}
-                      style={rowStyleFor(signals.length)}
-                    >
-                      {renderRepoCells(repo, signals)}
-                    </div>
-                  ))}
-                </div>
+                renderPlainDeckBlocks()
               )}
             </DndContext>
           ) : (
-            <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
-              {visibleKeysByRepo.map(({ repo, signals }) => (
-                <div
-                  key={repo.nameWithOwner}
-                  data-repo-row={repo.nameWithOwner}
-                  className={GRID_CLASS}
-                  style={rowStyleFor(signals.length)}
-                >
-                  {renderRepoCells(repo, signals)}
-                </div>
-              ))}
-            </div>
+            renderPlainDeckBlocks()
           )}
         </div>
       )}
