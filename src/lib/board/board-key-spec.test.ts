@@ -335,6 +335,10 @@ describe('boardKeySpec — security grade → accent', () => {
     const spec = boardKeySpec('security', data);
     expect(spec.accent).toBe('neutral');
     expect(spec.line2).not.toBe('X');
+    expect(spec.line2).toBe('n/a');
+    expect(spec.srLabel).toBe(
+      'No security-alert access for this repository (token scope or feature disabled)',
+    );
   });
 });
 
