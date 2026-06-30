@@ -51,5 +51,12 @@ export function signalDeepLinkUrl(
       return safeGitHubHref(`${base}/issues?q=is%3Aopen+sort%3Aupdated-asc`);
     case 'activity':
       return safeGitHubHref(`${base}/commits`);
+    default: {
+      // Exhaustiveness guard: if a new TileSignalType is added without a case,
+      // TypeScript will error here. At runtime, log unexpected values defensively.
+      const _exhaustive: never = signal;
+      console.error('Unexpected signal type in signalDeepLinkUrl:', _exhaustive);
+      return undefined;
+    }
   }
 }

@@ -122,7 +122,7 @@ export function setAllVisibility(layout: DashboardTile[], visible: boolean): Das
 /**
  * Makes a tile visible iff its signal is in `signals`, hiding all others — the
  * "Show only…" bulk action. An empty set hides everything. Pure (see
- * {@link flipTileVisibility}): input untouched, unchanged tiles keep identity.
+ * {@link applyVisibilityRule}): input untouched, unchanged tiles keep identity.
  *
  * @param layout - The current dashboard layout (hidden tiles included).
  * @param signals - The set of signals to keep visible.

@@ -144,11 +144,15 @@ describe('App ⌘K command palette', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: /command palette/i })).toBeNull(),
     );
-    await waitFor(() =>
+    await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /filter repositories/i }).getAttribute('aria-label'),
-      ).toMatch(/1 filter/i),
-    );
+      ).toMatch(/1 filter/i);
+    });
+    // Discriminate that specifically the Failing CI filter is active by opening
+    // the panel and verifying the active filter chip.
+    await user.click(screen.getByRole('button', { name: /filter repositories/i }));
+    expect(screen.getByRole('button', { name: /remove failing ci filter/i })).toBeInTheDocument();
   });
 
   it('opens the settings overlay from the "Open Settings" command', async () => {

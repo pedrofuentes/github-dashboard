@@ -271,4 +271,59 @@ describe('SettingsOverlay', () => {
 
     expect(within(dialog).getByRole('button', { name: /forget token/i })).toHaveFocus();
   });
+
+  it('wraps focus to the last control on Shift+Tab when unauthenticated', async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsOverlay
+        user={null}
+        onForget={vi.fn()}
+        defaultView="triage"
+        onDefaultViewChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const closeButton = within(dialog).getByRole('button', { name: /close settings/i });
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
+    await user.tab({ shift: true });
+
+    // When unauthenticated, the last focusable is in the Repository names radiogroup
+    const repoGroup = within(dialog).getByRole('radiogroup', { name: /repository names/i });
+    const lastRadio = within(repoGroup).getAllByRole('radio').at(-1);
+    expect(lastRadio).toHaveFocus();
+  });
+
+  it('closes the overlay after clicking Forget token', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    const opener = screen.getByRole('button', { name: /open settings/i });
+    await user.click(opener);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /forget token/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('still closes the overlay if onForget throws', async () => {
+    const onForgetThatThrows = vi.fn().mockImplementation(() => {
+      throw new Error('localStorage SecurityError');
+    });
+    const user = userEvent.setup();
+    render(<Harness onForget={onForgetThatThrows} />);
+
+    const opener = screen.getByRole('button', { name: /open settings/i });
+    await user.click(opener);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /forget token/i }));
+
+    // The overlay should still close even though onForget threw
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onForgetThatThrows).toHaveBeenCalledTimes(1);
+  });
 });

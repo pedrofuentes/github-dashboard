@@ -1,3 +1,12 @@
+/**
+ * FleetLoadingBanner — a progress indicator for the in-flight fleet signal
+ * fetch (T-g1). Displays a spinner, a "Loading fleet data…" label, and a
+ * ready/total counter (e.g. "42/50 repos"). It's rendered inline at the top
+ * of the Fleet Matrix or Grid when the background refresh is active, so the
+ * user sees continuous feedback without blocking the already-loaded repo list.
+ *
+ * Only visible when `loading` is true; self-hides otherwise (returns null).
+ */
 interface FleetLoadingBannerProps {
   loading: boolean;
   ready: number;

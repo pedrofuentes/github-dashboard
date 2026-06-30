@@ -60,6 +60,7 @@ describe('triage-groups predicates', () => {
 
   it('hasSecurityRisk only for ready D–F grades', () => {
     expect(hasSecurityRisk({ security: { status: 'ready', grade: 'D' } })).toBe(true);
+    expect(hasSecurityRisk({ security: { status: 'ready', grade: 'E' } })).toBe(true);
     expect(hasSecurityRisk({ security: { status: 'ready', grade: 'F' } })).toBe(true);
     expect(hasSecurityRisk({ security: { status: 'ready', grade: 'C' } })).toBe(false);
     expect(hasSecurityRisk({ security: { status: 'loading', grade: 'F' } })).toBe(false);
@@ -74,6 +75,7 @@ describe('triage-groups predicates', () => {
     expect(hasIssuesOverThreshold({ issues: { status: 'loading', overThreshold: true } })).toBe(
       false,
     );
+    expect(hasIssuesOverThreshold({})).toBe(false);
   });
 
   it('hasReviewRequest only when ready with a positive count', () => {

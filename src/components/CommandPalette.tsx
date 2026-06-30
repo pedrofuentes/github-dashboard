@@ -3,9 +3,9 @@
  *
  * It is a fully CONTROLLED, presentational modal: the parent owns visibility
  * (`open` / `onClose`, e.g. from {@link useCommandPalette}) and supplies the list
- * of {@link CommandItem}s plus an optional list of recent command ids. Wiring the
- * real command registry and additional shortcuts lives in a later task — this
- * component only renders + drives the palette.
+ * of {@link CommandItem}s plus an optional list of recent command ids. The parent
+ * wires the real command registry (e.g. {@link App} builds commands from
+ * navigation, filters, and settings). This component renders + drives the palette.
  *
  * Accessibility mirrors the repo's dialog + combobox/listbox patterns
  * (DrillDownDrawer, FacetedRepoFilter): `role="dialog"` / `aria-modal`, focus

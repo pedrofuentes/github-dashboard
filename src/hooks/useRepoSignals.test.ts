@@ -665,6 +665,11 @@ describe('useRepoSignals', () => {
     // Same Map instance must be passed — no churn on unchanged inputs (#540).
     expect(firstOverride).toBeInstanceOf(Map);
     expect(secondOverride).toBe(firstOverride);
+    // Discriminating assertion: the progressive map must contain the settled slice
+    // for octo/a (proves it's the merged map, not a stale/empty one that would
+    // also satisfy reference equality). Without this, the test would stay green
+    // against a revert of the progressive logic (#564).
+    expect(firstOverride?.get(REPO.nameWithOwner)).toEqual(readyCi);
   });
 
   it('reports fleet loading progress from settled GraphQL slices while the batch streams', () => {
@@ -1037,5 +1042,21 @@ describe('useRepoSignals — REST-rolled-back signals (no GraphQL)', () => {
     const { result } = renderHook(() => useRepoSignals(REPOS_AB, 'ghp_token'));
 
     expect(result.current.fleet).toEqual({ loading: false, ready: 0, total: 2 });
+  });
+
+  it('buildSignalOverride returns undefined when the signal flag is OFF, allowing REST fallthrough (#542)', async () => {
+    // Mock the flag as OFF so buildSignalOverride takes the early-return branch.
+    const { useRepoSignals, useCiSignal } = await loadWithNoGraphql({
+      result: new Map([['ci', new Map([[REPO.nameWithOwner, ci]])]]),
+      loading: false,
+      error: false,
+    });
+
+    renderHook(() => useRepoSignals(REPOS, 'ghp_token'));
+
+    // When the flag is OFF, buildSignalOverride returns undefined and useCiSignal
+    // receives no override (3rd arg undefined), letting REST fan-out execute (#542).
+    const lastCiCall = useCiSignal.mock.calls.at(-1);
+    expect(lastCiCall?.[2]).toBeUndefined();
   });
 });
