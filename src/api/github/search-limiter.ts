@@ -230,6 +230,17 @@ export class SearchLimiter {
         return;
       }
 
+      if (this.tokens === 0) {
+        // The retry already waited out Retry-After; an empty bucket now means it
+        // also stalls in the queue until a token refills. The console is this
+        // client-only SPA's only sink, so surface that extra delay once, on the
+        // same logger as the other limiter breadcrumbs (#589, mirrors #527/#704).
+        console.warn(
+          'SearchLimiter: retry stalled re-acquiring a Search token on an empty bucket; ' +
+            'awaiting refill after the Retry-After back-off.',
+        );
+      }
+
       const waiter: Waiter<void> = { task: () => undefined, signal, resolve, reject };
       this.enqueueWaiter(waiter);
     });
