@@ -38,7 +38,11 @@ export function loadDefaultView(): FleetView {
   return isFleetView(raw) ? raw : FALLBACK_DEFAULT_VIEW;
 }
 
-/** Persists the chosen default view (best-effort). */
+/**
+ * Persists the chosen default view (best-effort).
+ *
+ * @returns true when persisted; false when the storage write failed.
+ */
 export function saveDefaultView(view: FleetView): boolean {
   return safeSet(DEFAULT_VIEW_KEY, view);
 }
