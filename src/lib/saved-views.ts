@@ -175,6 +175,8 @@ export function renameSavedView(
 /**
  * Updates the view with the given id by merging the patch. Returns a new state
  * or null when the id is not found / patch is invalid; the original is unchanged.
+ * When `patch.name` is provided it is validated (via {@link validateSavedViewName})
+ * and a name that fails validation makes this return null.
  */
 export function updateSavedView(
   state: SavedViewsState,

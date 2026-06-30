@@ -54,6 +54,7 @@ afterEach(() => {
   forgetToken();
   sessionStorage.clear();
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 async function authenticate(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -184,5 +185,26 @@ describe('App ⌘K command palette', () => {
 
     await openPalette(user);
     expect(screen.getByText('Recent')).toBeInTheDocument();
+  });
+
+  it('warns when persisting a run command to recents is dropped', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticate(user);
+
+    // Storage writes now fail (quota / disabled storage) so the recents save()
+    // returns false; the dropped write must surface rather than vanish silently.
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    await openPalette(user);
+    await user.type(screen.getByRole('combobox'), 'Go to Matrix');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith('[command-recents] failed to persist recent commands');
+    });
   });
 });
