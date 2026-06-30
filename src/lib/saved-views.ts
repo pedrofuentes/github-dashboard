@@ -106,8 +106,8 @@ function emptyState(): SavedViewsState {
 
 /**
  * Creates a new {@link SavedView} with id and createdAt filled by the provided
- * generators (defaults to crypto.randomUUID and Date.now ISO string). The
- * injectable generators enable deterministic testing without stubbing crypto.
+ * generators (defaults to crypto.randomUUID and () => new Date().toISOString()).
+ * The injectable generators enable deterministic testing without stubbing crypto.
  */
 export function createSavedView(
   input: {
