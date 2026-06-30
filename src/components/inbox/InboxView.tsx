@@ -66,14 +66,18 @@ const ANNOUNCE_MARKER = '\u200B';
 export interface InboxViewProps {
   /** The lifted inbox view-model (one shared {@link useInbox} instance). */
   inbox: UseInboxResult;
-  /** Fleet repositories (drive the repo filter dropdown). */
+  /**
+   * Repositories for the repo filter dropdown. When a global repo scope is
+   * active, this is the filtered subset; otherwise it's the full fleet.
+   */
   repos: Repo[];
   /**
-   * Active GLOBAL repo scope (ADR-027). When provided, only items whose repo is
-   * in this set are rendered, so the faceted filter narrows the Inbox like every
-   * other view. Omitted means "no narrowing" (the whole fleet). The fleet-wide
-   * triage state and unread badge are left untouched — this scopes presentation
-   * only, so switching scope never mutates read/dismissed marks.
+   * Active GLOBAL repo scope (ADR-027). When provided (non-empty set), only
+   * items whose repo is in this set are rendered, scoping the Inbox to match
+   * the filtered view. `undefined` means no scope filter (show all fleet items).
+   * An empty set would scope to zero repos. Fleet-wide triage state and unread
+   * badge are left untouched — this scopes presentation only, so switching scope
+   * never mutates read/dismissed marks.
    */
   repoScope?: ReadonlySet<string>;
   /** True while the fleet fetch is in flight (skeleton on first load). */

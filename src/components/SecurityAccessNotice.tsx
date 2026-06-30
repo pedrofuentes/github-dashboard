@@ -20,8 +20,10 @@ function readDismissed(): boolean {
 function persistDismissed(): void {
   try {
     sessionStorage.setItem(DISMISSED_KEY, 'true');
-  } catch {
-    // Dismiss for this render tree even if browser storage is unavailable.
+  } catch (error) {
+    // Dismiss for this render tree even if browser storage is unavailable, but
+    // surface the failure so a broken/again-unavailable storage is diagnosable.
+    console.warn('[security-notice] failed to persist dismissal', error);
   }
 }
 

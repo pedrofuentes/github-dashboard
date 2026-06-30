@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SecurityAccessNotice } from './SecurityAccessNotice';
 
@@ -8,6 +8,7 @@ const STORAGE_KEY = 'gh-dashboard:security-access-dismissed';
 
 afterEach(() => {
   sessionStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('SecurityAccessNotice', () => {
@@ -41,6 +42,23 @@ describe('SecurityAccessNotice', () => {
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBe('true');
+  });
+
+  it('warns and still dismisses when sessionStorage persistence fails', async () => {
+    vi.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    render(<SecurityAccessNotice show />);
+
+    await user.click(screen.getByRole('button', { name: /dismiss/i }));
+
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      '[security-notice] failed to persist dismissal',
+      expect.any(Error),
+    );
   });
 
   it('stays hidden when already dismissed in sessionStorage', () => {

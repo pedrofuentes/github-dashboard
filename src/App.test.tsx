@@ -1,5 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect, useReducer } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadInboxTriage } from './lib/inbox/triage-store';
@@ -55,6 +56,32 @@ function repo(nameWithOwner: string, isPrivate = false): Repo {
     owner: nameWithOwner.slice(0, slash),
     name: nameWithOwner.slice(slash + 1),
     isPrivate,
+  };
+}
+
+// A controllable useRepoSignals seam. The real hook re-renders FleetPanel from
+// its own fetch state as slices settle — a self-triggered update that React.memo
+// never blocks. Tests walking the load window drive that same internal re-render
+// here (flip the fixture, force FleetPanel's own update) instead of re-rendering
+// the root, which a memoized FleetPanel with stable props correctly skips.
+function installControllableSignals(initial: GetRowData): (next: GetRowData) => void {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  mockUseRepoSignals.mockImplementation(() => {
+    const [, force] = useReducer((tick: number) => tick + 1, 0);
+    useEffect(() => {
+      listeners.add(force);
+      return () => {
+        listeners.delete(force);
+      };
+    }, []);
+    return { getRowData: current };
+  });
+  return (next: GetRowData) => {
+    current = next;
+    act(() => {
+      listeners.forEach((listener) => listener());
+    });
   };
 }
 
@@ -667,9 +694,9 @@ describe('App', () => {
 
     // Signals start UNloaded: the repo list has resolved but every repo's slices
     // are still absent, so deriveInboxItems is transiently empty (liveIds === []).
-    mockUseRepoSignals.mockReturnValue({ getRowData: () => ({}) });
+    const loadSignals = installControllableSignals(() => ({}));
     const user = userEvent.setup();
-    const { rerender } = render(<App />);
+    render(<App />);
     await authenticateWithRepos(user, [repo('octo/one'), repo('octo/two')]);
     await screen.findByRole('region', { name: /notifications inbox/i });
 
@@ -695,8 +722,7 @@ describe('App', () => {
       issues: { status: 'ready' },
       stale: { status: 'ready' },
     });
-    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataLoaded });
-    rerender(<App />);
+    loadSignals(getRowDataLoaded);
 
     // The seeded marks must SURVIVE the visit (not be wiped during the load window),
     // while the watermark still advances once the signals have settled.
@@ -744,10 +770,10 @@ describe('App', () => {
       reviews: { status: 'loading' },
       stale: { status: 'loading' },
     });
-    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataPartial });
+    const loadSignals = installControllableSignals(getRowDataPartial);
 
     const user = userEvent.setup();
-    const { rerender } = render(<App />);
+    render(<App />);
     await authenticateWithRepos(user, [repo('octo/one')]);
     await screen.findByRole('region', { name: /notifications inbox/i });
 
@@ -799,8 +825,7 @@ describe('App', () => {
         ],
       },
     });
-    mockUseRepoSignals.mockReturnValue({ getRowData: getRowDataLoaded });
-    rerender(<App />);
+    loadSignals(getRowDataLoaded);
 
     // Only now (every slice settled) does the watermark advance — and the seeded
     // ids still survive because they are live once their slices loaded.
@@ -1134,7 +1159,10 @@ describe('App', () => {
       // Inbox: every repo's item without a filter.
       await user.click(inboxToggleButton());
       await screen.findByRole('region', { name: /notifications inbox/i });
-      expect(within(inboxItemsList()).getAllByRole('listitem')).toHaveLength(2);
+      const list = inboxItemsList();
+      expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+      expect(within(list).getByText('octo/alpha')).toBeInTheDocument();
+      expect(within(list).getByText('octo/beta')).toBeInTheDocument();
     });
 
     it('keeps the fleet-wide unread badge count even when a global repo scope hides some repos (AC-16)', async () => {
