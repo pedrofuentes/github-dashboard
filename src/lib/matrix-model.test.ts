@@ -167,7 +167,7 @@ describe('matrix-model', () => {
     });
 
     it('preserves input order within the same health band (stable sort)', () => {
-      const repos = [mockRepo('a/h1'), mockRepo('b/h2'), mockRepo('c/h3'), mockRepo('d/h4')];
+      const repos = [mockRepo('d/h4'), mockRepo('b/h2'), mockRepo('c/h3'), mockRepo('a/h1')];
 
       const dataMap = new Map<string, RepoSignalData>([
         ['a/h1', healthyData],
@@ -183,7 +183,7 @@ describe('matrix-model', () => {
       };
       const model = buildMatrixModel(repos, getRowData);
 
-      expect(model.rows.map((r) => r.repo.nameWithOwner)).toEqual(['a/h1', 'b/h2', 'c/h3', 'd/h4']);
+      expect(model.rows.map((r) => r.repo.nameWithOwner)).toEqual(['d/h4', 'b/h2', 'c/h3', 'a/h1']);
     });
 
     it('groups rows by health and omits empty groups', () => {
@@ -289,9 +289,20 @@ describe('matrix-model', () => {
     });
 
     it('does not mutate the input repos array', () => {
-      const repos = [mockRepo('a/r1'), mockRepo('b/r2')];
+      const repos = [mockRepo('a/r1'), mockRepo('b/r2'), mockRepo('c/r3')];
       const original = [...repos];
-      const getRowData = () => healthyData;
+
+      const dataMap = new Map<string, RepoSignalData>([
+        ['a/r1', healthyData],
+        ['b/r2', brokenData],
+        ['c/r3', warningData],
+      ]);
+
+      const getRowData = (repo: Repo) => {
+        const data = dataMap.get(repo.nameWithOwner);
+        if (!data) throw new Error(`Missing test data for ${repo.nameWithOwner}`);
+        return data;
+      };
 
       buildMatrixModel(repos, getRowData);
 

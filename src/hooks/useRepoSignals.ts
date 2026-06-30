@@ -63,7 +63,13 @@ export interface UseRepoSignalsResult {
   getRowData: GetRowData;
   /** Retries signal data without reloading the repository list. */
   retrySignal?: (repo: Repo, signal: TileSignalType) => void;
-  /** Batched GraphQL fleet progress surfaced to view-level loading affordances. */
+  /**
+   * Batched GraphQL fleet progress surfaced to view-level loading affordances.
+   *
+   * This is marked optional as a deliberate hedge against future refactoring,
+   * but is always returned in practice. Callers should not rely on it being
+   * absent (it never is) — treat as effectively required with a defensive type.
+   */
   fleet?: {
     loading: boolean;
     ready: number;
