@@ -258,7 +258,7 @@ describe('FleetMatrix states', () => {
 
   it('shows a friendly empty state when the fleet has no repos', () => {
     render(<FleetMatrix repos={[]} getRowData={() => EMPTY} />);
-    expect(screen.getByText(/no repositories/i)).toBeInTheDocument();
+    expect(screen.getByText(/no repositories to display/i)).toBeInTheDocument();
     expect(screen.queryAllByRole('rowheader')).toHaveLength(0);
   });
 });
