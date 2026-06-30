@@ -197,7 +197,10 @@ export function SettingsOverlay({
                 </div>
                 <button
                   type="button"
-                  onClick={onForget}
+                  onClick={() => {
+                    onForget();
+                    onClose();
+                  }}
                   className="w-fit rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 >
                   Forget token
