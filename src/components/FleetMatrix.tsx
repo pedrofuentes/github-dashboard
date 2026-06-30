@@ -304,7 +304,7 @@ export function FleetMatrix({
                   colSpan={totalColumns}
                   className="px-3 py-10 text-center text-sm text-text-muted"
                 >
-                  No repositories found for this token.
+                  No repositories to display.
                 </td>
               </tr>
             ) : (

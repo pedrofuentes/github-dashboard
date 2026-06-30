@@ -245,11 +245,7 @@ describe('FleetMatrix states', () => {
 
   it('renders an error alert without retry control when onRetry is absent', () => {
     render(
-      <FleetMatrix
-        repos={[]}
-        getRowData={() => EMPTY}
-        error="Could not load your repositories."
-      />,
+      <FleetMatrix repos={[]} getRowData={() => EMPTY} error="Could not load your repositories." />,
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
