@@ -74,6 +74,7 @@ describe('SHORTCUTS definition list', () => {
     expect(palette?.description).toMatch(/command palette/i);
     // The palette is documented only — the matcher never returns it as an action.
     expect(matchShortcut(null, 'k')).toEqual({ pending: null });
+    expect(matchShortcut(null, 'K')).toEqual({ pending: null });
   });
 });
 

@@ -4,7 +4,7 @@
 export interface FuzzyMatchResult {
   /** Whether the query matched the target */
   matched: boolean;
-  /** Match score (higher is better). 0 if not matched. */
+  /** Match score (higher is better). 0 if not matched, or clamped to 0 if penalties exceed bonuses. */
   score: number;
   /** Indices of matched characters in the target string */
   indices: number[];
@@ -189,6 +189,11 @@ export function fuzzyRank<T>(query: string, items: readonly T[], keyFn: (item: T
  * @param items - Array of items to rank
  * @param keysFn - Function to extract multiple searchable keys from each item
  * @returns Filtered and sorted array of matching items (descending best score)
+ *
+ * Tie-breaking order:
+ * 1. Higher score wins
+ * 2. Shorter best-match key length wins
+ * 3. Original order preserved (stable sort)
  */
 export function fuzzyRankBy<T>(
   query: string,

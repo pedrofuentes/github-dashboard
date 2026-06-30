@@ -65,4 +65,18 @@ describe('resolveDeckMove', () => {
   it('returns null when the id matches neither list', () => {
     expect(resolveDeckMove(repoIds, columnIds, 'mystery', 'octo/a')).toBeNull();
   });
+
+  it('returns null for cross-axis drop (column id active, repo id over)', () => {
+    // When a column is dragged over a repo row, the active is a columnIds member
+    // so resolveDeckMove routes to the column axis, but the over (repo id) is
+    // absent from columnIds (indexOf = -1) so reorderIndices returns null.
+    expect(resolveDeckMove(repoIds, columnIds, 'col:ci', 'octo/a')).toBeNull();
+  });
+
+  it('returns null for cross-axis drop (repo id active, column id over)', () => {
+    // When a repo is dragged over a column, the active is NOT a columnIds member
+    // so resolveDeckMove routes to the repo axis, but the over (column id) is
+    // absent from repoIds (indexOf = -1) so reorderIndices returns null.
+    expect(resolveDeckMove(repoIds, columnIds, 'octo/a', 'col:ci')).toBeNull();
+  });
 });
