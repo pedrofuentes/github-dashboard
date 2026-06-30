@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { AccentTone } from '../../components/tiles/types';
 import type { RepoSignalData } from '../../types/fleet';
 import { parseColorTokens } from '../css-tokens';
-import { BOARD_KEY_ACCENT_VAR, boardKeySpec, formatCount } from './board-key-spec';
+import { BOARD_KEY_ACCENT_VAR, boardKeyAccentVar, boardKeySpec, formatCount } from './board-key-spec';
 
 describe('formatCount (SD design-spec §4.1)', () => {
   it('returns values below 1000 unchanged', () => {

@@ -92,6 +92,14 @@ export const BOARD_KEY_ACCENT_VAR: Record<AccentTone, string> = {
 };
 
 /**
+ * Defensive wrapper for {@link BOARD_KEY_ACCENT_VAR} that provides a neutral
+ * fallback when indexed by an unvalidated key.
+ */
+export function boardKeyAccentVar(tone: AccentTone): string {
+  return BOARD_KEY_ACCENT_VAR[tone] ?? 'var(--color-neutral)';
+}
+
+/**
  * Compact large-number formatter (Stream Deck design-spec §4.1).
  *
  * `<1000` as-is; then `k`/`M`/`B` suffixes via `parseFloat((n/scale).toFixed(1))`
@@ -102,6 +110,7 @@ export const BOARD_KEY_ACCENT_VAR: Record<AccentTone, string> = {
  * is co-located here instead of reused.
  */
 export function formatCount(n: number): string {
+  if (!Number.isFinite(n)) return '0';
   if (n < 0) {
     return `-${formatCount(Math.abs(n))}`;
   }
@@ -288,6 +297,15 @@ function readyValue(
       // hero value AND attach srLabel so screen-reader/hover users get the same
       // context the grid cell already provides via its title/sr-only.
       if (!grade) {
+        return {
+          line2: 'n/a',
+          accent: gradeAccent(undefined),
+          srLabel: 'No security-alert access for this repository (token scope or feature disabled)',
+        };
+      }
+      // Validate grade is in the A-F allowlist before echoing to line2.
+      const validGrades = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+      if (!validGrades.includes(grade as (typeof validGrades)[number])) {
         return {
           line2: 'n/a',
           accent: gradeAccent(undefined),
