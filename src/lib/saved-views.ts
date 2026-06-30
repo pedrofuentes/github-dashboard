@@ -79,6 +79,15 @@ export function validateSavedViewName(name: string): string | null {
   if (trimmed.length > MAX_VIEW_NAME_LENGTH) {
     return `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`;
   }
+
+  // Defense-in-depth: reject control chars (U+0000–U+001F, U+007F),
+  // bidi overrides, and zero-width chars to prevent future non-React-sink issues.
+  // eslint-disable-next-line no-control-regex
+  const dangerousChars = /[\x00-\x1F\x7F\u200B-\u200D\u202D\u202E\u2066\u2067\uFEFF]/;
+  if (dangerousChars.test(trimmed)) {
+    return 'Name contains invalid characters.';
+  }
+
   return null;
 }
 
