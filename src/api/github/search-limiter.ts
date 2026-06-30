@@ -50,6 +50,17 @@ export const SEARCH_MAX_RETRIES = 3;
  */
 export const SEARCH_MAX_RETRY_WAIT_SECONDS = 90;
 
+/**
+ * Waiter-queue depth that trips a one-time observability warning. The queue is
+ * bounded only by memory, never dropped — on a very large fleet the Search
+ * fan-out can enqueue faster than the ~30 req/min budget drains. At that rate a
+ * 200-deep backlog is already >6 minutes of pending Search work, a clear sign
+ * the fleet has outgrown the budget and worth surfacing once (#527). Exported
+ * for reference; override per instance via the {@link SearchLimiter}
+ * constructor's third argument (used by tests).
+ */
+export const SEARCH_QUEUE_WARN_THRESHOLD = 200;
+
 /** A task to run under the limiter. It closes over its own abort handling. */
 type SearchTask<T> = () => Promise<T> | T;
 
@@ -75,11 +86,18 @@ export class SearchLimiter {
   private readonly intervalMs: number;
   private tokens: number;
   private readonly queue: Array<Waiter> = [];
+  private readonly queueWarnThreshold: number;
+  private queueWarned = false;
   private refillTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(capacity: number = SEARCH_BURST, intervalMs: number = SEARCH_MIN_INTERVAL_MS) {
+  constructor(
+    capacity: number = SEARCH_BURST,
+    intervalMs: number = SEARCH_MIN_INTERVAL_MS,
+    queueWarnThreshold: number = SEARCH_QUEUE_WARN_THRESHOLD,
+  ) {
     this.capacity = Math.max(1, Math.floor(capacity));
     this.intervalMs = Math.max(0, intervalMs);
+    this.queueWarnThreshold = Math.max(1, Math.floor(queueWarnThreshold));
     this.tokens = this.capacity;
   }
 
@@ -100,8 +118,7 @@ export class SearchLimiter {
         waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
         signal.addEventListener('abort', waiter.onAbort, { once: true });
       }
-      this.queue.push(waiter as Waiter);
-      this.pump();
+      this.enqueue(waiter as Waiter);
     });
   }
 
@@ -110,7 +127,26 @@ export class SearchLimiter {
     this.clearRefillTimer();
     for (const waiter of this.queue) this.detachAbort(waiter);
     this.queue.length = 0;
+    this.queueWarned = false;
     this.tokens = this.capacity;
+  }
+
+  /**
+   * Appends a waiter and pumps the bucket. Emits a single observability warning
+   * the first time the backlog reaches {@link queueWarnThreshold}; the latch
+   * resets in {@link pump} once the queue drains back below it, so a recurring
+   * backlog is surfaced again without spamming the console (#527).
+   */
+  private enqueue(waiter: Waiter): void {
+    this.queue.push(waiter);
+    if (this.queue.length >= this.queueWarnThreshold && !this.queueWarned) {
+      this.queueWarned = true;
+      console.warn(
+        `SearchLimiter: waiter queue depth ${this.queue.length} reached threshold ` +
+          `${this.queueWarnThreshold}; Search requests are backing up on a large fleet.`,
+      );
+    }
+    this.pump();
   }
 
   private pump(): void {
@@ -120,6 +156,7 @@ export class SearchLimiter {
       this.detachAbort(waiter);
       void this.runWaiter(waiter);
     }
+    if (this.queue.length < this.queueWarnThreshold) this.queueWarned = false;
     this.ensureRefillTimer();
   }
 
@@ -158,7 +195,15 @@ export class SearchLimiter {
       } catch (err) {
         if (isAbortError(err) || signal?.aborted) throw err;
         const retryAfterSeconds = secondaryLimitRetryAfter(err);
-        if (retryAfterSeconds === undefined || attempt >= SEARCH_MAX_RETRIES) throw err;
+        if (retryAfterSeconds === undefined) throw err;
+        if (attempt >= SEARCH_MAX_RETRIES) {
+          // Retried the secondary limit SEARCH_MAX_RETRIES times and still
+          // failing. In this client-only SPA the console is the only sink, so
+          // leave an operator breadcrumb distinguishing "gave up after retries"
+          // from an immediate failure before propagating the error (#527).
+          console.warn(`SearchLimiter: secondary limit retries exhausted (${attempt})`, err);
+          throw err;
+        }
         attempt += 1;
         // Honor Retry-After before re-issuing the request; an abort during the
         // back-off rejects via abortableSleep.
@@ -180,8 +225,7 @@ export class SearchLimiter {
         waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
         signal.addEventListener('abort', waiter.onAbort, { once: true });
       }
-      this.queue.push(waiter as Waiter);
-      this.pump();
+      this.enqueue(waiter as Waiter);
     });
   }
 

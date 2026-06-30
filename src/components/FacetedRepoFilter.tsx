@@ -301,7 +301,7 @@ export function FacetedRepoFilter({ repos, filter }: FacetedRepoFilterProps): Re
     }
   }, [expanded]);
 
-  // Record the current query when it becomes active (debounced via useEffect).
+  // Record the current query when it becomes active (rising-edge detector).
   const previousIsActive = useRef(isActive);
   useEffect(() => {
     if (isActive && !previousIsActive.current) {

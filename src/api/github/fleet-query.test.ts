@@ -19,7 +19,7 @@
  * @license MIT
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 import type {
   CiSignalSlice,
@@ -187,11 +187,13 @@ function chunkRepoNodes(init: RequestInit | undefined): Response {
 /**
  * Builds a minimal GraphQL repo node with a pullRequests connection. Each entry
  * in `prs` only needs `isDraft` and `authorAssociation`; other fields default to
- * safe placeholders so tests that only care about counts stay concise.
+ * safe placeholders so tests that only care about counts stay concise. An
+ * optional `pageInfo` surfaces the connection's `hasNextPage` truncation flag.
  */
 function prNode(
   nameWithOwner: string,
   prs: Array<{ isDraft: boolean; authorAssociation: string }>,
+  pageInfo?: { hasNextPage: boolean },
 ): unknown {
   return {
     nameWithOwner,
@@ -205,11 +207,27 @@ function prNode(
         authorAssociation: p.authorAssociation,
         author: { login: `user${i + 1}` },
       })),
+      ...(pageInfo ? { pageInfo } : {}),
     },
   };
 }
 
 const TOKEN = 'ghs_token';
+
+/**
+ * Per-repo GraphQL field errors now emit a `console.warn` (#550). Silence it for
+ * the whole file and expose the spy so the field-error-logging tests can assert
+ * on it — without leaking warning noise from the existing error-path cases.
+ */
+let warnSpy: MockInstance;
+
+beforeEach(() => {
+  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  warnSpy.mockRestore();
+});
 
 // ── buildFleetQuery / buildFleetVariables ──────────────────────────────────
 
@@ -235,6 +253,7 @@ describe('buildFleetQuery', () => {
   it('composes the PR per-repo fragment inside each repository alias', () => {
     const query = buildFleetQuery(repos, null);
     expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('pageInfo { hasNextPage }');
     expect(query).toContain('isDraft');
     expect(query).toContain('authorAssociation');
   });
@@ -266,6 +285,7 @@ describe('buildFleetQuery', () => {
     expect(query).toContain('openIssues: issues(states: OPEN) { totalCount }');
     expect(query).toContain('myIssues: issues(states: OPEN, filterBy: { createdBy: $viewer })');
     expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('pageInfo { hasNextPage }');
     expect(query).toContain('stale_r0: search(type: ISSUE');
     expect(query).toContain('stale_r1: search(type: ISSUE');
   });
@@ -284,6 +304,7 @@ describe('buildFleetQuery', () => {
     expect(query).not.toContain('$viewer: String');
     expect(query).toContain('defaultBranchRef');
     expect(query).toContain('pullRequests(states: OPEN');
+    expect(query).toContain('pageInfo { hasNextPage }');
     expect(query).toContain('stale_r0: search(type: ISSUE');
 
     vi.doUnmock('../../lib/graphql-flags');
@@ -1152,6 +1173,159 @@ describe('prDeriver – executeFleetBatch', () => {
       externalCount: 0,
       score: 0,
     });
+  });
+
+  it('flags truncated when the pullRequests connection reports hasNextPage (#550)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [{ isDraft: false, authorAssociation: 'MEMBER' }], {
+            hasNextPage: true,
+          }),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    const slice = prSlice(prMapOf(result), 'o/r');
+    expect(slice.status).toBe('ready');
+    expect(slice.truncated).toBe(true);
+  });
+
+  it('omits truncated when the connection reports no further pages (#550)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [{ isDraft: false, authorAssociation: 'MEMBER' }], {
+            hasNextPage: false,
+          }),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/r').truncated).toBeUndefined();
+  });
+
+  it('omits truncated when the connection carries no pageInfo at all (#550)', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: prNode('o/r', [{ isDraft: false, authorAssociation: 'MEMBER' }]),
+        },
+      }),
+    );
+
+    const result = await executeFleetBatch([repo('o/r')], null, TOKEN);
+    expect(prSlice(prMapOf(result), 'o/r').truncated).toBeUndefined();
+  });
+});
+
+// ── per-repo GraphQL field-error logging (#550) ──────────────────────────────
+
+describe('per-repo derivers – GraphQL field-error logging (#550)', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn();
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    graphqlLimiter.reset();
+    graphqlRateLimitStore.reset();
+  });
+
+  it('warns with the alias + field path when a CI defaultBranchRef subtree errors', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', isArchived: false, defaultBranchRef: null },
+        },
+        errors: [{ message: 'field error', path: ['r0', 'defaultBranchRef'] }],
+      }),
+    );
+
+    await executeFleetBatch([repo('o/r')], null, TOKEN);
+
+    expect(warnSpy).toHaveBeenCalled();
+    const messages = warnSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      messages.some(
+        (m) => m.includes('ci') && m.includes('o/r') && m.includes('r0.defaultBranchRef'),
+      ),
+    ).toBe(true);
+  });
+
+  it('warns with the alias + field path when an issues openIssues subtree errors', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', openIssues: null },
+        },
+        errors: [{ message: 'field error', path: ['r0', 'openIssues'] }],
+      }),
+    );
+
+    await executeFleetBatch([repo('o/r')], null, TOKEN);
+
+    const messages = warnSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      messages.some(
+        (m) => m.includes('issues') && m.includes('o/r') && m.includes('r0.openIssues'),
+      ),
+    ).toBe(true);
+  });
+
+  it('warns with the alias + field path when a PR pullRequests subtree errors', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: { nameWithOwner: 'o/r', pullRequests: null },
+        },
+        errors: [{ message: 'field error', path: ['r0', 'pullRequests'] }],
+      }),
+    );
+
+    await executeFleetBatch([repo('o/r')], null, TOKEN);
+
+    const messages = warnSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      messages.some(
+        (m) => m.includes('pullRequests') && m.includes('o/r') && m.includes('r0.pullRequests'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not warn for a clean chunk with no field errors', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        data: {
+          viewer: null,
+          rateLimit: { cost: 1, remaining: 4990, resetAt: futureIso() },
+          r0: rollupNode('o/r', 'SUCCESS'),
+        },
+      }),
+    );
+
+    await executeFleetBatch([repo('o/r')], null, TOKEN);
+
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 
