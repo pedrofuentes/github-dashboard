@@ -472,6 +472,38 @@ describe('resetDashboardLayout', () => {
     });
     expect(() => resetDashboardLayout()).not.toThrow();
   });
+
+  it('removes v1 first to prevent re-migration if v2 removal throws', () => {
+    // Sentinel finding: if v2 is removed first and v1 removal then throws, the
+    // next load re-migrates v1 → v2 rather than falling back to DEFAULT_LAYOUT.
+    // Removing v1 first prevents this: if v2 removal throws, v1 is already gone.
+    const repos = [makeRepo('octo/a'), makeRepo('octo/b')];
+    const layout = DEFAULT_LAYOUT(repos);
+
+    // Seed both v1 and v2 with the same layout.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    saveDashboardLayout(layout);
+
+    // Track call order and simulate v2 removal throwing.
+    const callOrder: string[] = [];
+    const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+    vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
+      callOrder.push(key);
+      if (key === STORAGE_KEY_V2) {
+        throw new Error('v2 removal blocked');
+      }
+      // v1 removal succeeds - actually remove it
+      originalRemoveItem(key);
+    });
+
+    resetDashboardLayout();
+
+    // After reset with v1-first order: v1 removal succeeds, v2 removal throws.
+    // v1 should be gone (preventing re-migration) and v2 should remain.
+    expect(callOrder).toEqual([STORAGE_KEY, STORAGE_KEY_V2]); // v1 removed first
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // v1 is gone
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull(); // v2 remains after throw
+  });
 });
 
 describe('versioned layout migration (v1 → v2)', () => {
