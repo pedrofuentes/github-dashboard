@@ -143,6 +143,18 @@ function withFacet<K extends keyof Facets>(
   return { ...query, facets: { ...query.facets, [key]: value } };
 }
 
+/**
+ * Persists `query`, surfacing a dropped write in devtools rather than silently
+ * losing it. `save()` returns false when the value fails validation or storage
+ * is unavailable/full (quota, Safari private mode); mirror the migration-path
+ * warn so this save-boolean (#595) is never discarded.
+ */
+function persistQuery(store: VersionedStore<RepoFilterQueryV2>, query: RepoFilterQueryV2): void {
+  if (!store.save(query)) {
+    console.warn('[repo-filter] failed to persist filter query');
+  }
+}
+
 function signalFilterKey(data: RepoSignalData): string {
   const staleItems = data.stale?.staleItems ?? [];
   return JSON.stringify({
@@ -247,7 +259,7 @@ export function useRepoFilterQuery(
     // narrowed query while the fleet is empty, so a transiently empty fleet
     // never wipes the saved pins.
     if (repos.length > 0) {
-      store.save(reconciled);
+      persistQuery(store, reconciled);
     }
     setQueryState(reconciled);
   }, [fleetKey, repos, store]);
@@ -256,7 +268,7 @@ export function useRepoFilterQuery(
     (transform: (current: RepoFilterQueryV2) => RepoFilterQueryV2) => {
       setQueryState((current) => {
         const next = transform(current);
-        store.save(next);
+        persistQuery(store, next);
         return next;
       });
     },
