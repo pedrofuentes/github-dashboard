@@ -14,7 +14,7 @@
  * </TileBodyErrorBoundary>
  * ```
  */
-import type { ReactNode } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
 
 import { TileMessage } from '../TileMessage';
@@ -46,7 +46,7 @@ export class TileBodyErrorBoundary extends Component<
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error, errorInfo: unknown): void {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log the error for debugging (in production this would go to a logging service)
     console.error('TileBodyErrorBoundary caught an error:', error, errorInfo);
   }

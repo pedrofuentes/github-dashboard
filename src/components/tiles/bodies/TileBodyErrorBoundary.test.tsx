@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TileBodyErrorBoundary } from './TileBodyErrorBoundary';
 
@@ -12,24 +12,29 @@ function SafeChild(): JSX.Element {
 }
 
 describe('TileBodyErrorBoundary', () => {
-  it('catches a render error and displays fallback UI', () => {
-    // Suppress console.error noise from React error boundaries in tests
-    const originalError = console.error;
-    console.error = () => {};
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-    const { container, queryByTestId } = render(
-      <TileBodyErrorBoundary>
-        <ThrowingChild />
-      </TileBodyErrorBoundary>,
+  it('catches a render error and displays fallback UI; sibling boundary unaffected', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { container, getByTestId } = render(
+      <div>
+        <TileBodyErrorBoundary>
+          <ThrowingChild />
+        </TileBodyErrorBoundary>
+        <TileBodyErrorBoundary>
+          <SafeChild />
+        </TileBodyErrorBoundary>
+      </div>,
     );
 
-    console.error = originalError;
-
-    // The throwing child should not render
-    expect(queryByTestId('safe-child')).toBeNull();
-    // The fallback should be present
+    // The fallback should be present for the throwing boundary
     expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
     expect(container.textContent).toMatch(/couldn.*t display/i);
+    // The sibling boundary's child is unaffected — real sibling isolation assertion
+    expect(getByTestId('safe-child')).toBeInTheDocument();
   });
 
   it('renders children normally when no error occurs', () => {
@@ -43,8 +48,7 @@ describe('TileBodyErrorBoundary', () => {
   });
 
   it('isolates errors: sibling tiles remain unaffected', () => {
-    const originalError = console.error;
-    console.error = () => {};
+    vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { container, getByTestId } = render(
       <div>
@@ -56,8 +60,6 @@ describe('TileBodyErrorBoundary', () => {
         </TileBodyErrorBoundary>
       </div>,
     );
-
-    console.error = originalError;
 
     // First boundary catches error → fallback
     const fallback = container.querySelector('[data-state="failed-to-load"]');
