@@ -72,8 +72,7 @@ describe('buildCommandRegistry', () => {
 
     expect(cmd.label).toBe('Go to Deck');
     expect(cmd.group).toBe('Navigation');
-    expect(Array.isArray(cmd.keywords ?? [])).toBe(true);
-    expect((cmd.keywords ?? []).length).toBeGreaterThan(0);
+    expect(cmd.keywords).toEqual(['deck', 'view', 'switch', 'keys', 'stream', 'signals']);
   });
 
   it('"Go to Deck" run() navigates to the deck view', () => {
