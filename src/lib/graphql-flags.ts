@@ -21,12 +21,20 @@ export const GRAPHQL_SIGNAL_FLAGS: Record<TileSignalType, boolean> = {
 };
 
 /**
+ * Typed wrapper over {@link Object.entries} for records whose key type is
+ * statically known. `Object.entries` widens keys to `string`, which would
+ * otherwise force an unsafe cast at every call site; centralizing it here keeps
+ * the cast in one place and hands callers back the precise `[K, V]` tuples.
+ */
+function typedEntries<K extends string, V>(obj: Record<K, V>): Array<[K, V]> {
+  return Object.entries(obj) as Array<[K, V]>;
+}
+
+/**
  * Signals currently served via the batched GraphQL fleet-query layer, derived
  * from {@link GRAPHQL_SIGNAL_FLAGS} so flipping a flag updates every consumer.
  */
-export const GRAPHQL_ENABLED_SIGNALS: TileSignalType[] = (
-  Object.entries(GRAPHQL_SIGNAL_FLAGS) as Array<[TileSignalType, boolean]>
-)
+export const GRAPHQL_ENABLED_SIGNALS: TileSignalType[] = typedEntries(GRAPHQL_SIGNAL_FLAGS)
   .filter(([, enabled]) => enabled)
   .map(([signal]) => signal);
 

@@ -43,15 +43,32 @@ export function fuzzyMatch(query: string, target: string): FuzzyMatchResult {
     return { matched: false, score: 0, indices: [] };
   }
 
-  const queryChars = toChars(query).map((char) => char.toLowerCase());
-  const targetChars = toChars(target);
+  return fuzzyMatchChars(
+    toChars(query).map((char) => char.toLowerCase()),
+    toChars(target),
+  );
+}
+
+/**
+ * Core fuzzy-match scorer operating on already-converted code-point arrays.
+ *
+ * Both inputs MUST be non-empty: callers handle the empty-query / empty-target
+ * fast paths ({@link fuzzyMatch}) and skip empty keys ({@link fuzzyRankBy}) before
+ * reaching here. Splitting this out lets the ranking hot path convert each key to
+ * code points once and reuse it for both the match and the length tie-break,
+ * instead of re-running `toChars` inside every `fuzzyMatch` call (#579).
+ *
+ * @param queryLowerChars - Lower-cased code points of the query.
+ * @param targetChars - Code points of the target in original case.
+ */
+function fuzzyMatchChars(queryLowerChars: string[], targetChars: string[]): FuzzyMatchResult {
   const targetLowerChars = targetChars.map((char) => char.toLowerCase());
 
   // Find subsequence match and collect indices
   const indices: number[] = [];
   let targetIdx = 0;
 
-  for (const queryChar of queryChars) {
+  for (const queryChar of queryLowerChars) {
     let found = false;
 
     while (targetIdx < targetLowerChars.length) {
@@ -205,6 +222,10 @@ export function fuzzyRankBy<T>(
     return [...items];
   }
 
+  // Convert the query to lower-cased code points once for the whole ranking pass
+  // instead of re-running toChars inside every per-key fuzzyMatch call (#579).
+  const queryLowerChars = toChars(query).map((char) => char.toLowerCase());
+
   // Match against all keys and keep the best score
   const scored = items
     .map((item, originalIndex) => {
@@ -215,8 +236,11 @@ export function fuzzyRankBy<T>(
       for (const key of keys) {
         if (key.length === 0) continue;
 
-        const result = fuzzyMatch(query, key);
-        const keyLength = toChars(key).length;
+        // Convert each key to code points once and reuse it for both the match
+        // and the length tie-break, avoiding a second toChars per key (#579).
+        const keyChars = toChars(key);
+        const result = fuzzyMatchChars(queryLowerChars, keyChars);
+        const keyLength = keyChars.length;
         if (
           result.matched &&
           (!bestResult.matched ||
