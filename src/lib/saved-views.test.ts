@@ -60,18 +60,32 @@ describe('validateSavedViewName', () => {
     expect(validateSavedViewName('View\x7FName')).not.toBeNull();
   });
 
-  it('rejects names containing bidi override characters', () => {
-    expect(validateSavedViewName('View\u202EName')).not.toBeNull(); // RIGHT-TO-LEFT OVERRIDE
+  it('rejects names containing bidi control characters (overrides, embeddings, isolates)', () => {
+    // Bidi embeddings (U+202A-U+202E)
+    expect(validateSavedViewName('View\u202AName')).not.toBeNull(); // LEFT-TO-RIGHT EMBEDDING
+    expect(validateSavedViewName('View\u202BName')).not.toBeNull(); // RIGHT-TO-LEFT EMBEDDING
+    expect(validateSavedViewName('View\u202CName')).not.toBeNull(); // POP DIRECTIONAL FORMATTING
     expect(validateSavedViewName('View\u202DName')).not.toBeNull(); // LEFT-TO-RIGHT OVERRIDE
+    expect(validateSavedViewName('View\u202EName')).not.toBeNull(); // RIGHT-TO-LEFT OVERRIDE
+    // Bidi isolates (U+2066-U+2069)
     expect(validateSavedViewName('View\u2066Name')).not.toBeNull(); // LEFT-TO-RIGHT ISOLATE
     expect(validateSavedViewName('View\u2067Name')).not.toBeNull(); // RIGHT-TO-LEFT ISOLATE
+    expect(validateSavedViewName('View\u2068Name')).not.toBeNull(); // FIRST STRONG ISOLATE
+    expect(validateSavedViewName('View\u2069Name')).not.toBeNull(); // POP DIRECTIONAL ISOLATE
   });
 
-  it('rejects names containing zero-width characters', () => {
+  it('rejects names containing zero-width space and BOM', () => {
     expect(validateSavedViewName('View\u200BName')).not.toBeNull(); // ZERO WIDTH SPACE
-    expect(validateSavedViewName('View\u200CName')).not.toBeNull(); // ZERO WIDTH NON-JOINER
-    expect(validateSavedViewName('View\u200DName')).not.toBeNull(); // ZERO WIDTH JOINER
-    expect(validateSavedViewName('View\uFEFFName')).not.toBeNull(); // ZERO WIDTH NO-BREAK SPACE
+    expect(validateSavedViewName('View\uFEFFName')).not.toBeNull(); // ZERO WIDTH NO-BREAK SPACE (BOM)
+  });
+
+  it('allows ZWJ and ZWNJ for legitimate emoji and script sequences', () => {
+    // ZWJ (U+200D) is required for multi-part emoji sequences
+    expect(validateSavedViewName('👨‍👩‍👧')).toBeNull(); // family emoji with ZWJ
+    expect(validateSavedViewName('🏳️‍🌈')).toBeNull(); // rainbow flag with ZWJ
+    expect(validateSavedViewName('View👨‍👩‍👧Name')).toBeNull(); // emoji in name
+    // ZWNJ (U+200C) has legitimate uses in Persian, Arabic, and other scripts
+    expect(validateSavedViewName('View\u200CName')).toBeNull(); // ZERO WIDTH NON-JOINER
   });
 });
 
