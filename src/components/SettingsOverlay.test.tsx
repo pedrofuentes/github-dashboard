@@ -271,4 +271,17 @@ describe('SettingsOverlay', () => {
 
     expect(within(dialog).getByRole('button', { name: /forget token/i })).toHaveFocus();
   });
+
+  it('closes the overlay after clicking Forget token', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    const opener = screen.getByRole('button', { name: /open settings/i });
+    await user.click(opener);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /forget token/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
 });
