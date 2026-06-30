@@ -4,9 +4,11 @@
  * This is the API-layer machinery for the REST→GraphQL fleet-health migration.
  * It turns a list of {@link Repo}s into a single GraphQL document that fetches
  * every repo's signals in one round-trip, then folds the response back into one
- * slice per (signal, repo) pair. Nothing consumes it yet — a later increment
- * wires it into a hook behind a flag — so this module is pure infrastructure
- * with zero runtime behavior change.
+ * slice per (signal, repo) pair. Several signals already route through it: each
+ * is wired into its hook behind a per-signal GraphQL flag
+ * ({@link graphqlSignalEnabled}), so flipping a flag swaps that signal from its
+ * REST hook to this batched path. Signals whose flag is off still take the REST
+ * path, so this module's effect is gated entirely by those flags.
  *
  * Design goals:
  *  - **Cost**: each repo is emitted as a TOP-LEVEL singular `repository(...)`
@@ -124,6 +126,12 @@ const ViewerSchema = z.object({ login: z.string() }).passthrough();
  * The validated `data` payload of a fleet query. Repo aliases (`r0`, `r1`, …)
  * are dynamic, so they are reached through the index signature; `viewer` and
  * `rateLimit` are always present in the selection set.
+ *
+ * Schema note: the chunk schema is `.passthrough()` (see
+ * {@link buildChunkDataSchema}), so server keys outside the declared selection
+ * survive parsing and remain reachable here as `unknown`-shaped extras. Only the
+ * declared fields (`viewer`, `rateLimit`, each `r{i}` node) are validated; read
+ * anything else defensively.
  */
 export interface FleetQueryData {
   viewer: { login: string } | null;
@@ -134,6 +142,13 @@ export interface FleetQueryData {
 /**
  * Builds the Zod schema for a chunk of `repoCount` repos. The repo aliases are
  * generated dynamically (`r0`..`r{repoCount-1}`) to mirror {@link buildFleetQuery}.
+ *
+ * The schema (and each repo node) is `.passthrough()`: only the explicitly
+ * declared fields are validated, while any other server-sent keys pass through
+ * unvalidated into {@link FleetChunkContext.data}. This keeps parsing tolerant of
+ * additive schema changes, but means a top-level deriver reading an undeclared
+ * alias gets an UNVALIDATED value and must re-parse it itself (e.g. the stale and
+ * reviews derivers `safeParse` their aliased search payloads).
  */
 function buildChunkDataSchema(repoCount: number): ZodType<FleetQueryData> {
   const shape: Record<string, ZodType> = {
@@ -247,7 +262,12 @@ export interface FleetChunkContext {
   readonly repos: readonly Repo[];
   /** Viewer login carried into the query (`null` when unauthenticated). */
   readonly viewerLogin: string | null;
-  /** The validated `data` payload (top-level aliases for top-level derivers). */
+  /**
+   * The validated `data` payload (top-level aliases for top-level derivers).
+   * Built with a `.passthrough()` schema, so a top-level deriver's own alias
+   * arrives UNVALIDATED (only `viewer`/`rateLimit`/`r{i}` nodes are checked) and
+   * must be re-parsed by the deriver before use.
+   */
   readonly data: FleetQueryData;
   /** Path-scoped error index for this chunk's response. */
   readonly errors: FleetErrorIndex;
@@ -284,7 +304,17 @@ export interface SignalDeriver {
   readonly kind: 'per-repo' | 'top-level' | 'top-level-global';
   /** Selection-set fragment composed inside each `repository(...)` alias. */
   repoFragment?(viewerLogin: string | null): string;
-  /** Aliased top-level selection (e.g. a `search(...)` field). */
+  /**
+   * Aliased top-level selection (e.g. a `search(...)` field).
+   *
+   * @security Returns a raw interpolated string spliced directly into the query
+   * document, so any caller-influenced value — `repos` (owner/name) and
+   * `viewerLogin` — MUST reach the server as a BOUND GraphQL variable (declared
+   * via {@link topLevelVariables} and referenced as `$name`), never inlined into
+   * the returned string. Inlining a repo/login literal would reopen a GraphQL
+   * injection surface. Unreachable today (the only top-level derivers bind every
+   * such value), but this contract binds future top-level derivers.
+   */
   topLevelFragment?(repos: readonly Repo[], viewerLogin: string | null): string;
   /**
    * Top-level query variables this deriver needs declared and bound. Each entry
@@ -345,8 +375,13 @@ function ciRepoFragment(): string {
 }
 
 /**
- * Folds one repo's node + the error index into a {@link CiSignalSlice} that is
- * value-identical in shape to what `useCiSignal` emits today.
+ * Folds one repo's node + the error index into a {@link CiSignalSlice}.
+ *
+ * Parity scope: this matches `useCiSignal` only on the health-summary fields the
+ * dashboard renders — `status`, `conclusion`, `score`, and `failingCount`. It
+ * deliberately OMITS the REST hook's run-identity fields (`latestRunUrl`,
+ * `runId`, `updatedAt`), which have no GraphQL rollup equivalent here, so the
+ * slice is parity-in-summary, not value-identical.
  *
  * Mapping (GraphQL `StatusState` → slice):
  *  - `FAILURE` / `ERROR`  → failing (`conclusion: 'failure'`, score 100)
@@ -678,6 +713,8 @@ function staleTopLevelFragment(repos: readonly Repo[]): string {
  * - The alias errored (`has`/`coversField`) → `{ status: 'error' }`.
  * - The alias is absent WITHOUT a covering error → ready-zero (no data), so a
  *   repo GitHub silently omitted never reads as a failure.
+ * - A present-but-malformed payload (fails the strict parse) → `{ status: 'error' }`,
+ *   never a false ready-zero (mirrors the reviews deriver, gql-7 #552).
  * - Otherwise `issueCount` → `staleCount`/`score`; nodes → `staleItems`
  *   (`html_url`/`updated_at` un-projected, `type` from `__typename`), omitted
  *   when empty.
@@ -1326,9 +1363,15 @@ async function runGlobalDerivers(
  *    re-thrown so a cancelled batch settles immediately.
  *
  * @param repos - The fleet to query.
- * @param viewerLogin - Viewer login forwarded to top-level derivers (`null` ok).
+ * @param viewerLogin - Viewer login forwarded to per-repo and top-level derivers
+ *   (`null` ok); drives the per-repo `myIssues` fragment + `$viewer` variable.
  * @param token - GitHub token for the GraphQL request.
  * @param signal - Optional abort signal threaded to every request.
+ * @param onProgress - Optional progressive callback invoked with a shallow clone
+ *   ({@link cloneResult}) of the result-so-far after each chunk settles (success
+ *   OR isolated failure) and once more after the global derivers complete. Every
+ *   emit is abort-guarded (skipped when `signal?.aborted`), so a cancelled batch
+ *   makes no further progress calls.
  */
 export async function executeFleetBatch(
   repos: readonly Repo[],
