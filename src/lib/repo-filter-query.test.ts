@@ -145,6 +145,33 @@ describe('persistence + migration', () => {
     localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify({ nope: true }));
     expect(migrateLegacyRepoFilter(createRepoFilterQueryStore())).toBe(false);
   });
+
+  it('returns false when store.save() fails (e.g., storage quota)', () => {
+    // Stub a failing store.
+    const failingStore = createRepoFilterQueryStore();
+    failingStore.save = () => false;
+
+    localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify(['octo/a']));
+    expect(migrateLegacyRepoFilter(failingStore)).toBe(false);
+
+    // Confirm persist was attempted but failed to confirm.
+    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
+  });
+});
+
+describe('EMPTY_QUERY', () => {
+  it('is frozen to prevent mutation', () => {
+    expect(Object.isFrozen(EMPTY_QUERY)).toBe(true);
+  });
+
+  it('has frozen nested facets', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.facets)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security)).toBe(true);
+  });
+
+  it('has frozen nested repoSelection', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.repoSelection)).toBe(true);
+  });
 });
 
 describe('evaluateRepoFilterQuery', () => {
