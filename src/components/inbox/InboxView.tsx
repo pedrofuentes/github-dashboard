@@ -104,6 +104,10 @@ export function InboxView({
   );
   const selectedRepoFilter = filters.repos.find((repoName) => availableRepoNames.has(repoName));
 
+  // Reconcile the selected repo filter against the current fleet: drops any
+  // filter selection that no longer exists in the available repos (e.g., when
+  // the fleet changes or a repo is removed). This prevents stale selections
+  // from persisting indefinitely while preserving valid ones.
   useEffect(() => {
     if (filters.repos.length === 0) {
       return;
