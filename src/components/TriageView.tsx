@@ -83,13 +83,12 @@ function ActiveSignalIndicators({ data }: { data: RepoSignalData }): ReactNode {
 
 interface RepoRowProps {
   repo: Repo;
-  getRowData: GetRowData;
+  data: RepoSignalData;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** A single repo row: its name, its active signal indicators, and drill-down. */
-function RepoRow({ repo, getRowData, onRepoActivate }: RepoRowProps) {
-  const data = getRowData(repo);
+function RepoRow({ repo, data, onRepoActivate }: RepoRowProps) {
   const indicators = (
     <span className="flex flex-wrap items-center gap-2">
       <ActiveSignalIndicators data={data} />
@@ -120,12 +119,12 @@ function RepoRow({ repo, getRowData, onRepoActivate }: RepoRowProps) {
 interface BandSectionProps {
   band: TriageBand;
   repos: Repo[];
-  getRowData: GetRowData;
+  dataByRepo: Map<string, RepoSignalData>;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** A worst-first attention band as a labelled section with a count + repo list. */
-function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionProps) {
+function BandSection({ band, repos, dataByRepo, onRepoActivate }: BandSectionProps) {
   const headingId = useId();
   const label = TRIAGE_BAND_LABELS[band];
 
@@ -142,7 +141,7 @@ function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionPro
           <RepoRow
             key={repo.nameWithOwner}
             repo={repo}
-            getRowData={getRowData}
+            data={dataByRepo.get(repo.nameWithOwner) ?? {}}
             onRepoActivate={onRepoActivate}
           />
         ))}
@@ -153,12 +152,12 @@ function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionPro
 
 interface HealthyBandProps {
   repos: Repo[];
-  getRowData: GetRowData;
+  dataByRepo: Map<string, RepoSignalData>;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** The Healthy band: a collapsible count, collapsed by default (`aria-expanded`). */
-function HealthyBand({ repos, getRowData, onRepoActivate }: HealthyBandProps) {
+function HealthyBand({ repos, dataByRepo, onRepoActivate }: HealthyBandProps) {
   const [expanded, setExpanded] = useState(false);
   const regionId = useId();
   const label = TRIAGE_BAND_LABELS.healthy;
@@ -192,7 +191,7 @@ function HealthyBand({ repos, getRowData, onRepoActivate }: HealthyBandProps) {
           <RepoRow
             key={repo.nameWithOwner}
             repo={repo}
-            getRowData={getRowData}
+            data={dataByRepo.get(repo.nameWithOwner) ?? {}}
             onRepoActivate={onRepoActivate}
           />
         ))}
@@ -284,14 +283,14 @@ export function TriageView({
               key={group.band}
               band={group.band}
               repos={group.repos}
-              getRowData={getRowData}
+              dataByRepo={group.dataByRepo}
               onRepoActivate={onRepoActivate}
             />
           ))}
           {healthyGroup ? (
             <HealthyBand
               repos={healthyGroup.repos}
-              getRowData={getRowData}
+              dataByRepo={healthyGroup.dataByRepo}
               onRepoActivate={onRepoActivate}
             />
           ) : null}

@@ -110,6 +110,8 @@ export function classifyTriageBand(data: RepoSignalData): TriageBand {
 export interface TriageGroup {
   band: TriageBand;
   repos: Repo[];
+  /** Pre-resolved signal data per repo (keyed by nameWithOwner) for rendering. */
+  dataByRepo: Map<string, RepoSignalData>;
 }
 
 /** The complete triage model: worst-first non-empty groups, counts, all-clear. */
@@ -128,6 +130,9 @@ export interface TriageModel {
  * Builds the triage model from a fleet list: classifies each repo into its
  * highest band, groups worst-first (omitting empty bands), and reports counts.
  * Pure — never mutates the input array.
+ *
+ * Each group's `dataByRepo` map caches the getRowData result so consumers
+ * (e.g. RepoRow) don't invoke getRowData a second time per visible repo.
  */
 export function buildTriageModel(repos: Repo[], getRowData: GetRowData): TriageModel {
   const buckets: Record<TriageBand, Repo[]> = {
@@ -137,9 +142,12 @@ export function buildTriageModel(repos: Repo[], getRowData: GetRowData): TriageM
     watch: [],
     healthy: [],
   };
+  const dataByRepo = new Map<string, RepoSignalData>();
 
   for (const repo of repos) {
-    buckets[classifyTriageBand(getRowData(repo))].push(repo);
+    const data = getRowData(repo);
+    dataByRepo.set(repo.nameWithOwner, data);
+    buckets[classifyTriageBand(data)].push(repo);
   }
 
   const counts = {} as Record<TriageBand, number>;
@@ -148,7 +156,7 @@ export function buildTriageModel(repos: Repo[], getRowData: GetRowData): TriageM
   }
 
   const groups: TriageGroup[] = TRIAGE_BAND_ORDER.filter((band) => buckets[band].length > 0).map(
-    (band) => ({ band, repos: buckets[band] }),
+    (band) => ({ band, repos: buckets[band], dataByRepo }),
   );
 
   const total = repos.length;
