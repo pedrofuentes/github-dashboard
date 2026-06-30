@@ -254,6 +254,15 @@ describe('evaluateRepoFilterQuery', () => {
     expect(evaluateRepoFilterQuery(q({ facets }), repos, get)).toEqual(new Set(['o/crit']));
   });
 
+  it('security severities facet requires counts field (regression for !counts guard)', () => {
+    const repos = [repo('o/no-counts')];
+    const get = getter({
+      'o/no-counts': { security: { status: 'ready', grade: 'A' } }, // no counts field
+    });
+    const facets = { security: { grades: [], severities: ['critical' as const] } };
+    expect(evaluateRepoFilterQuery(q({ facets }), repos, get)).toEqual(new Set());
+  });
+
   it('security truncated:true matches only truncated repos', () => {
     const repos = [repo('o/t'), repo('o/f')];
     const get = getter({
