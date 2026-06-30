@@ -61,7 +61,8 @@ function queriesEqual(a: RepoFilterQueryV2, b: RepoFilterQueryV2): boolean {
  * front), prepends new queries (most recent first), and caps at
  * {@link MAX_RECENT_FILTERS}. Does NOT record inactive queries (per
  * {@link isQueryActive}). Persists synchronously. Degrades gracefully on
- * storage errors (no throw).
+ * storage errors (no throw), warning when the write is dropped so a silent
+ * data-loss is diagnosable in devtools.
  *
  * @param query - The query to record. Must be active (non-empty) to be saved.
  */
@@ -79,5 +80,7 @@ export function addRecentFilter(query: RepoFilterQueryV2): void {
   // Prepend the new query (most recent first) and cap at MAX_RECENT_FILTERS
   const updated = [query, ...filtered].slice(0, MAX_RECENT_FILTERS);
 
-  storeInstance.save(updated);
+  if (!storeInstance.save(updated)) {
+    console.warn('[recent-filters] failed to persist recent filters');
+  }
 }
