@@ -112,29 +112,25 @@ function emptyQuery(): RepoFilterQueryV2 {
   };
 }
 
+/** Recursively freezes an object and all nested objects/arrays. */
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+  Object.freeze(obj);
+  for (const value of Object.values(obj)) {
+    if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
+      deepFreeze(value as object);
+    }
+  }
+  return obj as Readonly<T>;
+}
+
 /**
  * The canonical empty query: text '', mode 'all', empty facets ⇒ "all repos shown".
- * Deeply frozen to prevent accidental mutation by consumers.
+ * Deeply frozen to prevent accidental mutation by consumers. The `Readonly<>` type
+ * guards top-level mutations at compile time; deep immutability is enforced at
+ * runtime by `deepFreeze`. (A full `DeepReadonly<>` mapped type would avoid the gap
+ * but causes broad type-ripple across callers — left for a dedicated type-hardening PR.)
  */
-export const EMPTY_QUERY: RepoFilterQueryV2 = (function deepFreeze() {
-  const query = emptyQuery();
-  Object.freeze(query);
-  Object.freeze(query.repoSelection);
-  Object.freeze(query.repoSelection.names);
-  Object.freeze(query.facets);
-  Object.freeze(query.facets.owners);
-  Object.freeze(query.facets.health);
-  Object.freeze(query.facets.ci);
-  Object.freeze(query.facets.security);
-  Object.freeze(query.facets.security.grades);
-  Object.freeze(query.facets.security.severities);
-  Object.freeze(query.facets.pullRequests);
-  Object.freeze(query.facets.reviews);
-  Object.freeze(query.facets.issues);
-  Object.freeze(query.facets.stale);
-  Object.freeze(query.facets.visibility);
-  return query;
-})();
+export const EMPTY_QUERY: Readonly<RepoFilterQueryV2> = deepFreeze(emptyQuery());
 
 function safeGet(key: string): string | null {
   try {
