@@ -81,9 +81,11 @@ export function validateSavedViewName(name: string): string | null {
   }
 
   // Defense-in-depth: reject control chars (U+0000–U+001F, U+007F),
-  // bidi overrides, and zero-width chars to prevent future non-React-sink issues.
+  // bidi control/isolate chars (U+202A-U+202E, U+2066-U+2069), zero-width space
+  // (U+200B), and BOM (U+FEFF) to prevent future non-React-sink issues.
+  // ZWJ (U+200D) and ZWNJ (U+200C) are allowed for legitimate emoji/script uses.
   // eslint-disable-next-line no-control-regex
-  const dangerousChars = /[\x00-\x1F\x7F\u200B-\u200D\u202D\u202E\u2066\u2067\uFEFF]/;
+  const dangerousChars = /[\x00-\x1F\x7F\u200B\u202A-\u202E\u2066-\u2069\uFEFF]/;
   if (dangerousChars.test(trimmed)) {
     return 'Name contains invalid characters.';
   }
