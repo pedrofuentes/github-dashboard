@@ -484,21 +484,25 @@ describe('resetDashboardLayout', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
     saveDashboardLayout(layout);
 
-    // Mock removeItem to throw only when removing v1 (simulating a partial failure).
-    const removeItemSpy = vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
-      if (key === STORAGE_KEY) {
-        throw new Error('v1 removal blocked');
+    // Track call order and simulate v2 removal throwing.
+    const callOrder: string[] = [];
+    const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+    vi.spyOn(localStorage, 'removeItem').mockImplementation((key) => {
+      callOrder.push(key);
+      if (key === STORAGE_KEY_V2) {
+        throw new Error('v2 removal blocked');
       }
-      // v2 removal succeeds
+      // v1 removal succeeds - actually remove it
+      originalRemoveItem(key);
     });
 
     resetDashboardLayout();
 
-    // After reset, v1 should be removed FIRST. With the current buggy order (v2, v1),
-    // v2 is gone and v1 remains, causing re-migration on next load. With the correct
-    // order (v1, v2), v1 is gone even if v2 removal throws.
-    expect(removeItemSpy).toHaveBeenCalledWith(STORAGE_KEY);
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // v1 should be gone
+    // After reset with v1-first order: v1 removal succeeds, v2 removal throws.
+    // v1 should be gone (preventing re-migration) and v2 should remain.
+    expect(callOrder).toEqual([STORAGE_KEY, STORAGE_KEY_V2]); // v1 removed first
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull(); // v1 is gone
+    expect(localStorage.getItem(STORAGE_KEY_V2)).not.toBeNull(); // v2 remains after throw
   });
 });
 

@@ -256,15 +256,27 @@ export function loadDashboardLayout(repos: Repo[]): DashboardTile[] {
  * layout is skipped rather than written, so corrupt geometry never reaches
  * storage. The legacy v1 key is left untouched. Never throws.
  *
- * Note: JSON.stringify is called outside the storage try/catch; validated tiles
- * won't throw, but pathological input (circular refs, BigInt, etc.) would surface.
+ * Note: JSON.stringify is wrapped defensively; validated tiles won't throw, but
+ * pathological input (circular refs, BigInt, etc.) is caught rather than surfaced.
  * The pre-validation makes this unreachable in practice.
  */
 export function saveDashboardLayout(tiles: DashboardTile[]): void {
   if (!DashboardLayoutSchema.safeParse(tiles).success) {
     return;
   }
-  if (!safeSet(STORAGE_KEY_V2, JSON.stringify({ version: LAYOUT_VERSION, tiles }))) {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify({ version: LAYOUT_VERSION, tiles });
+  } catch {
+    // Defense-in-depth: pathological input (circular refs, BigInt, etc.) won't
+    // reach here after validation, but catch to honor the never-throws contract.
+    console.warn(
+      'Failed to serialize dashboard layout; changes will be lost on next load.',
+      new Error('dashboard layout serialization failed'),
+    );
+    return;
+  }
+  if (!safeSet(STORAGE_KEY_V2, serialized)) {
     console.warn(
       'Failed to persist dashboard layout; changes will be lost on next load.',
       new Error('dashboard layout save failed'),
@@ -275,9 +287,11 @@ export function saveDashboardLayout(tiles: DashboardTile[]): void {
 /**
  * Clears the persisted layout (best-effort). Removes BOTH the v2 envelope and
  * the legacy v1 key so an explicit reset truly restores {@link DEFAULT_LAYOUT}
- * rather than re-migrating the legacy layout on the next load.
+ * rather than re-migrating the legacy layout on the next load. Removes v1 FIRST
+ * to prevent re-migration if v2 removal throws: if v1 is gone, the next load
+ * won't re-migrate even if v2 remains.
  */
 export function resetDashboardLayout(): void {
-  safeRemove(STORAGE_KEY_V2);
   safeRemove(STORAGE_KEY);
+  safeRemove(STORAGE_KEY_V2);
 }
