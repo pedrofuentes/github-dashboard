@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import {
@@ -149,13 +149,21 @@ describe('persistence + migration', () => {
   it('returns false when store.save() fails (e.g., storage quota)', () => {
     // Stub a failing store.
     const failingStore = createRepoFilterQueryStore();
-    failingStore.save = () => false;
+    const saveSpy = vi.fn(() => false);
+    failingStore.save = saveSpy;
 
     localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify(['octo/a']));
     expect(migrateLegacyRepoFilter(failingStore)).toBe(false);
 
-    // Confirm persist was attempted but failed to confirm.
-    expect(localStorage.getItem(STORAGE_KEY_V2)).toBeNull();
+    // save was attempted once with the migrated query (not just silently skipped).
+    expect(saveSpy).toHaveBeenCalledOnce();
+    expect(saveSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoSelection: { mode: 'include', names: ['octo/a'] },
+      }),
+    );
+    // Legacy key preserved — a failed save must not destroy the source data.
+    expect(localStorage.getItem(LEGACY_REPO_FILTER_KEY)).toBe(JSON.stringify(['octo/a']));
   });
 });
 
@@ -164,13 +172,24 @@ describe('EMPTY_QUERY', () => {
     expect(Object.isFrozen(EMPTY_QUERY)).toBe(true);
   });
 
-  it('has frozen nested facets', () => {
-    expect(Object.isFrozen(EMPTY_QUERY.facets)).toBe(true);
-    expect(Object.isFrozen(EMPTY_QUERY.facets.security)).toBe(true);
+  it('has all nested repoSelection objects frozen', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.repoSelection)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.repoSelection.names)).toBe(true);
   });
 
-  it('has frozen nested repoSelection', () => {
-    expect(Object.isFrozen(EMPTY_QUERY.repoSelection)).toBe(true);
+  it('has all nested facets objects and arrays frozen', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.facets)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.owners)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.health)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.ci)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security.grades)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security.severities)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.pullRequests)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.reviews)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.issues)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.stale)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.visibility)).toBe(true);
   });
 });
 
