@@ -114,11 +114,7 @@ export class SearchLimiter {
       }
 
       const waiter: Waiter<T> = { task, signal, resolve, reject };
-      if (signal) {
-        waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
-        signal.addEventListener('abort', waiter.onAbort, { once: true });
-      }
-      this.enqueue(waiter as Waiter);
+      this.enqueueWaiter(waiter);
     });
   }
 
@@ -129,6 +125,20 @@ export class SearchLimiter {
     this.queue.length = 0;
     this.queueWarned = false;
     this.tokens = this.capacity;
+  }
+
+  /**
+   * Wires `waiter`'s abort handling — so an abort fired while it is queued is
+   * delivered to {@link abortWaiter}, which removes and rejects it — then hands
+   * the waiter to {@link enqueue}. The single home for the abort/enqueue wiring
+   * shared by {@link schedule} and the retry path's {@link acquireToken}.
+   */
+  private enqueueWaiter<T>(waiter: Waiter<T>): void {
+    if (waiter.signal) {
+      waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
+      waiter.signal.addEventListener('abort', waiter.onAbort, { once: true });
+    }
+    this.enqueue(waiter as Waiter);
   }
 
   /**
@@ -213,6 +223,23 @@ export class SearchLimiter {
     }
   }
 
+  /**
+   * Re-acquires a Search token on the retry path — after a secondary-limit
+   * `Retry-After` back-off in {@link runWithRetry}, before the task is
+   * re-issued. The re-acquire waits its turn through the same token bucket as a
+   * fresh {@link schedule} call, so a retry never jumps the queue or exceeds the
+   * rate budget; it resolves as soon as a token is free, or stalls until the
+   * bucket refills when none is (that extra wait is logged once for visibility).
+   *
+   * Abort: a `signal` already aborted on entry rejects synchronously with
+   * `AbortError`. This guard also closes the #600 race where
+   * {@link abortableSleep} resolves *after* removing its own abort listener — an
+   * abort landing in that window would otherwise be missed here and waste a
+   * token. An abort that instead arrives while the re-acquire is queued is
+   * delivered to {@link abortWaiter} (wired via {@link enqueueWaiter}), which
+   * splices the waiter out and rejects it; acquireToken relies on that handler
+   * to free a queued re-acquire that would otherwise wait forever.
+   */
   private acquireToken(signal?: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted) {
@@ -220,12 +247,19 @@ export class SearchLimiter {
         return;
       }
 
-      const waiter: Waiter<void> = { task: () => undefined, signal, resolve, reject };
-      if (signal) {
-        waiter.onAbort = (): void => this.abortWaiter(waiter as Waiter);
-        signal.addEventListener('abort', waiter.onAbort, { once: true });
+      if (this.tokens === 0) {
+        // The retry already waited out Retry-After; an empty bucket now means it
+        // also stalls in the queue until a token refills. The console is this
+        // client-only SPA's only sink, so surface that extra delay once, on the
+        // same logger as the other limiter breadcrumbs (#589, mirrors #527/#704).
+        console.warn(
+          'SearchLimiter: retry stalled re-acquiring a Search token on an empty bucket; ' +
+            'awaiting refill after the Retry-After back-off.',
+        );
       }
-      this.enqueue(waiter as Waiter);
+
+      const waiter: Waiter<void> = { task: () => undefined, signal, resolve, reject };
+      this.enqueueWaiter(waiter);
     });
   }
 
