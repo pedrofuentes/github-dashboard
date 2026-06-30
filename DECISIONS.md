@@ -22,6 +22,21 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-032: Deck row reorder is filter-gated; @dnd-kit chosen for sortable drag
+**Date**: 2026-06-29
+**Status**: Accepted
+**Context**: The Deck view supports drag-to-reorder of repository rows (and signal-column order). Two non-obvious design questions arose: (1) Should row reorder be allowed while a repository filter is active? (2) Which drag-and-drop library to adopt?
+
+On (1): the Deck persists a **full-fleet** row order, not a per-filter order. If a user reorders while a filter is active (e.g. only 3 of 30 repos are shown), the dragged positions reflect only the visible subset. Persisting a subset-derived order into the full-fleet index would silently corrupt the order of hidden repos — the same hazard that ADR-025 guards against for Dashboard tile geometry. The correct invariant is: **a full-fleet order can only be reliably rewritten when the full fleet is visible**.
+
+On (2): the Dashboard (ADR-010) already uses `react-grid-layout` for its 12-column tile drag, but that library is grid-layout-oriented (x/y/w/h geometry, not list order) and has no built-in keyboard drag. The Deck needs **1-D sortable lists** (rows, columns) with accessible keyboard reorder — a different primitive.
+
+**Decision**: (1) Deck row reorder is **disabled while a repository filter is active** (`filterActive = repoFilter !== undefined`; `rowsReorderable = editing && onMoveRepo !== undefined && !filterActive`). Column reorder is **not filter-gated** because column order is fleet-wide (not per-repo), so reordering columns is always safe. A hint is shown in Customize mode when the filter blocks row reorder. (2) Adopt **`@dnd-kit`** (`@dnd-kit/core ^6`, `@dnd-kit/sortable ^10`, `@dnd-kit/utilities ^3`) — a modular, accessibility-first drag-and-drop toolkit that ships pointer **and** keyboard drag out of the box, integrates cleanly with React via hooks (`useSortable`, `SortableContext`, `DndContext`), and has no layout-engine assumptions. The pure reorder-index logic is extracted to `src/lib/deck-reorder.ts` (no `@dnd-kit` import), keeping it unit-testable without simulating real drag events.
+
+**Alternatives considered**: Reuse `react-grid-layout` for row/column reorder — rejected: RGL models 2-D tile geometry, not 1-D lists; wrapping it as a list would be fighting the library, and it has no keyboard drag. Build drag from scratch (HTML5 drag API or pointer events) — rejected: accessible keyboard drag is non-trivial to implement correctly (roving focus, announcements, cancel on Escape); `@dnd-kit` solves this as a primary design goal. Allow reorder while filtered and remap to full-fleet positions — rejected: the mapping is ambiguous when non-visible repos fall between dragged items; the filter gate is the only safe rule.
+
+**Consequences**: Row reorder is safe: it never corrupts hidden-repo positions because it can only fire when all repos are visible. Column reorder is always available. The `@dnd-kit` packages are new runtime dependencies (added with cofounder approval per ADR-pattern — `@dnd-kit/*` are small, tree-shakeable, and the only approved drag library for list-order use cases). The deck-reorder helpers are dependency-free and fully unit-testable.
+
 ### ADR-031: Drop SemVer; the build identity is deploy date + short SHA
 **Date**: 2026-06-28
 **Status**: Accepted
