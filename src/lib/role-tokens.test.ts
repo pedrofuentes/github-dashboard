@@ -120,7 +120,7 @@ describe('role tokens — chart-track contrast exemption', () => {
       // threshold (WCAG 2.1 SC 1.4.11 exemption), but must remain visible against surface.
       // This locks in the design: not invisible (ratio > 1) and not high-contrast (ratio < 3).
       expect(ratio).toBeGreaterThan(1); // Prevents invisible (identical to surface)
-      expect(ratio).toBeLessThan(3);    // Prevents accidental high-contrast (e.g., text color)
+      expect(ratio).toBeLessThan(3); // Prevents accidental high-contrast (e.g., text color)
     });
   }
 });
