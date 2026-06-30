@@ -269,6 +269,26 @@ describe('DrillDownDrawer unknown CI conclusion (#205)', () => {
     expect(scoped.getByText(/Conclusion: No runs/i)).toBeInTheDocument();
     expect(scoped.queryByText(/undefined/i)).toBeNull();
   });
+
+  it('rejects an Object.prototype member as the conclusion and falls back to "No runs" (#365 🟢#4)', () => {
+    // A prototype-chain key ("toString", "constructor", …) is reachable via the
+    // `in` operator even though it is NOT a real conclusion. An `in`-based guard
+    // resolves `CONCLUSION_LABEL['toString']` to Object.prototype.toString and
+    // renders "Conclusion: function toString() { … }". The own-property guard
+    // (Object.hasOwn) must reject it and fall back to the neutral "No runs"
+    // label, for parity with the CiTileBody hardening (#185/#204).
+    const slice = { status: 'ready', conclusion: 'toString' } as unknown as CiSignalSlice;
+    let dialog: HTMLElement | undefined;
+    expect(() => {
+      render(<DrillDownDrawer repo={REPO} data={{ ci: slice }} onClose={vi.fn()} />);
+      dialog = screen.getByRole('dialog');
+    }).not.toThrow();
+
+    const scoped = within(dialog as HTMLElement);
+    expect(scoped.getByText(/Conclusion: No runs/i)).toBeInTheDocument();
+    // The prototype method must never leak into the rendered label.
+    expect(scoped.queryByText(/function|native code/i)).toBeNull();
+  });
 });
 
 describe('DrillDownDrawer repo-owner display preference', () => {
