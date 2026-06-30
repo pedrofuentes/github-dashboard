@@ -1401,7 +1401,10 @@ export async function executeFleetBatch(
           if (deriver.kind === 'top-level-global') continue;
           markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
         }
-        onProgress?.(cloneResult(result));
+        // Guard for symmetry with the other emit sites. The early `throw` above
+        // already means `signal?.aborted` is false here, so this is behaviour-
+        // preserving — it keeps every onProgress emit uniformly abort-guarded.
+        if (!signal?.aborted) onProgress?.(cloneResult(result));
       }
     }),
   );
