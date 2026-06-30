@@ -117,6 +117,27 @@ describe('CommandPalette accessibility', () => {
     expect(live).toHaveAttribute('aria-live', 'polite');
     expect(live).toHaveTextContent(/3 commands/i);
   });
+
+  it('announces singular "1 command" when exactly one result matches', async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+
+    await user.type(screen.getByRole('combobox'), 'charlie');
+
+    const live = screen.getByTestId('command-palette-live');
+    expect(live).toHaveTextContent('1 command');
+    expect(live).not.toHaveTextContent('commands'); // singular, not plural
+  });
+
+  it('announces "No commands" when no results match', async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} commands={makeCommands()} />);
+
+    await user.type(screen.getByRole('combobox'), 'zzzzzz');
+
+    const live = screen.getByTestId('command-palette-live');
+    expect(live).toHaveTextContent('No commands');
+  });
 });
 
 describe('CommandPalette filtering and ranking', () => {
