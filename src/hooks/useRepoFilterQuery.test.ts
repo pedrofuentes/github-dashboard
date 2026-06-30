@@ -2,7 +2,13 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
-import { EMPTY_QUERY, STORAGE_KEY_V2, type RepoFilterQueryV2 } from '../lib/repo-filter-query';
+import * as repoFilterQuery from '../lib/repo-filter-query';
+import {
+  EMPTY_QUERY,
+  LEGACY_REPO_FILTER_KEY,
+  STORAGE_KEY_V2,
+  type RepoFilterQueryV2,
+} from '../lib/repo-filter-query';
 import { useRepoFilterQuery } from './useRepoFilterQuery';
 
 const mkRepo = (owner: string, name: string, isPrivate = false): Repo => ({
@@ -351,5 +357,32 @@ describe('applyQuery', () => {
 
     // Absent pin should be dropped.
     expect(result.current.query.repoSelection.names).toEqual(['octo/a']);
+  });
+});
+
+describe('legacy migration observability', () => {
+  it('warns when the migration save fails to persist', () => {
+    localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify(['octo/a']));
+    // Inject a store whose save always fails so migrateLegacyRepoFilter returns false.
+    const failingSave = vi.fn(() => false);
+    vi.spyOn(repoFilterQuery, 'createRepoFilterQueryStore').mockReturnValueOnce({
+      load: () => EMPTY_QUERY,
+      save: failingSave,
+      clear: () => {},
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    renderHook(() => useRepoFilterQuery(fleet, getRowData));
+
+    expect(warnSpy).toHaveBeenCalledWith('[repo-filter] legacy migration failed to persist');
+  });
+
+  it('does not warn when migration succeeds', () => {
+    localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify(['octo/a']));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    renderHook(() => useRepoFilterQuery(fleet, getRowData));
+
+    expect(warnSpy).not.toHaveBeenCalledWith('[repo-filter] legacy migration failed to persist');
   });
 });

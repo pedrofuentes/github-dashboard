@@ -79,6 +79,17 @@ export function validateSavedViewName(name: string): string | null {
   if (trimmed.length > MAX_VIEW_NAME_LENGTH) {
     return `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`;
   }
+
+  // Defense-in-depth: reject control chars (U+0000–U+001F, U+007F),
+  // bidi control/isolate chars (U+202A-U+202E, U+2066-U+2069), zero-width space
+  // (U+200B), and BOM (U+FEFF) to prevent future non-React-sink issues.
+  // ZWJ (U+200D) and ZWNJ (U+200C) are allowed for legitimate emoji/script uses.
+  // eslint-disable-next-line no-control-regex
+  const dangerousChars = /[\x00-\x1F\x7F\u200B\u202A-\u202E\u2066-\u2069\uFEFF]/;
+  if (dangerousChars.test(trimmed)) {
+    return 'Name contains invalid characters.';
+  }
+
   return null;
 }
 
@@ -97,8 +108,8 @@ function emptyState(): SavedViewsState {
 
 /**
  * Creates a new {@link SavedView} with id and createdAt filled by the provided
- * generators (defaults to crypto.randomUUID and Date.now ISO string). The
- * injectable generators enable deterministic testing without stubbing crypto.
+ * generators (defaults to crypto.randomUUID and () => new Date().toISOString()).
+ * The injectable generators enable deterministic testing without stubbing crypto.
  */
 export function createSavedView(
   input: {

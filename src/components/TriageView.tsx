@@ -11,8 +11,11 @@
  * the Fleet Matrix). The per-repo status indicators REUSE the existing per-signal
  * cell atoms, so this surface never invents a new status vocabulary.
  *
- * It mirrors {@link FleetGrid}/{@link FleetMatrix} for the shared loading
- * (skeletons), error (alert + retry), and empty states, and exposes the same
+ * Loading states: (1) first load with zero repos → animated skeletons;
+ * (2) loaded repos but signals still resolving → "Loading fleet signals…" text
+ * (same pattern as FleetLoadingBanner for the grid/matrix); (3) background
+ * refresh with visible bands → bands remain interactive. Error and empty states
+ * mirror {@link FleetGrid}/{@link FleetMatrix}, and it exposes the same
  * `onRepoActivate(repo)` drill-down contract. When the whole fleet is healthy it
  * shows a friendly "All clear" state instead of an empty Healthy band.
  */
@@ -41,8 +44,10 @@ import { SecurityCell } from './columns/SecurityCell';
 import { StaleCell } from './columns/StaleCell';
 
 const SKELETON_ROWS = 5;
+/** Alpha blend ratio for error alert backgrounds (10% accent on surface). */
+const ERROR_ALERT_BG_BLEND = '10%';
 
-interface TriageViewProps {
+export interface TriageViewProps {
   /** Repositories to triage (already adapted by `useRepos`). */
   repos: Repo[];
   /** Resolves per-repo signal data (same contract as the grid/matrix). */
@@ -83,13 +88,12 @@ function ActiveSignalIndicators({ data }: { data: RepoSignalData }): ReactNode {
 
 interface RepoRowProps {
   repo: Repo;
-  getRowData: GetRowData;
+  data: RepoSignalData;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** A single repo row: its name, its active signal indicators, and drill-down. */
-function RepoRow({ repo, getRowData, onRepoActivate }: RepoRowProps) {
-  const data = getRowData(repo);
+function RepoRow({ repo, data, onRepoActivate }: RepoRowProps) {
   const indicators = (
     <span className="flex flex-wrap items-center gap-2">
       <ActiveSignalIndicators data={data} />
@@ -120,12 +124,12 @@ function RepoRow({ repo, getRowData, onRepoActivate }: RepoRowProps) {
 interface BandSectionProps {
   band: TriageBand;
   repos: Repo[];
-  getRowData: GetRowData;
+  dataByRepo: Map<string, RepoSignalData>;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** A worst-first attention band as a labelled section with a count + repo list. */
-function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionProps) {
+function BandSection({ band, repos, dataByRepo, onRepoActivate }: BandSectionProps) {
   const headingId = useId();
   const label = TRIAGE_BAND_LABELS[band];
 
@@ -142,7 +146,7 @@ function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionPro
           <RepoRow
             key={repo.nameWithOwner}
             repo={repo}
-            getRowData={getRowData}
+            data={dataByRepo.get(repo.nameWithOwner) ?? {}}
             onRepoActivate={onRepoActivate}
           />
         ))}
@@ -153,12 +157,12 @@ function BandSection({ band, repos, getRowData, onRepoActivate }: BandSectionPro
 
 interface HealthyBandProps {
   repos: Repo[];
-  getRowData: GetRowData;
+  dataByRepo: Map<string, RepoSignalData>;
   onRepoActivate?: (repo: Repo) => void;
 }
 
 /** The Healthy band: a collapsible count, collapsed by default (`aria-expanded`). */
-function HealthyBand({ repos, getRowData, onRepoActivate }: HealthyBandProps) {
+function HealthyBand({ repos, dataByRepo, onRepoActivate }: HealthyBandProps) {
   const [expanded, setExpanded] = useState(false);
   const regionId = useId();
   const label = TRIAGE_BAND_LABELS.healthy;
@@ -192,7 +196,7 @@ function HealthyBand({ repos, getRowData, onRepoActivate }: HealthyBandProps) {
           <RepoRow
             key={repo.nameWithOwner}
             repo={repo}
-            getRowData={getRowData}
+            data={dataByRepo.get(repo.nameWithOwner) ?? {}}
             onRepoActivate={onRepoActivate}
           />
         ))}
@@ -216,7 +220,7 @@ export function TriageView({
       <section aria-label="Triage" className="flex flex-col gap-3">
         <div
           role="alert"
-          className="rounded-md border border-accent-failure bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] px-4 py-3 text-sm text-accent-failure"
+          className={`rounded-md border border-accent-failure bg-[color-mix(in_srgb,var(--color-failure)_${ERROR_ALERT_BG_BLEND},var(--color-surface))] px-4 py-3 text-sm text-accent-failure`}
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
@@ -224,7 +228,7 @@ export function TriageView({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 inline-flex items-center rounded border border-accent-failure px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_10%,var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-failure"
+              className={`mt-3 inline-flex items-center rounded border border-accent-failure px-3 py-1 text-sm font-medium text-accent-failure hover:bg-[color-mix(in_srgb,var(--color-failure)_${ERROR_ALERT_BG_BLEND},var(--color-surface))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-failure`}
             >
               Retry
             </button>
@@ -284,14 +288,14 @@ export function TriageView({
               key={group.band}
               band={group.band}
               repos={group.repos}
-              getRowData={getRowData}
+              dataByRepo={group.dataByRepo}
               onRepoActivate={onRepoActivate}
             />
           ))}
           {healthyGroup ? (
             <HealthyBand
               repos={healthyGroup.repos}
-              getRowData={getRowData}
+              dataByRepo={healthyGroup.dataByRepo}
               onRepoActivate={onRepoActivate}
             />
           ) : null}

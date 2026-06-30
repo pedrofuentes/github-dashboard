@@ -54,13 +54,18 @@ afterEach(() => {
 });
 
 describe('validateViewName', () => {
-  it('rejects an empty / whitespace-only name', () => {
-    expect(validateViewName('')).not.toBeNull();
-    expect(validateViewName('   ')).not.toBeNull();
+  it('rejects empty string', () => {
+    expect(validateViewName('')).toBe('Enter a name for this view.');
+  });
+
+  it('rejects whitespace-only string', () => {
+    expect(validateViewName('   ')).toBe('Enter a name for this view.');
   });
 
   it('rejects a name over the lib bound', () => {
-    expect(validateViewName('a'.repeat(MAX_VIEW_NAME_LENGTH + 1))).not.toBeNull();
+    expect(validateViewName('a'.repeat(MAX_VIEW_NAME_LENGTH + 1))).toBe(
+      `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`,
+    );
   });
 
   it('accepts a valid name', () => {
