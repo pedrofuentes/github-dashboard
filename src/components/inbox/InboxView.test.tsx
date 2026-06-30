@@ -249,8 +249,9 @@ describe('InboxView filters (AC-13 / §4.2)', () => {
     );
 
     // The reconciliation must NOT call setFilters when repos is empty — the filter
-    // selection must survive until the fleet reloads.
-    await waitFor(() => expect(screen.getByLabelText(/filter by repository/i)).toBeInTheDocument());
+    // selection must survive until the fleet reloads. Confirm the filter dropdown
+    // remains in the document and setFilters was never invoked.
+    expect(screen.getByLabelText(/filter by repository/i)).toBeInTheDocument();
     expect(setFilters).not.toHaveBeenCalled();
   });
 

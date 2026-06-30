@@ -8,7 +8,8 @@
  * Responsibilities owned here: accessible table semantics (`<th scope>`, a
  * named table, a sticky header), worst-first ordering via
  * {@link buildMatrixModel}, an optional drill-down hook (REC-8), collapsible
- * health groups (Broken/Warning/Healthy) with Healthy collapsed by default,
+ * health groups (Broken/Warning/Healthy) with Healthy collapsed by default
+ * (each group gets a collapsible group-header row with a toggle button),
  * and the loading / empty / error states mirrored from {@link FleetGrid}.
  * The per-signal presentation lives entirely in the reused cell components —
  * this file never invents signal semantics.
@@ -241,7 +242,11 @@ export function FleetMatrix({
     ? 'Loading repositories…'
     : `${rows.length} ${rows.length === 1 ? 'repository' : 'repositories'}`;
 
-  // Map density to vertical cell padding (glanceable = tighter, balanced = current)
+  // Map density to vertical cell padding. Glanceable = tighter row height
+  // (py-1) for at-a-glance scanning; balanced = current default (py-2) for
+  // comfortable reading. Skeleton rows get slightly more padding to maintain
+  // visual weight (py-1.5 and py-2.5 respectively).
+  // NOTE: density is per-consumer (not runtime-synced across Matrix/Dashboard/Grid).
   const cellPaddingY = density === 'glanceable' ? 'py-1' : 'py-2';
   const skeletonPaddingY = density === 'glanceable' ? 'py-1.5' : 'py-2.5';
 
@@ -299,7 +304,7 @@ export function FleetMatrix({
                   colSpan={totalColumns}
                   className="px-3 py-10 text-center text-sm text-text-muted"
                 >
-                  No repositories found for this token.
+                  No repositories to display.
                 </td>
               </tr>
             ) : (

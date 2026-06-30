@@ -70,7 +70,11 @@ export function useFleetBatchLoader(
       .catch((err: unknown) => {
         if (isAbortError(err) || controller.signal.aborted) return;
         if (generation !== generationRef.current) return;
-        console.error('useFleetBatchLoader: batch fetch failed', err);
+        console.error(
+          'useFleetBatchLoader: batch fetch failed',
+          { repoCount: repos.length, viewerLogin: viewerLogin ?? null, generation },
+          err,
+        );
         setState({ result: EMPTY_RESULT, loading: false, error: true });
       });
 

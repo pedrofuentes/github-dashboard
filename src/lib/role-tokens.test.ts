@@ -87,6 +87,8 @@ describe('role tokens — AA contrast (WCAG 2.1)', () => {
   for (const { name, tokens } of themes) {
     for (const surface of SURFACE_TEXT_TOKENS) {
       it(`text clears 4.5:1 on ${surface} in ${name} theme`, () => {
+        expect(tokens['--color-text']).toBeDefined();
+        expect(tokens[surface]).toBeDefined();
         const ratio = contrastRatio(tokens['--color-text'], tokens[surface]);
         expect(ratio).toBeGreaterThanOrEqual(4.5);
       });
@@ -94,10 +96,32 @@ describe('role tokens — AA contrast (WCAG 2.1)', () => {
 
     for (const accent of ['--color-selection', '--color-attention'] as const) {
       it(`${accent} clears 3:1 vs surface in ${name} theme`, () => {
+        expect(tokens[accent]).toBeDefined();
+        expect(tokens['--color-surface']).toBeDefined();
         const ratio = contrastRatio(tokens[accent], tokens['--color-surface']);
         expect(ratio).toBeGreaterThanOrEqual(3);
       });
     }
+  }
+});
+
+describe('role tokens — chart-track contrast exemption', () => {
+  const themes = [
+    { name: 'light', tokens: light },
+    { name: 'dark', tokens: dark },
+  ] as const;
+
+  for (const { name, tokens } of themes) {
+    it(`--color-chart-track is a decorative track element (WCAG contrast exemption) in ${name} theme`, () => {
+      expect(tokens['--color-chart-track']).toBeDefined();
+      expect(tokens['--color-surface']).toBeDefined();
+      const ratio = contrastRatio(tokens['--color-chart-track'], tokens['--color-surface']);
+      // Chart tracks are decorative: intentionally below the 3:1 non-text-UI contrast
+      // threshold (WCAG 2.1 SC 1.4.11 exemption), but must remain visible against surface.
+      // This locks in the design: not invisible (ratio > 1) and not high-contrast (ratio < 3).
+      expect(ratio).toBeGreaterThan(1); // Prevents invisible (identical to surface)
+      expect(ratio).toBeLessThan(3); // Prevents accidental high-contrast (e.g., text color)
+    });
   }
 });
 

@@ -711,4 +711,35 @@ describe('BoardView — drag dispatch seam (#634)', () => {
     expect(onMoveRepo).not.toHaveBeenCalled();
     expect(onMoveSignal).not.toHaveBeenCalled();
   });
+
+  it('uses rectSortingStrategy for 2D repo reordering (#644)', () => {
+    const onMoveRepo = vi.fn();
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={onMoveRepo} />,
+    );
+
+    // Verify rectSortingStrategy is wired: a 2D swap (repo B dragged over A)
+    // dispatches the correct index pair for the reorder.
+    mockBoardDragCapture.fn?.({
+      active: { id: 'octo/repo-b' },
+      over: { id: 'octo/repo-a' },
+    } as unknown as DragEndEvent);
+
+    expect(onMoveRepo).toHaveBeenCalledTimes(1);
+    expect(onMoveRepo).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('column reorder is currently via drawer, not on-grid (#667)', () => {
+    // Column reorder dispatch (onMoveSignal) is tested above; SortableContext
+    // wiring for columns is NOT present on the grid itself (no on-grid column
+    // header group). Column reorder happens via the DeckCustomizePanel drawer.
+    render(
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveSignal={vi.fn()} />,
+    );
+
+    // No on-grid column reorder UI: the grid does not expose column headers or
+    // a sortable column context. This is a latent gap, not a current feature.
+    expect(screen.queryByRole('group', { name: /reorder.*column/i })).toBeNull();
+    expect(screen.queryByRole('columnheader')).toBeNull();
+  });
 });

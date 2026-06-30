@@ -15,17 +15,17 @@
 /** How large the Deck renders each (repo, signal) key. */
 export type DeckTileSize = 'x-small' | 'small' | 'medium' | 'large';
 
-const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
+/** localStorage key for the Deck tile-size preference. */
+export const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
 
 /** Medium reproduces the pre-existing Deck layout, so it stays the default. */
 const DEFAULT_DECK_TILE_SIZE: DeckTileSize = 'medium';
 
 /**
- * Per-size key width (px) for the Deck's repo × signal matrix, fed to each repo
- * row's `repeat(<columns>, minmax(0, <px>px))` as the per-column **target/max**.
- * Columns shrink below this to fit narrow viewports (so a repo's signals always
- * stay on one line) and cap at it on wide / full-window displays. `medium`
- * (152px) reproduces the legacy ~6-keys-per-row look at the default width.
+ * Per-size key width (px) for the Deck's repo × signal matrix. Each size maps to
+ * a fixed column width (no shrink); narrower viewports wrap fewer keys per row.
+ * `medium` (152px) reproduces the legacy ~6-keys-per-row look at the default
+ * container width.
  */
 export const DECK_TILE_MIN_PX: Record<DeckTileSize, number> = {
   'x-small': 104,
