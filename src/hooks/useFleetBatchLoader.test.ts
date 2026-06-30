@@ -163,6 +163,34 @@ describe('useFleetBatchLoader', () => {
     errorSpy.mockRestore();
   });
 
+  it('logs enriched context (repo count, viewer, generation) on batch failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const testError = new Error('batch failed');
+    executeMock.mockRejectedValue(testError);
+
+    const multiRepos: Repo[] = [
+      { nameWithOwner: 'octo/a', owner: 'octo', name: 'a', isPrivate: false },
+      { nameWithOwner: 'octo/b', owner: 'octo', name: 'b', isPrivate: false },
+      { nameWithOwner: 'octo/c', owner: 'octo', name: 'c', isPrivate: false },
+    ];
+
+    renderHook(() => useFleetBatchLoader(multiRepos, 'ghp_token', 'octocat'));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+
+    // Assert console.error was called with the error AND enriched context
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('useFleetBatchLoader'),
+      expect.objectContaining({
+        repoCount: 3,
+        viewerLogin: 'octocat',
+        generation: expect.any(Number),
+      }),
+      testError,
+    );
+
+    errorSpy.mockRestore();
+  });
+
   // ── error flag (#541) ──────────────────────────────────────────────────────
 
   it('error is false in the idle state (no token)', () => {

@@ -8,11 +8,15 @@ const buildInfoMock = vi.hoisted(() => ({
   },
 }));
 
+const formatBuiltAtMock = vi.hoisted(() => ({
+  fn: (iso?: string) => (iso ? '2026-06-26' : ''),
+}));
+
 vi.mock('../lib/build-info', () => ({
   get buildInfo() {
     return buildInfoMock.value;
   },
-  formatBuiltAt: () => '2026-06-26',
+  formatBuiltAt: (iso?: string) => formatBuiltAtMock.fn(iso),
 }));
 
 import { AppFooter } from './AppFooter';
@@ -23,6 +27,7 @@ describe('AppFooter', () => {
       sha: 'abc1234',
       builtAt: '2026-06-26T03:13:24.873Z',
     };
+    formatBuiltAtMock.fn = (iso?: string) => (iso ? '2026-06-26' : '');
   });
 
   it('renders the build date and SHA', () => {
@@ -46,12 +51,26 @@ describe('AppFooter', () => {
   it('renders the development SHA as plain text', () => {
     buildInfoMock.value = {
       sha: 'dev',
-      builtAt: '',
+      builtAt: '2026-06-26T03:13:24.873Z',
     };
 
     render(<AppFooter />);
 
     expect(screen.getByRole('contentinfo')).toHaveTextContent('2026-06-26 · dev');
+    expect(screen.queryByRole('link', { name: 'dev' })).not.toBeInTheDocument();
+  });
+
+  it('omits the build date and separator when builtAt is empty', () => {
+    buildInfoMock.value = {
+      sha: 'dev',
+      builtAt: '',
+    };
+
+    render(<AppFooter />);
+
+    const footer = screen.getByRole('contentinfo');
+    expect(footer).toHaveTextContent('dev');
+    expect(footer).not.toHaveTextContent('·');
     expect(screen.queryByRole('link', { name: 'dev' })).not.toBeInTheDocument();
   });
 });
