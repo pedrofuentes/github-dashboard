@@ -140,6 +140,13 @@ export interface PullRequestsSignalSlice extends SignalSlice {
   externalCount?: number;
   /** External, non-draft PR identity for the Inbox; omitted when there are none. */
   externalPullRequests?: ExternalPullRequest[];
+  /**
+   * `true` only when the GraphQL fleet path observed `pullRequests.pageInfo`
+   * report `hasNextPage` — i.e. the repo has more open PRs than the first-page
+   * cap, so `openCount`/`externalCount` are a lower bound. Omitted otherwise (and
+   * always by the REST path), so callers that ignore the flag are unaffected.
+   */
+  truncated?: boolean;
 }
 
 /** Issues slice — owned by issue #16 (open issue counts / triage threshold). */

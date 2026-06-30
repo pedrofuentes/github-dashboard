@@ -4,9 +4,11 @@
  * This is the API-layer machinery for the REST→GraphQL fleet-health migration.
  * It turns a list of {@link Repo}s into a single GraphQL document that fetches
  * every repo's signals in one round-trip, then folds the response back into one
- * slice per (signal, repo) pair. Nothing consumes it yet — a later increment
- * wires it into a hook behind a flag — so this module is pure infrastructure
- * with zero runtime behavior change.
+ * slice per (signal, repo) pair. Several signals already route through it: each
+ * is wired into its hook behind a per-signal GraphQL flag
+ * ({@link graphqlSignalEnabled}), so flipping a flag swaps that signal from its
+ * REST hook to this batched path. Signals whose flag is off still take the REST
+ * path, so this module's effect is gated entirely by those flags.
  *
  * Design goals:
  *  - **Cost**: each repo is emitted as a TOP-LEVEL singular `repository(...)`
@@ -48,6 +50,7 @@ import type {
   StaleItem,
   StaleSignalSlice,
 } from '../../types/fleet';
+import { OUTSIDE_CONTRIBUTOR_ASSOCIATIONS } from './contributor-associations';
 import {
   GraphQLRateLimitPartSchema,
   fetchGraphQL,
@@ -90,7 +93,10 @@ const PullRequestNodeSchema = z
 
 /** Zod schema for the `pullRequests { nodes [...] }` connection. */
 const PullRequestsConnectionSchema = z
-  .object({ nodes: z.array(PullRequestNodeSchema) })
+  .object({
+    nodes: z.array(PullRequestNodeSchema),
+    pageInfo: z.object({ hasNextPage: z.boolean() }).passthrough().optional(),
+  })
   .passthrough();
 
 /**
@@ -120,6 +126,12 @@ const ViewerSchema = z.object({ login: z.string() }).passthrough();
  * The validated `data` payload of a fleet query. Repo aliases (`r0`, `r1`, …)
  * are dynamic, so they are reached through the index signature; `viewer` and
  * `rateLimit` are always present in the selection set.
+ *
+ * Schema note: the chunk schema is `.passthrough()` (see
+ * {@link buildChunkDataSchema}), so server keys outside the declared selection
+ * survive parsing and remain reachable here as `unknown`-shaped extras. Only the
+ * declared fields (`viewer`, `rateLimit`, each `r{i}` node) are validated; read
+ * anything else defensively.
  */
 export interface FleetQueryData {
   viewer: { login: string } | null;
@@ -130,6 +142,13 @@ export interface FleetQueryData {
 /**
  * Builds the Zod schema for a chunk of `repoCount` repos. The repo aliases are
  * generated dynamically (`r0`..`r{repoCount-1}`) to mirror {@link buildFleetQuery}.
+ *
+ * The schema (and each repo node) is `.passthrough()`: only the explicitly
+ * declared fields are validated, while any other server-sent keys pass through
+ * unvalidated into {@link FleetChunkContext.data}. This keeps parsing tolerant of
+ * additive schema changes, but means a top-level deriver reading an undeclared
+ * alias gets an UNVALIDATED value and must re-parse it itself (e.g. the stale and
+ * reviews derivers `safeParse` their aliased search payloads).
  */
 function buildChunkDataSchema(repoCount: number): ZodType<FleetQueryData> {
   const shape: Record<string, ZodType> = {
@@ -191,6 +210,49 @@ export function buildErrorIndex(errors: GraphQLError[]): FleetErrorIndex {
   };
 }
 
+/**
+ * Reports a per-repo GraphQL field error for one signal: returns whether the
+ * repo's `alias` OR any of its `ownedFields` (or their subtrees) errored and,
+ * when so, emits a `console.warn` naming the signal, `nameWithOwner`, alias, and
+ * the matched dot-joined error paths.
+ *
+ * Detection semantics are unchanged from inlining the checks — the boolean is
+ * exactly `has(alias) || ownedFields.some((f) => coversField(`${alias}.${f}`))`.
+ * The added warning mirrors the batch-level breadcrumb style (see the
+ * `console.error` calls in {@link executeFleetBatch}) so a partial field failure
+ * that downgrades one repo's slice to `{ status: 'error' }` is no longer silent,
+ * matching the REST hooks which already log their failures.
+ *
+ * @param signal - The deriving signal (e.g. `'ci'`, `'issues'`, `'pullRequests'`).
+ * @param alias - The repo's chunk alias (e.g. `'r2'`).
+ * @param nameWithOwner - The repo's `owner/name` string (e.g. `'acme/api'`).
+ * @param ownedFields - The signal-owned child fields under the alias to inspect.
+ * @param errors - The chunk's path-scoped error index.
+ * @returns `true` when the alias or an owned field (sub)path errored.
+ */
+function reportRepoFieldError(
+  signal: string,
+  alias: string,
+  nameWithOwner: string,
+  ownedFields: readonly string[],
+  errors: FleetErrorIndex,
+): boolean {
+  const errored =
+    errors.has(alias) || ownedFields.some((field) => errors.coversField(`${alias}.${field}`));
+  if (!errored) return false;
+  const ownedPrefixes = ownedFields.map((field) => `${alias}.${field}`);
+  const matched = [...errors.paths]
+    .filter(
+      (path) =>
+        path === alias || ownedPrefixes.some((pre) => path === pre || path.startsWith(`${pre}.`)),
+    )
+    .sort();
+  console.warn(
+    `fleet-query: ${signal} field error for ${nameWithOwner} (${alias}) — ${matched.join(', ')}`,
+  );
+  return true;
+}
+
 // ── SignalDeriver registry ───────────────────────────────────────────────────
 
 /**
@@ -204,7 +266,12 @@ export interface FleetChunkContext {
   readonly repos: readonly Repo[];
   /** Viewer login carried into the query (`null` when unauthenticated). */
   readonly viewerLogin: string | null;
-  /** The validated `data` payload (top-level aliases for top-level derivers). */
+  /**
+   * The validated `data` payload (top-level aliases for top-level derivers).
+   * Built with a `.passthrough()` schema, so a top-level deriver's own alias
+   * arrives UNVALIDATED (only `viewer`/`rateLimit`/`r{i}` nodes are checked) and
+   * must be re-parsed by the deriver before use.
+   */
   readonly data: FleetQueryData;
   /** Path-scoped error index for this chunk's response. */
   readonly errors: FleetErrorIndex;
@@ -241,7 +308,17 @@ export interface SignalDeriver {
   readonly kind: 'per-repo' | 'top-level' | 'top-level-global';
   /** Selection-set fragment composed inside each `repository(...)` alias. */
   repoFragment?(viewerLogin: string | null): string;
-  /** Aliased top-level selection (e.g. a `search(...)` field). */
+  /**
+   * Aliased top-level selection (e.g. a `search(...)` field).
+   *
+   * @security Returns a raw interpolated string spliced directly into the query
+   * document, so any caller-influenced value — `repos` (owner/name) and
+   * `viewerLogin` — MUST reach the server as a BOUND GraphQL variable (declared
+   * via {@link topLevelVariables} and referenced as `$name`), never inlined into
+   * the returned string. Inlining a repo/login literal would reopen a GraphQL
+   * injection surface. Unreachable today (the only top-level derivers bind every
+   * such value), but this contract binds future top-level derivers.
+   */
   topLevelFragment?(repos: readonly Repo[], viewerLogin: string | null): string;
   /**
    * Top-level query variables this deriver needs declared and bound. Each entry
@@ -302,8 +379,13 @@ function ciRepoFragment(): string {
 }
 
 /**
- * Folds one repo's node + the error index into a {@link CiSignalSlice} that is
- * value-identical in shape to what `useCiSignal` emits today.
+ * Folds one repo's node + the error index into a {@link CiSignalSlice}.
+ *
+ * Parity scope: this matches `useCiSignal` only on the health-summary fields the
+ * dashboard renders — `status`, `conclusion`, `score`, and `failingCount`. It
+ * deliberately OMITS the REST hook's run-identity fields (`latestRunUrl`,
+ * `runId`, `updatedAt`), which have no GraphQL rollup equivalent here, so the
+ * slice is parity-in-summary, not value-identical.
  *
  * Mapping (GraphQL `StatusState` → slice):
  *  - `FAILURE` / `ERROR`  → failing (`conclusion: 'failure'`, score 100)
@@ -321,9 +403,10 @@ function ciRepoFragment(): string {
 function deriveCiSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): CiSignalSlice {
-  if (errors.has(alias) || errors.coversField(`${alias}.defaultBranchRef`)) {
+  if (reportRepoFieldError('ci', alias, nameWithOwner, ['defaultBranchRef'], errors)) {
     return { status: 'error' };
   }
   // A null node WITHOUT a matching error is "no data", not a failure.
@@ -354,7 +437,10 @@ export const ciDeriver: SignalDeriver = {
   derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
     const out = new Map<string, SignalSlice>();
     for (const repo of ctx.repos) {
-      out.set(repo.nameWithOwner, deriveCiSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors));
+      out.set(
+        repo.nameWithOwner,
+        deriveCiSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
+      );
     }
     return out;
   },
@@ -424,13 +510,10 @@ function issuesRepoFragment(viewerLogin: string | null): string {
 function deriveIssuesSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): IssuesSignalSlice {
-  if (
-    errors.has(alias) ||
-    errors.coversField(`${alias}.openIssues`) ||
-    errors.coversField(`${alias}.myIssues`)
-  ) {
+  if (reportRepoFieldError('issues', alias, nameWithOwner, ['openIssues', 'myIssues'], errors)) {
     return { status: 'error' };
   }
   if (!node || !node.openIssues) return issuesReadySlice(0);
@@ -448,7 +531,7 @@ export const issuesDeriver: SignalDeriver = {
     for (const repo of ctx.repos) {
       out.set(
         repo.nameWithOwner,
-        deriveIssuesSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors),
+        deriveIssuesSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
       );
     }
     return out;
@@ -458,30 +541,28 @@ export const issuesDeriver: SignalDeriver = {
 // ── PR deriver (open / new-contributor pull requests) ────────────────────────
 
 /**
- * `author_association` values that identify a new outside contributor (not a
- * member, owner, collaborator, or returning `CONTRIBUTOR`). Value-identical to
- * the same constant in `usePullRequestsSignal` so both REST and GraphQL paths
- * produce identical externalCount values.
+ * Shared cap for the open-PR page size. Matches the REST hook's `per_page=100`
+ * so `openCount` is the non-draft subset of ≤ this many, never an uncapped
+ * server total. A repo with more than this many open PRs is surfaced via the
+ * derived slice's `truncated` flag (see {@link derivePrSlice}).
  */
-const OUTSIDE_CONTRIBUTOR_ASSOCIATIONS = new Set([
-  'FIRST_TIME_CONTRIBUTOR',
-  'FIRST_TIMER',
-  'NONE',
-  'MANNEQUIN',
-]);
+const OPEN_PR_PAGE_SIZE = 100;
 
 /**
  * Per-repo PR selection fragment.
  *
- * Fetches the first 100 OPEN pull requests — matching the REST hook's
- * `per_page=100` cap — so `openCount` is the non-draft subset of ≤100, never
- * an uncapped server total. `totalCount` is intentionally omitted: it would
- * include drafts and exceed the 100-item cap, diverging from REST semantics.
+ * Fetches the first {@link OPEN_PR_PAGE_SIZE} OPEN pull requests — matching the
+ * REST hook's `per_page=100` cap — so `openCount` is the non-draft subset of
+ * ≤100, never an uncapped server total. `totalCount` is intentionally omitted:
+ * it would include drafts and exceed the 100-item cap, diverging from REST
+ * semantics. `pageInfo { hasNextPage }` is selected so {@link derivePrSlice} can
+ * surface a `truncated` flag when a repo has more open PRs than the cap.
  */
 function prRepoFragment(): string {
   return [
-    'pullRequests(states: OPEN, first: 100) {',
+    `pullRequests(states: OPEN, first: ${OPEN_PR_PAGE_SIZE}) {`,
     '  nodes { number title url createdAt isDraft authorAssociation author { login } }',
+    '  pageInfo { hasNextPage }',
     '}',
   ].join('\n');
 }
@@ -494,13 +575,17 @@ function prRepoFragment(): string {
  * externalCount = non-draft PRs whose authorAssociation ∈ OUTSIDE_CONTRIBUTOR_ASSOCIATIONS
  * score = externalCount * 5 + openCount  (new-contributor PRs weighted 5×)
  * externalPullRequests = identity list present only when externalCount > 0
+ * truncated = `true` only when the connection's `pageInfo.hasNextPage` reports
+ *   the repo has more open PRs than {@link OPEN_PR_PAGE_SIZE}; omitted otherwise
+ *   so existing callers that ignore the flag are unaffected.
  */
 function derivePrSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): PullRequestsSignalSlice {
-  if (errors.has(alias) || errors.coversField(`${alias}.pullRequests`)) {
+  if (reportRepoFieldError('pullRequests', alias, nameWithOwner, ['pullRequests'], errors)) {
     return { status: 'error' };
   }
   if (!node?.pullRequests) return { status: 'ready', openCount: 0, externalCount: 0, score: 0 };
@@ -514,6 +599,9 @@ function derivePrSlice(
   const score = externalCount * 5 + openCount;
 
   const slice: PullRequestsSignalSlice = { status: 'ready', openCount, externalCount, score };
+  if (node.pullRequests.pageInfo?.hasNextPage === true) {
+    slice.truncated = true;
+  }
   if (externalCount > 0) {
     slice.externalPullRequests = external.map((p) => ({
       number: p.number,
@@ -535,7 +623,10 @@ export const prDeriver: SignalDeriver = {
   derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
     const out = new Map<string, SignalSlice>();
     for (const repo of ctx.repos) {
-      out.set(repo.nameWithOwner, derivePrSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors));
+      out.set(
+        repo.nameWithOwner,
+        derivePrSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
+      );
     }
     return out;
   },
@@ -635,6 +726,8 @@ function staleTopLevelFragment(repos: readonly Repo[]): string {
  * - The alias errored (`has`/`coversField`) → `{ status: 'error' }`.
  * - The alias is absent WITHOUT a covering error → ready-zero (no data), so a
  *   repo GitHub silently omitted never reads as a failure.
+ * - A present-but-malformed payload (fails the strict parse) → `{ status: 'error' }`,
+ *   never a false ready-zero (mirrors the reviews deriver, gql-7 #552).
  * - Otherwise `issueCount` → `staleCount`/`score`; nodes → `staleItems`
  *   (`html_url`/`updated_at` un-projected, `type` from `__typename`), omitted
  *   when empty.
@@ -1283,9 +1376,15 @@ async function runGlobalDerivers(
  *    re-thrown so a cancelled batch settles immediately.
  *
  * @param repos - The fleet to query.
- * @param viewerLogin - Viewer login forwarded to top-level derivers (`null` ok).
+ * @param viewerLogin - Viewer login forwarded to per-repo and top-level derivers
+ *   (`null` ok); drives the per-repo `myIssues` fragment + `$viewer` variable.
  * @param token - GitHub token for the GraphQL request.
  * @param signal - Optional abort signal threaded to every request.
+ * @param onProgress - Optional progressive callback invoked with a shallow clone
+ *   ({@link cloneResult}) of the result-so-far after each chunk settles (success
+ *   OR isolated failure) and once more after the global derivers complete. Every
+ *   emit is abort-guarded (skipped when `signal?.aborted`), so a cancelled batch
+ *   makes no further progress calls.
  */
 export async function executeFleetBatch(
   repos: readonly Repo[],
@@ -1358,7 +1457,10 @@ export async function executeFleetBatch(
           if (deriver.kind === 'top-level-global') continue;
           markChunk(result, deriver.signal, chunkRepos, { status: 'error' });
         }
-        onProgress?.(cloneResult(result));
+        // Guard for symmetry with the other emit sites. The early `throw` above
+        // already means `signal?.aborted` is false here, so this is behaviour-
+        // preserving — it keeps every onProgress emit uniformly abort-guarded.
+        if (!signal?.aborted) onProgress?.(cloneResult(result));
       }
     }),
   );

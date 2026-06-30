@@ -18,7 +18,9 @@ import {
   createRepoFilterQueryStore,
   evaluateRepoFilterQuery,
   isQueryActive,
+  LEGACY_REPO_FILTER_KEY,
   migrateLegacyRepoFilter,
+  STORAGE_KEY_V2,
   type RepoFilterQueryV2,
 } from '../lib/repo-filter-query';
 import type { VersionedStore } from '../lib/versioned-storage';
@@ -197,8 +199,21 @@ export function useRepoFilterQuery(
   if (storeRef.current === null) {
     const store = createRepoFilterQueryStore();
     // Seed v2 from a legacy `string[]` selection (if any) before the first read,
-    // so a user's pre-v2 filter survives the upgrade.
-    migrateLegacyRepoFilter(store);
+    // so a user's pre-v2 filter survives the upgrade. Check pre-conditions first
+    // so we can distinguish a genuine save failure from a benign skip (v2 already
+    // exists, or no legacy key was ever written).
+    let needsMigration = false;
+    try {
+      needsMigration =
+        localStorage.getItem(STORAGE_KEY_V2) === null &&
+        localStorage.getItem(LEGACY_REPO_FILTER_KEY) !== null;
+    } catch {
+      // Storage unavailable — migration condition unknown; skip warn.
+    }
+    const migrationResult = migrateLegacyRepoFilter(store);
+    if (needsMigration && !migrationResult) {
+      console.warn('[repo-filter] legacy migration failed to persist');
+    }
     storeRef.current = store;
   }
   const store = storeRef.current;
