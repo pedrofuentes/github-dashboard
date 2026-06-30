@@ -277,6 +277,23 @@ export class GraphQLLimiter {
     this.tokens = this.capacity;
   }
 
+  /**
+   * Disposes the limiter for app/HMR teardown. Clears the pending refill timer
+   * (which otherwise outlives the {@link graphqlLimiter} singleton across an HMR
+   * swap) and rejects every queued waiter with an `AbortError`. Unlike
+   * {@link reset} — a test helper that silently drops waiters and refills the
+   * bucket — teardown settles in-queue promises so awaiting callers never hang
+   * and leaves no stray timer behind (#530).
+   */
+  teardown(): void {
+    this.clearRefillTimer();
+    while (this.queue.length > 0) {
+      const waiter = this.queue.shift() as Waiter;
+      this.detachAbort(waiter);
+      waiter.reject(abortError());
+    }
+  }
+
   private pump(): void {
     while (this.queue.length > 0 && this.tokens > 0) {
       this.tokens -= 1;
