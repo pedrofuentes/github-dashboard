@@ -86,6 +86,7 @@ describe('createVersionedStore — migrate', () => {
   });
 
   it('falls back without throwing when migrate itself throws', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     localStorage.setItem(KEY, JSON.stringify(['x', 'y']));
     const migrate = vi.fn((): unknown => {
       throw new Error('migrate boom');
@@ -104,9 +105,9 @@ describe('createVersionedStore — migrate', () => {
       throw migrateError;
     });
     const store = createVersionedStore<Value>({ key: KEY, schema: Schema, fallback, migrate });
-    
+
     store.load();
-    
+
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('versioned-storage'),
       expect.stringContaining(KEY),
