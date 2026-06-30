@@ -134,7 +134,7 @@ export function useSavedViews(): UseSavedViewsResult {
         return { ok: false, error: 'That view no longer exists.' };
       }
       if (!commit(next)) {
-        return { ok: false, error: 'Could not save this view. Check browser storage.' };
+        return { ok: false, error: 'Could not delete this view. Check browser storage.' };
       }
       return { ok: true };
     },
