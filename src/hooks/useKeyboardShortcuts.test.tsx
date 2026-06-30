@@ -122,6 +122,31 @@ describe('useKeyboardShortcuts', () => {
     editable.remove();
   });
 
+  it('does not trigger while typing in a textarea element', () => {
+    const handlers = makeSpies();
+    const textarea = document.createElement('textarea');
+    document.body.appendChild(textarea);
+    render(<Harness handlers={handlers} />);
+
+    press('g', {}, textarea);
+    press('t', {}, textarea);
+
+    expect(handlers.navigate).not.toHaveBeenCalled();
+    textarea.remove();
+  });
+
+  it('does not trigger while typing in a select element', () => {
+    const handlers = makeSpies();
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+    render(<Harness handlers={handlers} />);
+
+    press('?', { shiftKey: true }, select);
+
+    expect(handlers.openHelp).not.toHaveBeenCalled();
+    select.remove();
+  });
+
   it('resets the pending prefix after the sequence timeout', () => {
     vi.useFakeTimers();
     const handlers = makeSpies();
@@ -189,6 +214,22 @@ describe('useKeyboardShortcuts', () => {
 
     press('g');
     press('i');
+    expect(handlers.navigate).not.toHaveBeenCalled();
+  });
+
+  it('clears the pending-prefix timer on unmount', () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+    const handlers = makeSpies();
+    const { unmount } = render(<Harness handlers={handlers} />);
+
+    press('g');
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1500);
     expect(handlers.navigate).not.toHaveBeenCalled();
   });
 });

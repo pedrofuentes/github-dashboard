@@ -12,6 +12,7 @@ import {
   updateSavedView,
   findSavedView,
   createSavedViewsStore,
+  validateSavedViewName,
   MAX_SAVED_VIEWS,
   MAX_VIEW_NAME_LENGTH,
   STORAGE_KEY_V1,
@@ -26,6 +27,67 @@ function expectState<T>(state: T | null): T {
   }
   return state;
 }
+
+describe('validateSavedViewName', () => {
+  it('rejects empty string', () => {
+    expect(validateSavedViewName('')).toBe('Enter a name for this view.');
+  });
+
+  it('rejects whitespace-only string', () => {
+    expect(validateSavedViewName('   ')).toBe('Enter a name for this view.');
+  });
+
+  it('rejects name over MAX_VIEW_NAME_LENGTH', () => {
+    const longName = 'a'.repeat(MAX_VIEW_NAME_LENGTH + 1);
+    expect(validateSavedViewName(longName)).toBe(
+      `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`,
+    );
+  });
+
+  it('accepts a valid name', () => {
+    expect(validateSavedViewName('My view')).toBeNull();
+  });
+
+  it('rejects names containing control characters (U+0000–U+001F)', () => {
+    expect(validateSavedViewName('View\x00Name')).not.toBeNull(); // NULL
+    expect(validateSavedViewName('View\x01Name')).not.toBeNull(); // SOH
+    expect(validateSavedViewName('View\x0AName')).not.toBeNull(); // LF
+    expect(validateSavedViewName('View\x0DName')).not.toBeNull(); // CR
+    expect(validateSavedViewName('View\x1FName')).not.toBeNull(); // US
+  });
+
+  it('rejects names containing DEL control character (U+007F)', () => {
+    expect(validateSavedViewName('View\x7FName')).not.toBeNull();
+  });
+
+  it('rejects names containing bidi control characters (overrides, embeddings, isolates)', () => {
+    // Bidi embeddings (U+202A-U+202E)
+    expect(validateSavedViewName('View\u202AName')).not.toBeNull(); // LEFT-TO-RIGHT EMBEDDING
+    expect(validateSavedViewName('View\u202BName')).not.toBeNull(); // RIGHT-TO-LEFT EMBEDDING
+    expect(validateSavedViewName('View\u202CName')).not.toBeNull(); // POP DIRECTIONAL FORMATTING
+    expect(validateSavedViewName('View\u202DName')).not.toBeNull(); // LEFT-TO-RIGHT OVERRIDE
+    expect(validateSavedViewName('View\u202EName')).not.toBeNull(); // RIGHT-TO-LEFT OVERRIDE
+    // Bidi isolates (U+2066-U+2069)
+    expect(validateSavedViewName('View\u2066Name')).not.toBeNull(); // LEFT-TO-RIGHT ISOLATE
+    expect(validateSavedViewName('View\u2067Name')).not.toBeNull(); // RIGHT-TO-LEFT ISOLATE
+    expect(validateSavedViewName('View\u2068Name')).not.toBeNull(); // FIRST STRONG ISOLATE
+    expect(validateSavedViewName('View\u2069Name')).not.toBeNull(); // POP DIRECTIONAL ISOLATE
+  });
+
+  it('rejects names containing zero-width space and BOM', () => {
+    expect(validateSavedViewName('View\u200BName')).not.toBeNull(); // ZERO WIDTH SPACE
+    expect(validateSavedViewName('View\uFEFFName')).not.toBeNull(); // ZERO WIDTH NO-BREAK SPACE (BOM)
+  });
+
+  it('allows ZWJ and ZWNJ for legitimate emoji and script sequences', () => {
+    // ZWJ (U+200D) is required for multi-part emoji sequences
+    expect(validateSavedViewName('👨‍👩‍👧')).toBeNull(); // family emoji with ZWJ
+    expect(validateSavedViewName('🏳️‍🌈')).toBeNull(); // rainbow flag with ZWJ
+    expect(validateSavedViewName('View👨‍👩‍👧Name')).toBeNull(); // emoji in name
+    // ZWNJ (U+200C) has legitimate uses in Persian, Arabic, and other scripts
+    expect(validateSavedViewName('View\u200CName')).toBeNull(); // ZERO WIDTH NON-JOINER
+  });
+});
 
 describe('SavedView schema validation', () => {
   it('accepts a valid SavedView', () => {
