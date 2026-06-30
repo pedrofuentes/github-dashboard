@@ -3,7 +3,12 @@ import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TileTier } from './types';
-import { DEFAULT_TILE_TIER, resetTileSizeWarnings, tierForSize, useTileSize } from './useTileSize';
+import {
+  DEFAULT_TILE_TIER,
+  resetTileSizeWarningsForTesting,
+  tierForSize,
+  useTileSize,
+} from './useTileSize';
 
 /**
  * Test double for `ResizeObserver`. The hook now shares ONE observer across all
@@ -75,7 +80,7 @@ beforeEach(() => {
   observedElements.clear();
   // Re-arm the module-level "ResizeObserver unavailable" warn-once guard so each
   // test sees a clean slate regardless of order (#359).
-  resetTileSizeWarnings();
+  resetTileSizeWarningsForTesting();
 });
 
 afterEach(() => {
@@ -242,7 +247,7 @@ describe('useTileSize', () => {
     warn.mockRestore();
   });
 
-  it('re-warns after resetTileSizeWarnings re-arms the once-only guard (#359)', () => {
+  it('re-warns after resetTileSizeWarningsForTesting re-arms the once-only guard (#359)', () => {
     vi.stubGlobal('ResizeObserver', undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -258,7 +263,7 @@ describe('useTileSize', () => {
     // ...until the test-reset hook re-arms it, after which the degraded path warns
     // again. This gives tests a deterministic way to exercise the warn-once path
     // in isolation instead of depending on being the first RO-absent render (#359).
-    resetTileSizeWarnings();
+    resetTileSizeWarningsForTesting();
     render(<Probe />);
     expect(warn).toHaveBeenCalledTimes(2);
 
