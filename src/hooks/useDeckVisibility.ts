@@ -4,7 +4,10 @@
  * State is seeded from {@link loadHiddenDeckKeys} on mount and persisted on
  * every real change. Mutators delegate to the pure `deck-visibility` lib;
  * when the lib returns the same Set instance (no-op), neither a persist nor a
- * re-render is triggered. All mutators are memoised with `useCallback` so
+ * re-render is triggered. Note: `showOnly` and `toggleKey` always build a fresh
+ * Set, so even an idempotent call triggers persist + re-render; the no-op skip
+ * applies only to instance-preserving transforms (setSignal/setRepo/setAll/reset
+ * on already-satisfied state). All mutators are memoised with `useCallback` so
  * consumers can safely include them in dependency arrays.
  */
 import { useCallback, useState } from 'react';
