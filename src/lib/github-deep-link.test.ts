@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { isGitHubUrl } from './github-url';
 import { signalDeepLinkUrl } from './github-deep-link';
 import type { Repo, RepoSignalData } from '../types/fleet';
+import type { TileSignalType } from '../types/dashboard';
 
 const REPO: Repo = {
   nameWithOwner: 'octo/repo',
@@ -90,5 +91,24 @@ describe('signalDeepLinkUrl', () => {
       expect(url).toBeDefined();
       expect(isGitHubUrl(url as string)).toBe(true);
     }
+  });
+
+  it('handles unexpected signal types with explicit exhaustiveness guard', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Cast to bypass compile-time check and test runtime exhaustiveness guard.
+    // If a future TileSignalType member is added without updating the switch,
+    // the default branch should log an error and return undefined.
+    const unknownSignal = 'unknownSignalType' as unknown as TileSignalType;
+    const url = signalDeepLinkUrl(REPO, unknownSignal, EMPTY);
+
+    // Runtime fallback should log error for unexpected values
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unexpected signal type'),
+      'unknownSignalType',
+    );
+    expect(url).toBeUndefined();
+
+    consoleSpy.mockRestore();
   });
 });

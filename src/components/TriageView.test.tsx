@@ -43,6 +43,14 @@ describe('TriageView structure', () => {
     expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
   });
 
+  it('calls getRowData once per visible repo (dedupe classification + rendering)', () => {
+    const getRowData = vi.fn(() => FAILING_CI);
+    render(<TriageView repos={[repo('octo/a'), repo('octo/b')]} getRowData={getRowData} />);
+    // Should call getRowData exactly once per repo (not twice: once for
+    // classification, once for rendering indicators)
+    expect(getRowData).toHaveBeenCalledTimes(2);
+  });
+
   it('renders a heading with a count for each non-empty band', () => {
     const repos = [repo('octo/broken'), repo('octo/review'), repo('octo/external')];
     render(
@@ -191,9 +199,7 @@ describe('TriageView healthy band', () => {
     const toggle = screen.getByRole('button', { name: /healthy.*2/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     const healthyRow = screen.queryByText('octo/healthy1');
-    if (healthyRow) {
-      expect(healthyRow).not.toBeVisible();
-    }
+    expect(healthyRow).not.toBeVisible();
   });
 
   it('keeps the collapsed Healthy controlled region in the DOM', () => {
@@ -249,6 +255,14 @@ describe('TriageView states', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
     await user.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders an alert without a retry button when onRetry is absent', () => {
+    render(
+      <TriageView repos={[]} getRowData={() => ({})} error="Could not load your repositories." />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load your repositories.');
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
 
   it('shows a friendly empty state when the fleet has no repos', () => {

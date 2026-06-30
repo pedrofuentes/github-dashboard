@@ -62,7 +62,8 @@ export interface DeckMove extends ReorderIndices {
  * signal columns (ids namespaced, e.g. `col:ci`). The dragged id's membership
  * picks the axis: a `columnIds` member ⇒ a `column` move (indices within
  * `columnIds`), otherwise a `repo` move (indices within `repoIds`). Returns
- * `null` for any no-op (see {@link reorderIndices}).
+ * `null` for any no-op (see {@link reorderIndices}) or when the active/over id
+ * is absent from the selected axis list (indexOf = -1, including cross-axis drops).
  */
 export function resolveDeckMove(
   repoIds: readonly string[],

@@ -32,8 +32,16 @@ describe('fuzzyMatch', () => {
       const result3 = fuzzyMatch('Gd', 'GiThUb-DaShBoArD');
 
       expect(result1.matched).toBe(true);
+      expect(result1.score).toBeGreaterThan(0);
+      expect(result1.indices).toEqual([0, 7]);
+
       expect(result2.matched).toBe(true);
+      expect(result2.score).toBeGreaterThan(0);
+      expect(result2.indices).toEqual([0, 7]);
+
       expect(result3.matched).toBe(true);
+      expect(result3.score).toBeGreaterThan(0);
+      expect(result3.indices).toEqual([0, 7]);
     });
   });
 
@@ -94,6 +102,17 @@ describe('fuzzyMatch', () => {
 
       // Both match at the same positions, but longer target should score slightly lower
       expect(shorter.score).toBeGreaterThan(longer.score);
+    });
+
+    it('clamps negative scores to 0 for extreme length penalties', () => {
+      // A very long target (>1000 chars) with a match far from the start can accumulate
+      // enough penalties (length + gap) to drive the raw score negative.
+      const longTarget = 'x'.repeat(1001) + 'z';
+      const result = fuzzyMatch('z', longTarget);
+
+      expect(result.matched).toBe(true);
+      expect(result.score).toBe(0); // clamped via Math.max(0, score)
+      expect(result.indices).toEqual([1001]);
     });
   });
 

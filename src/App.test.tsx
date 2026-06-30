@@ -576,8 +576,8 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog', { name: /settings/i });
     await user.click(within(dialog).getByRole('button', { name: /forget token/i }));
 
-    // Back to the unauthenticated token input; close the overlay and re-auth.
-    await user.click(screen.getByRole('button', { name: /close settings/i }));
+    // The overlay auto-closes after forget; back to the unauthenticated token input.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await authenticateWithRepos(user, [repo('octo/hello-world')]);
 
     // The new session must open on the configured DEFAULT (Triage), not the

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import {
@@ -145,6 +145,52 @@ describe('persistence + migration', () => {
     localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify({ nope: true }));
     expect(migrateLegacyRepoFilter(createRepoFilterQueryStore())).toBe(false);
   });
+
+  it('returns false when store.save() fails (e.g., storage quota)', () => {
+    // Stub a failing store.
+    const failingStore = createRepoFilterQueryStore();
+    const saveSpy = vi.fn(() => false);
+    failingStore.save = saveSpy;
+
+    localStorage.setItem(LEGACY_REPO_FILTER_KEY, JSON.stringify(['octo/a']));
+    expect(migrateLegacyRepoFilter(failingStore)).toBe(false);
+
+    // save was attempted once with the migrated query (not just silently skipped).
+    expect(saveSpy).toHaveBeenCalledOnce();
+    expect(saveSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoSelection: { mode: 'include', names: ['octo/a'] },
+      }),
+    );
+    // Legacy key preserved — a failed save must not destroy the source data.
+    expect(localStorage.getItem(LEGACY_REPO_FILTER_KEY)).toBe(JSON.stringify(['octo/a']));
+  });
+});
+
+describe('EMPTY_QUERY', () => {
+  it('is frozen to prevent mutation', () => {
+    expect(Object.isFrozen(EMPTY_QUERY)).toBe(true);
+  });
+
+  it('has all nested repoSelection objects frozen', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.repoSelection)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.repoSelection.names)).toBe(true);
+  });
+
+  it('has all nested facets objects and arrays frozen', () => {
+    expect(Object.isFrozen(EMPTY_QUERY.facets)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.owners)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.health)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.ci)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security.grades)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.security.severities)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.pullRequests)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.reviews)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.issues)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.stale)).toBe(true);
+    expect(Object.isFrozen(EMPTY_QUERY.facets.visibility)).toBe(true);
+  });
 });
 
 describe('evaluateRepoFilterQuery', () => {
@@ -225,6 +271,15 @@ describe('evaluateRepoFilterQuery', () => {
     });
     const facets = { security: { grades: [], severities: ['critical' as const] } };
     expect(evaluateRepoFilterQuery(q({ facets }), repos, get)).toEqual(new Set(['o/crit']));
+  });
+
+  it('security severities facet requires counts field (regression for !counts guard)', () => {
+    const repos = [repo('o/no-counts')];
+    const get = getter({
+      'o/no-counts': { security: { status: 'ready', grade: 'A' } }, // no counts field
+    });
+    const facets = { security: { grades: [], severities: ['critical' as const] } };
+    expect(evaluateRepoFilterQuery(q({ facets }), repos, get)).toEqual(new Set());
   });
 
   it('security truncated:true matches only truncated repos', () => {
