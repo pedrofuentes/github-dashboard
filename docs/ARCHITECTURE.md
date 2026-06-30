@@ -199,8 +199,12 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
   idle-fleet polls become free).
 - **Org-level Dependabot + code-scanning** endpoints collapse 50 per-repo calls
   into **1 each**.
-- **Compute from cache:** issue counts, staleness, and outside-contributor
-  detection reuse already-fetched payloads (**0** extra calls).
+- **Compute from cache:** issue counts and outside-contributor detection reuse
+  already-fetched payloads (**0** extra calls). **Staleness has its own
+  dedicated search call** — a separate aliased `search(type: ISSUE, query:
+  "is:open updated:<cutoff")` included in the batched GraphQL request, one alias
+  per repo chunk — so stale does NOT reuse already-fetched payloads; it adds one
+  search alias per repo to the GraphQL batch.
 - **`GET /rate_limit` pre-check** before each batch (free); surface a dismissible
   banner when remaining is low — **never silently stop**.
 - **Stop polling when the tab is hidden** (Page Visibility API); **stagger**
@@ -278,6 +282,25 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
 - Pipeline authoring is pre-authorized; the deploy **workflow is authored in
   issue #7** and the **live URL is verified in the release / DoD phase (#25)** —
   production go-live is **not "done"** until that secure deploy is verified.
+
+### 12.1 Deploy-detection contract (`version.json`)
+
+Every production build emits a `version.json` asset alongside the bundle (via the
+`emit-version-json` Vite plugin in `vite.config.ts`):
+
+```json
+{ "sha": "<7-char short commit SHA>", "builtAt": "<ISO-8601 timestamp>" }
+```
+
+`useUpdateAvailable` (`src/hooks/useUpdateAvailable.ts`) polls this file to
+detect when a new deploy has replaced the running build:
+
+- **Poll schedule:** once on mount, then every **5 minutes** (`UPDATE_CHECK_INTERVAL_MS`), plus on `window` **focus** and `document` **visibilitychange → visible**.
+- **Cache bypass:** fetched with `cache: 'no-store'` so the browser never serves a stale cached copy.
+- **Comparison:** if `version.json.sha !== buildInfo.sha` (the SHA injected at build time via `__BUILD_SHA__`), `updateAvailable` is set to `true` and the `UpdateAvailableToast` prompts the user to reload.
+- **Dev skip:** polling is suppressed when `buildInfo.sha === 'dev'` (the local Vite dev server value), so it never fires in development.
+
+**Operational constraint:** `version.json` must be served with a no-cache or short-TTL response header, and the Vite base path must be stable — if either changes, the poll URL (`${BASE_URL}version.json`) will silently 404 and update detection will stop working.
 
 ## 13. Code patterns
 
