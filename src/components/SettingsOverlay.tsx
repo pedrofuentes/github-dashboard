@@ -11,7 +11,8 @@
  * {@link ThemeToggle} / {@link DensityToggle} / {@link RepoOwnerToggle} /
  * {@link DefaultViewToggle} components unchanged. The Defaults + Account sections
  * only render when a user is authenticated (`user !== null`); Appearance is
- * always available. Tokens only and reduced-motion safe (no transitions).
+ * always available. Auth requires a stored GitHub personal access token (PAT);
+ * reduced-motion safe (no transitions).
  */
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
