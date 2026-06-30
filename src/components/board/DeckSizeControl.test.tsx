@@ -2,10 +2,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DECK_TILE_SIZE_KEY } from '../../lib/deck-tile-size';
 import { __resetDeckTileSizeStoreForTests } from '../../hooks/useDeckTileSize';
 import { DeckSizeControl } from './DeckSizeControl';
-
-const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
 
 beforeEach(() => {
   localStorage.clear();

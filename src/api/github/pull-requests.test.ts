@@ -24,7 +24,7 @@ function mockHeaders(overrides: Record<string, string> = {}): Headers {
   const defaults: Record<string, string> = {
     'x-ratelimit-limit': '5000',
     'x-ratelimit-remaining': '4999',
-    'x-ratelimit-reset': Math.floor(Date.now() / 1000 + 3600).toString(),
+    'x-ratelimit-reset': '1719792000', // 2024-07-01T00:00:00Z — deterministic
     'x-ratelimit-used': '1',
   };
   return new Headers({ ...defaults, ...overrides });
@@ -107,6 +107,18 @@ describe('fetchPullRequestCount — Search-limiter routing', () => {
     expect(decoded).toContain('type:pr');
     expect(decoded).not.toContain('is:open');
     expect(decoded).not.toContain('is:closed');
+  });
+
+  it('builds a URL with type:pr and is:closed qualifiers for the closed state', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockFetchResponse(200, { total_count: 7 }));
+
+    await fetchPullRequestCount('owner', 'repo', 'ghp_test', 'closed');
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain('repo:owner/repo');
+    expect(decoded).toContain('type:pr');
+    expect(decoded).toContain('is:closed');
+    expect(url).toContain('per_page=1');
   });
 
   it('throws GitHubApiError on a non-retryable non-OK response', async () => {

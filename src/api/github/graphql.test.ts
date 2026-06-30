@@ -453,6 +453,36 @@ describe('GraphQLLimiter', () => {
     await expect(limiter.schedule(ran)).resolves.toBe('ok');
     expect(ran).toHaveBeenCalledTimes(1);
   });
+
+  // ── #530(b): teardown clears the singleton's refill timer / drains waiters ──
+  // The singleton's refill timer outlives an HMR swap or app teardown unless it
+  // is explicitly cleared, and reset() (a test helper) drops queued waiters
+  // without settling their promises. teardown() clears the timer AND rejects
+  // queued waiters so nothing leaks.
+  it('teardown() clears the pending refill timer (#530)', () => {
+    limiter = new GraphQLLimiter(1, 1000);
+    // The single token is consumed by the running task, leaving a refill timer.
+    void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+    expect(vi.getTimerCount()).toBe(1);
+
+    limiter.teardown();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('teardown() rejects queued waiters with AbortError without running them (#530)', async () => {
+    limiter = new GraphQLLimiter(1, 1000);
+    // First task holds the only token and never settles; the second queues.
+    void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+    const queuedTask = vi.fn(async () => 'ran');
+    const queued = limiter.schedule(queuedTask);
+    queued.catch(() => {});
+
+    limiter.teardown();
+
+    await expect(queued).rejects.toHaveProperty('name', 'AbortError');
+    expect(queuedTask).not.toHaveBeenCalled();
+  });
 });
 
 // ── scheduleGraphQLRequest (shared singleton) ─────────────────────────────

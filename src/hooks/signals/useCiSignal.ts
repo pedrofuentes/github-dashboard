@@ -14,6 +14,12 @@
  * ref guards against out-of-order responses when `repos`/`token` change, mirror-
  * ing {@link useRepos}. With no token (or no repos) the hook returns a stable
  * empty map so the column renders its placeholder and composes cleanly.
+ *
+ * This per-repo REST probe is the fallback path. When the `ci` feature flag is
+ * on, {@link useRepoSignals} instead serves CI from a single batched GraphQL
+ * query — each default branch's HEAD-commit `statusCheckRollup` — and injects
+ * the resulting slices through the `override` argument, in which case this hook
+ * makes zero REST calls and just returns the supplied map.
  */
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';

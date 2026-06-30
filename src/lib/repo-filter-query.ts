@@ -10,7 +10,8 @@
  *    plus a one-time {@link migrateLegacyRepoFilter} that upgrades the legacy
  *    `string[]` selection (under the OLD key) into a v2 query without deleting it.
  *  - Pure {@link evaluateRepoFilterQuery}: AND across facet GROUPS, OR within a
- *    group; an empty group imposes no constraint. Health reuses
+ *    group (except security, where grades/severities/truncated are ANDed); an
+ *    empty group imposes no constraint. Health reuses
  *    {@link classifyRepoHealth} so signal semantics are never reinvented.
  */
 import { z } from 'zod';
@@ -27,9 +28,10 @@ export const STORAGE_KEY_V2 = 'fleet:repo-filter:v2';
 export const LEGACY_REPO_FILTER_KEY = 'fleet:repo-filter';
 
 /**
- * Defensive caps on the persisted query's unbounded arrays, mirroring
- * `dashboard-layout.ts`. They bound a corrupt/hostile payload — a malformed
- * value fails the schema and degrades to {@link EMPTY_QUERY} — not legitimate use.
+ * Defensive caps on the persisted query's unbounded arrays. They bound a
+ * corrupt/hostile payload — a malformed value fails the schema and degrades to
+ * {@link EMPTY_QUERY} — not legitimate use. MAX_STRING_LENGTH is imported from
+ * `dashboard-layout.ts`; the array-length caps below are local.
  */
 /** Cap on the include/exclude name list (one entry per repo, generous headroom). */
 export const MAX_SELECTION_NAMES = 1000;
@@ -52,6 +54,7 @@ const GRADE_ORDER: Record<z.infer<typeof GradeSchema>, number> = {
 
 const SecurityFacetSchema = z.object({
   grades: z.array(GradeSchema).max(6),
+  /** Matches grade worse-or-equal (>=) to the specified grade (A best … F worst). */
   maxGrade: GradeSchema.optional(),
   severities: z.array(SeveritySchema).max(4),
   truncated: z.boolean().optional(),
@@ -109,8 +112,25 @@ function emptyQuery(): RepoFilterQueryV2 {
   };
 }
 
-/** The canonical empty query: text '', mode 'all', empty facets ⇒ "all repos shown". */
-export const EMPTY_QUERY: RepoFilterQueryV2 = emptyQuery();
+/** Recursively freezes an object and all nested objects/arrays. */
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+  Object.freeze(obj);
+  for (const value of Object.values(obj)) {
+    if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
+      deepFreeze(value as object);
+    }
+  }
+  return obj as Readonly<T>;
+}
+
+/**
+ * The canonical empty query: text '', mode 'all', empty facets ⇒ "all repos shown".
+ * Deeply frozen to prevent accidental mutation by consumers. The `Readonly<>` type
+ * guards top-level mutations at compile time; deep immutability is enforced at
+ * runtime by `deepFreeze`. (A full `DeepReadonly<>` mapped type would avoid the gap
+ * but causes broad type-ripple across callers — left for a dedicated type-hardening PR.)
+ */
+export const EMPTY_QUERY: Readonly<RepoFilterQueryV2> = deepFreeze(emptyQuery());
 
 function safeGet(key: string): string | null {
   try {
@@ -167,7 +187,8 @@ export function createRepoFilterQueryStore(): VersionedStore<RepoFilterQueryV2> 
  * One-time cross-key migration: if no v2 payload exists yet, read the legacy
  * `string[]` (under the OLD key), and seed the v2 store with an equivalent
  * `include` query. The legacy key is preserved for rollback. Prefers an existing
- * v2 payload and never throws. Returns `true` only when it wrote a v2 value.
+ * v2 payload and never throws. Returns `true` only when it successfully wrote
+ * and persisted a v2 value; returns `false` if the write failed (e.g., quota).
  */
 export function migrateLegacyRepoFilter(
   store: VersionedStore<RepoFilterQueryV2> = createRepoFilterQueryStore(),
@@ -187,8 +208,7 @@ export function migrateLegacyRepoFilter(
   const result = LegacyRepoFilterSchema.safeParse(parsed);
   if (!result.success) return false;
 
-  store.save(legacyArrayToQuery(result.data));
-  return true;
+  return store.save(legacyArrayToQuery(result.data));
 }
 
 function matchesText(text: string, repo: Repo): boolean {

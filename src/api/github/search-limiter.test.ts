@@ -39,6 +39,7 @@ describe('SearchLimiter', () => {
   afterEach(() => {
     limiter.reset();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('returns the task result', async () => {
@@ -289,6 +290,77 @@ describe('SearchLimiter', () => {
     const ran = vi.fn(async () => 'ok');
     await expect(limiter.schedule(ran)).resolves.toBe('ok');
     expect(ran).toHaveBeenCalledTimes(1);
+  });
+
+  // ── #527(a): retry-exhaustion observability ────────────────────────────────
+  // A persistent secondary limit is observable only via the thrown error today.
+  // In this client-only SPA the console is the only sink, so leaving a breadcrumb
+  // when the limiter gives up distinguishes "exhausted retries" from an immediate
+  // failure (mirrors the GraphQLLimiter breadcrumb, #528).
+  it('warns once with context when it gives up after exhausting retries (#527)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const task = vi.fn(async () => {
+      throw rateLimitError(1);
+    });
+
+    const p = limiter.schedule(task);
+    p.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(1000 * (SEARCH_MAX_RETRIES + 1));
+    await expect(p).rejects.toBeInstanceOf(GitHubApiError);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/SearchLimiter.*exhaust/i);
+    expect(warnSpy.mock.calls[0]?.[1]).toBeInstanceOf(GitHubApiError);
+  });
+
+  it('does not warn when a rate-limit error has no Retry-After (no retries attempted, #527)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const task = vi.fn(async () => {
+      throw rateLimitError(undefined);
+    });
+
+    await expect(limiter.schedule(task)).rejects.toBeInstanceOf(GitHubApiError);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  // ── #527(b): waiter-queue depth observability ──────────────────────────────
+  // The queue is bounded only by memory; on a very large fleet it can grow well
+  // past the budget's drain rate. A one-time warning surfaces the backlog without
+  // ever dropping queued work. The third constructor argument injects a small
+  // threshold so the behaviour is exercisable without queueing hundreds of tasks.
+  it('warns once when the waiter queue depth reaches the configured threshold (#527)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // capacity 1 ⇒ the running task holds the only token, so every later
+    // schedule() queues. Depth reaches the threshold (3) on the fourth call.
+    limiter = new SearchLimiter(1, 1000, 3);
+    for (let i = 0; i < 4; i += 1) {
+      void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+    }
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/SearchLimiter.*queue/i);
+  });
+
+  it('does not warn again while the waiter queue stays above the threshold (#527)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    limiter = new SearchLimiter(1, 1000, 3);
+    for (let i = 0; i < 6; i += 1) {
+      void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+    }
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warn while the waiter queue stays below the threshold (#527)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // capacity 1 + 2 queued ⇒ depth 2 (< 3): no warning.
+    limiter = new SearchLimiter(1, 1000, 3);
+    for (let i = 0; i < 3; i += 1) {
+      void limiter.schedule(() => new Promise<void>(() => {})).catch(() => {});
+    }
+
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 
