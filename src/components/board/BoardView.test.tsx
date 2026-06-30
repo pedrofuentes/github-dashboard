@@ -715,12 +715,7 @@ describe('BoardView — drag dispatch seam (#634)', () => {
   it('uses rectSortingStrategy for 2D repo reordering (#644)', () => {
     const onMoveRepo = vi.fn();
     render(
-      <BoardView
-        repos={[repoA, repoB]}
-        getRowData={getRowData}
-        editing
-        onMoveRepo={onMoveRepo}
-      />,
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveRepo={onMoveRepo} />,
     );
 
     // Verify rectSortingStrategy is wired: a 2D swap (repo B dragged over A)
@@ -739,12 +734,7 @@ describe('BoardView — drag dispatch seam (#634)', () => {
     // wiring for columns is NOT present on the grid itself (no on-grid column
     // header group). Column reorder happens via the DeckCustomizePanel drawer.
     render(
-      <BoardView
-        repos={[repoA, repoB]}
-        getRowData={getRowData}
-        editing
-        onMoveSignal={vi.fn()}
-      />,
+      <BoardView repos={[repoA, repoB]} getRowData={getRowData} editing onMoveSignal={vi.fn()} />,
     );
 
     // No on-grid column reorder UI: the grid does not expose column headers or
