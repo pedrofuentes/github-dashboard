@@ -1,14 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_QUERY } from './repo-filter-query';
 import { addRecentFilter, createRecentFiltersStore, loadRecentFilters } from './recent-filters';
 
 beforeEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('recent-filters', () => {
@@ -87,5 +89,25 @@ describe('recent-filters', () => {
     const loaded = loadRecentFilters();
     // Schema caps at 5, so oversized payload degrades to empty
     expect(loaded).toEqual([]);
+  });
+
+  it('warns when persisting a recent filter is dropped', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Storage write fails (quota / disabled storage) so save() returns false.
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    addRecentFilter({ ...EMPTY_QUERY, text: 'search term' });
+
+    expect(warnSpy).toHaveBeenCalledWith('[recent-filters] failed to persist recent filters');
+  });
+
+  it('does not warn when persisting a recent filter succeeds', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    addRecentFilter({ ...EMPTY_QUERY, text: 'search term' });
+
+    expect(warnSpy).not.toHaveBeenCalledWith('[recent-filters] failed to persist recent filters');
   });
 });
