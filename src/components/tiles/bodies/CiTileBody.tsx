@@ -123,7 +123,20 @@ function resolveView(ci: CiSignalSlice | undefined, repoLabel: string): CiView {
   // Object.prototype member ("toString", "constructor", …) cannot resolve to a
   // prototype method and destructure an undefined glyph/word (#204).
   const raw = ci.conclusion ?? 'none';
-  const conclusion: Conclusion = Object.hasOwn(CONCLUSION, raw) ? raw : 'none';
+  const isKnownConclusion = Object.hasOwn(CONCLUSION, raw);
+  if (!isKnownConclusion) {
+    // Effectively unreachable — useCiSignal.summarize() already normalizes every
+    // conclusion to an enum member upstream. Warn rather than fall back silently
+    // so a regression in that normalization is observable in dev instead of being
+    // masked by the neutral render, mirroring the unexpected-value warns in
+    // useTileSize / the signal hooks (#365 🟢#2). The 'none' fallback below still
+    // keeps the tile non-blank.
+    console.warn(
+      `CiTileBody: unexpected CI conclusion "${raw}"; falling back to the neutral "No runs" ` +
+        `render. useCiSignal.summarize() is expected to normalize conclusions upstream.`,
+    );
+  }
+  const conclusion: Conclusion = isKnownConclusion ? raw : 'none';
   const { glyph, word } = CONCLUSION[conclusion];
   const tone = iconKindTone(glyph);
   const failing = typeof ci.failingCount === 'number' && ci.failingCount > 0 ? ci.failingCount : 0;
