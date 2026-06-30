@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { isGitHubUrl } from './github-url';
 import { signalDeepLinkUrl } from './github-deep-link';
 import type { Repo, RepoSignalData } from '../types/fleet';
+import type { TileSignalType } from '../types/dashboard';
 
 const REPO: Repo = {
   nameWithOwner: 'octo/repo',
