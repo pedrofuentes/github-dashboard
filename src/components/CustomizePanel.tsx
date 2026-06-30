@@ -141,9 +141,7 @@ export function CustomizePanel({
   const matchingRepos = useMemo(() => {
     const query = repoQuery.trim().toLowerCase();
     if (query === '') return [] as Array<[string, DashboardTile[]]>;
-    return Array.from(allGrouped).filter(([repo]) =>
-      repo.toLowerCase().includes(query),
-    );
+    return Array.from(allGrouped).filter(([repo]) => repo.toLowerCase().includes(query));
   }, [allGrouped, repoQuery]);
 
   return (
