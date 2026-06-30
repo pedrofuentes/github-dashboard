@@ -195,7 +195,6 @@ export function useRepoSignals(
     result.set(retryRequest.signal, mergedSignal);
     return { ...primaryBatch, result };
   }, [primaryBatch, retryBatch.result, retryRequest]);
-  const anyGraphqlSignalEnabled = GRAPHQL_ENABLED_SIGNALS.length > 0;
 
   const fleet = useMemo(() => {
     let ready = 0;
@@ -206,11 +205,11 @@ export function useRepoSignals(
       if (hasSettledSlice) ready += 1;
     }
     return {
-      loading: anyGraphqlSignalEnabled && batch.loading,
+      loading: GRAPHQL_ENABLED_SIGNALS.length > 0 && batch.loading,
       ready,
       total: revalidatedRepos.length,
     };
-  }, [anyGraphqlSignalEnabled, batch.loading, batch.result, revalidatedRepos]);
+  }, [batch.loading, batch.result, revalidatedRepos]);
 
   // Per-signal merged loading maps for the progressive fill: repos that have a
   // settled batch slice show it immediately; the rest show LOADING_SLICE.

@@ -362,6 +362,45 @@ describe('SearchLimiter', () => {
 
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  // ── #589: retry token-stall observability ──────────────────────────────────
+  // After a secondary-limit Retry-After back-off, runWithRetry re-acquires a
+  // token before re-issuing the task. When the bucket is empty at that moment
+  // the retry additionally stalls in the queue until a refill — a delay that is
+  // invisible today. Surface it once on the same logger as the other limiter
+  // breadcrumbs (#527/#704).
+  it('warns when a retry stalls re-acquiring a token on an empty bucket (#589)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // capacity 1: the running task holds the only token. A concurrent task takes
+    // the next refilled token, so firstTask's retry re-acquire finds an empty
+    // bucket and must wait — a token stall.
+    limiter = new SearchLimiter(1, 1000);
+
+    let firstAttempts = 0;
+    const firstTask = vi.fn(async () => {
+      firstAttempts += 1;
+      if (firstAttempts === 1) throw rateLimitError(1);
+      return 'first';
+    });
+    const secondTask = vi.fn(async () => 'second');
+
+    const first = limiter.schedule(firstTask);
+    first.catch(() => {});
+    const second = limiter.schedule(secondTask);
+    second.catch(() => {});
+
+    // 1s: the refill hands its token to the queued second task; the back-off
+    // sleep resolves and firstTask's re-acquire finds tokens === 0 → stall warn.
+    await vi.advanceTimersByTimeAsync(1000);
+    // 2s: the next refill releases firstTask's queued re-acquire; it retries and
+    // resolves.
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(firstTask).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/SearchLimiter.*stall/i);
+  });
 });
 
 describe('scheduleSearchRequest (shared singleton)', () => {
