@@ -308,4 +308,22 @@ describe('SettingsOverlay', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
+
+  it('still closes the overlay if onForget throws', async () => {
+    const onForgetThatThrows = vi.fn().mockImplementation(() => {
+      throw new Error('localStorage SecurityError');
+    });
+    const user = userEvent.setup();
+    render(<Harness onForget={onForgetThatThrows} />);
+
+    const opener = screen.getByRole('button', { name: /open settings/i });
+    await user.click(opener);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /forget token/i }));
+
+    // The overlay should still close even though onForget threw
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(onForgetThatThrows).toHaveBeenCalledTimes(1);
+  });
 });
