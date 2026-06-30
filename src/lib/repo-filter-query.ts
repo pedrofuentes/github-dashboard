@@ -10,7 +10,8 @@
  *    plus a one-time {@link migrateLegacyRepoFilter} that upgrades the legacy
  *    `string[]` selection (under the OLD key) into a v2 query without deleting it.
  *  - Pure {@link evaluateRepoFilterQuery}: AND across facet GROUPS, OR within a
- *    group; an empty group imposes no constraint. Health reuses
+ *    group (except security, where grades/severities/truncated are ANDed); an
+ *    empty group imposes no constraint. Health reuses
  *    {@link classifyRepoHealth} so signal semantics are never reinvented.
  */
 import { z } from 'zod';
@@ -27,9 +28,10 @@ export const STORAGE_KEY_V2 = 'fleet:repo-filter:v2';
 export const LEGACY_REPO_FILTER_KEY = 'fleet:repo-filter';
 
 /**
- * Defensive caps on the persisted query's unbounded arrays, mirroring
- * `dashboard-layout.ts`. They bound a corrupt/hostile payload — a malformed
- * value fails the schema and degrades to {@link EMPTY_QUERY} — not legitimate use.
+ * Defensive caps on the persisted query's unbounded arrays. They bound a
+ * corrupt/hostile payload — a malformed value fails the schema and degrades to
+ * {@link EMPTY_QUERY} — not legitimate use. MAX_STRING_LENGTH is imported from
+ * `dashboard-layout.ts`; the array-length caps below are local.
  */
 /** Cap on the include/exclude name list (one entry per repo, generous headroom). */
 export const MAX_SELECTION_NAMES = 1000;
@@ -52,6 +54,7 @@ const GRADE_ORDER: Record<z.infer<typeof GradeSchema>, number> = {
 
 const SecurityFacetSchema = z.object({
   grades: z.array(GradeSchema).max(6),
+  /** Matches grade worse-or-equal (>=) to the specified grade (A best … F worst). */
   maxGrade: GradeSchema.optional(),
   severities: z.array(SeveritySchema).max(4),
   truncated: z.boolean().optional(),
