@@ -43,6 +43,14 @@ describe('TriageView structure', () => {
     expect(screen.getByRole('region', { name: /triage/i })).toBeInTheDocument();
   });
 
+  it('calls getRowData once per visible repo (dedupe classification + rendering)', () => {
+    const getRowData = vi.fn(() => FAILING_CI);
+    render(<TriageView repos={[repo('octo/a'), repo('octo/b')]} getRowData={getRowData} />);
+    // Should call getRowData exactly once per repo (not twice: once for
+    // classification, once for rendering indicators)
+    expect(getRowData).toHaveBeenCalledTimes(2);
+  });
+
   it('renders a heading with a count for each non-empty band', () => {
     const repos = [repo('octo/broken'), repo('octo/review'), repo('octo/external')];
     render(
