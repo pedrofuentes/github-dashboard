@@ -66,6 +66,11 @@ first.
   kind/unread/repo filter), the non-operative "Clear filters" button is now
   suppressed. The button still appears whenever a user-controllable filter can
   actually be cleared.
+- **GitHub retry client honors `Retry-After` header.** When the GitHub API
+  returns a `Retry-After` header (e.g., for rate-limit 429 responses), the
+  client now respects the server-specified delay verbatim instead of computing
+  an exponential backoff. When no `Retry-After` is present, exponential backoff
+  with 50–100% jitter is applied as before.
 
 ## 2026-06-28
 
