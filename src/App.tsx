@@ -403,6 +403,31 @@ function FleetPanel({
     (keep: Set<TileSignalType>) => deckShowOnly(repoNames, DECK_SIGNALS, keep),
     [deckShowOnly, repoNames],
   );
+  // Defence-in-depth for the Deck reorder pair: a move mutator must degrade to a
+  // no-op (the order simply isn't changed) rather than tear the board down if it
+  // ever throws — e.g. a future drag source emitting an out-of-range index. The
+  // persistence callee already uses safeSet, so this only guards the mutator
+  // call. Both directions are wrapped symmetrically (#668).
+  const handleDeckMoveRepo = useCallback(
+    (from: number, to: number) => {
+      try {
+        deckMoveRepo(from, to);
+      } catch (error) {
+        console.warn('[deck] repo reorder failed; ignoring move', error);
+      }
+    },
+    [deckMoveRepo],
+  );
+  const handleDeckMoveSignal = useCallback(
+    (from: number, to: number) => {
+      try {
+        deckMoveSignal(from, to);
+      } catch (error) {
+        console.warn('[deck] signal reorder failed; ignoring move', error);
+      }
+    },
+    [deckMoveSignal],
+  );
 
   // Applying a saved view (or built-in preset) atomically restores its repo
   // filter and switches to its target view — the visible payoff of Saved Views.
@@ -580,7 +605,7 @@ function FleetPanel({
             size={deckTileSize}
             repoOrder={deckRepoOrder}
             signalOrder={deckSignalOrder}
-            onMoveRepo={deckMoveRepo}
+            onMoveRepo={handleDeckMoveRepo}
             onRemoveRepo={handleDeckRemoveRepo}
           />
         </div>
@@ -596,7 +621,7 @@ function FleetPanel({
             onReset={deck.reset}
             onResetOrder={deckResetOrder}
             signalOrder={deckSignalOrder}
-            onMoveSignal={deckMoveSignal}
+            onMoveSignal={handleDeckMoveSignal}
             onClose={handleCloseDeckCustomize}
           />
         ) : null}
