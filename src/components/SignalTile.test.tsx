@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DashboardTile, TileSignalType } from '../types/dashboard';
 import type { Repo } from '../types/fleet';
+import * as IssuesTileBodyModule from './tiles/bodies/IssuesTileBody';
 import { SignalTile } from './SignalTile';
 
 // The Activity body self-fetches via `useCommitActivity` (which reads the auth
@@ -295,5 +296,77 @@ describe('SignalTile — density threading (T15)', () => {
       <SignalTile tile={makeTile('ci')} repo={makeRepo()} data={failingCi} onActivate={vi.fn()} />,
     );
     expect(container.querySelector('[data-shape]')).not.toBeNull();
+  });
+});
+
+describe('SignalTile — TileBodyErrorBoundary wiring', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('wraps body in error boundary: throw shows fallback, sibling tile unaffected', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(IssuesTileBodyModule, 'IssuesTileBody').mockImplementation(() => {
+      throw new Error('body render error');
+    });
+
+    const { container } = render(
+      <div>
+        <SignalTile
+          tile={makeTile('issues', 'octo/a')}
+          repo={makeRepo('octo/a')}
+          data={{}}
+          onActivate={vi.fn()}
+        />
+        <SignalTile
+          tile={makeTile('ci', 'octo/b')}
+          repo={makeRepo('octo/b')}
+          data={{}}
+          onActivate={vi.fn()}
+        />
+      </div>,
+    );
+
+    // Issues tile body threw — boundary shows graceful fallback
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+    expect(container.textContent).toMatch(/couldn.*t display/i);
+    // Both tiles' frames rendered (error isolated; sibling ci tile unaffected)
+    expect(container.querySelectorAll('[role="gridcell"]')).toHaveLength(2);
+    expect(screen.getByText('octo/b')).toBeInTheDocument();
+  });
+
+  it('key change remounts boundary and clears error state (recovery)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bodySpy = vi.spyOn(IssuesTileBodyModule, 'IssuesTileBody').mockImplementation(() => {
+      throw new Error('transient render error');
+    });
+
+    const { rerender, container } = render(
+      <SignalTile
+        tile={makeTile('issues', 'octo/a')}
+        repo={makeRepo('octo/a')}
+        data={{}}
+        onActivate={vi.fn()}
+      />,
+    );
+
+    // Initial render: body threw, fallback shown
+    expect(container.querySelector('[data-state="failed-to-load"]')).not.toBeNull();
+
+    // Stop throwing so the remounted boundary can render normally
+    bodySpy.mockRestore();
+
+    // Changing repo changes the key (octo/a:issues → octo/b:issues) → boundary remounts
+    rerender(
+      <SignalTile
+        tile={makeTile('issues', 'octo/b')}
+        repo={makeRepo('octo/b')}
+        data={{}}
+        onActivate={vi.fn()}
+      />,
+    );
+
+    // After key change boundary remounts with hasError=false → body renders normally
+    expect(container.querySelector('[data-state="failed-to-load"]')).toBeNull();
   });
 });

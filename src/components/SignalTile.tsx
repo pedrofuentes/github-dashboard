@@ -32,6 +32,7 @@ import { PrsTileBody } from './tiles/bodies/PrsTileBody';
 import { ReviewsTileBody } from './tiles/bodies/ReviewsTileBody';
 import { SecurityTileBody } from './tiles/bodies/SecurityTileBody';
 import { StaleTileBody } from './tiles/bodies/StaleTileBody';
+import { TileBodyErrorBoundary } from './tiles/bodies/TileBodyErrorBoundary';
 import { TileFrame } from './tiles/TileFrame';
 import type { AccentTone, SignalIconKind, TileTier } from './tiles/types';
 import { SIGNAL_IDENTITY_TONE, iconKindTone } from './tiles/types';
@@ -228,7 +229,9 @@ export function SignalTile({
       accessibleSummary={accessibleSummary}
       hideRepoHeader={hideRepoHeader}
     >
-      <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
+      <TileBodyErrorBoundary key={`${repo.nameWithOwner}:${tile.signal}`}>
+        <SignalBody signal={tile.signal} repo={repo} data={data} size={tier} density={density} />
+      </TileBodyErrorBoundary>
     </TileFrame>
   );
 }
