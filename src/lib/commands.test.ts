@@ -54,6 +54,7 @@ describe('buildCommandRegistry', () => {
     byId(commands, 'nav-grid').run();
     byId(commands, 'nav-inbox').run();
     byId(commands, 'nav-boards').run();
+    byId(commands, 'nav-deck').run();
 
     expect(navigate.mock.calls.map((call) => call[0])).toEqual([
       'triage',
@@ -61,7 +62,28 @@ describe('buildCommandRegistry', () => {
       'grid',
       'inbox',
       'dashboard',
+      'deck',
     ]);
+  });
+
+  it('"Go to Deck" command exists with correct id, label, and group', () => {
+    const commands = buildCommandRegistry(makeHandlers());
+    const cmd = byId(commands, 'nav-deck');
+
+    expect(cmd.label).toBe('Go to Deck');
+    expect(cmd.group).toBe('Navigation');
+    expect(Array.isArray(cmd.keywords ?? [])).toBe(true);
+    expect((cmd.keywords ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('"Go to Deck" run() navigates to the deck view', () => {
+    const navigate = vi.fn();
+    const commands = buildCommandRegistry(makeHandlers({ navigate }));
+
+    byId(commands, 'nav-deck').run();
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('deck');
   });
 
   it('"Open Settings" invokes the settings handler', () => {
