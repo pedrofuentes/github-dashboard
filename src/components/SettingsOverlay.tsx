@@ -58,9 +58,6 @@ export function SettingsOverlay({
 }: SettingsOverlayProps): ReactElement {
   const titleId = useId();
   const appearanceLabelId = useId();
-  const themeLabelId = useId();
-  const densityLabelId = useId();
-  const repoOwnerLabelId = useId();
   const accountLabelId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -139,21 +136,15 @@ export function SettingsOverlay({
               Appearance
             </h3>
             <div className="flex flex-col gap-2">
-              <span id={themeLabelId} className="text-sm font-medium text-text">
-                Theme
-              </span>
+              <span className="text-sm font-medium text-text">Theme</span>
               <ThemeToggle />
             </div>
             <div className="flex flex-col gap-2">
-              <span id={densityLabelId} className="text-sm font-medium text-text">
-                Density
-              </span>
+              <span className="text-sm font-medium text-text">Density</span>
               <DensityToggle />
             </div>
             <div className="flex flex-col gap-2">
-              <span id={repoOwnerLabelId} className="text-sm font-medium text-text">
-                Repository names
-              </span>
+              <span className="text-sm font-medium text-text">Repository names</span>
               <RepoOwnerToggle />
             </div>
           </section>
