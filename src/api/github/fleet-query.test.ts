@@ -1261,7 +1261,11 @@ describe('per-repo derivers – GraphQL field-error logging (#550)', () => {
 
     expect(warnSpy).toHaveBeenCalled();
     const messages = warnSpy.mock.calls.map((call) => String(call[0]));
-    expect(messages.some((m) => m.includes('ci') && m.includes('o/r') && m.includes('r0.defaultBranchRef'))).toBe(true);
+    expect(
+      messages.some(
+        (m) => m.includes('ci') && m.includes('o/r') && m.includes('r0.defaultBranchRef'),
+      ),
+    ).toBe(true);
   });
 
   it('warns with the alias + field path when an issues openIssues subtree errors', async () => {
@@ -1279,7 +1283,11 @@ describe('per-repo derivers – GraphQL field-error logging (#550)', () => {
     await executeFleetBatch([repo('o/r')], null, TOKEN);
 
     const messages = warnSpy.mock.calls.map((call) => String(call[0]));
-    expect(messages.some((m) => m.includes('issues') && m.includes('o/r') && m.includes('r0.openIssues'))).toBe(true);
+    expect(
+      messages.some(
+        (m) => m.includes('issues') && m.includes('o/r') && m.includes('r0.openIssues'),
+      ),
+    ).toBe(true);
   });
 
   it('warns with the alias + field path when a PR pullRequests subtree errors', async () => {
@@ -1297,7 +1305,11 @@ describe('per-repo derivers – GraphQL field-error logging (#550)', () => {
     await executeFleetBatch([repo('o/r')], null, TOKEN);
 
     const messages = warnSpy.mock.calls.map((call) => String(call[0]));
-    expect(messages.some((m) => m.includes('pullRequests') && m.includes('o/r') && m.includes('r0.pullRequests'))).toBe(true);
+    expect(
+      messages.some(
+        (m) => m.includes('pullRequests') && m.includes('o/r') && m.includes('r0.pullRequests'),
+      ),
+    ).toBe(true);
   });
 
   it('does not warn for a clean chunk with no field errors', async () => {

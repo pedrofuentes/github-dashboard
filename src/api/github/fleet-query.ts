@@ -213,8 +213,8 @@ export function buildErrorIndex(errors: GraphQLError[]): FleetErrorIndex {
 /**
  * Reports a per-repo GraphQL field error for one signal: returns whether the
  * repo's `alias` OR any of its `ownedFields` (or their subtrees) errored and,
- * when so, emits a `console.warn` naming the signal, alias, and the matched
- * dot-joined error paths.
+ * when so, emits a `console.warn` naming the signal, `nameWithOwner`, alias, and
+ * the matched dot-joined error paths.
  *
  * Detection semantics are unchanged from inlining the checks — the boolean is
  * exactly `has(alias) || ownedFields.some((f) => coversField(`${alias}.${f}`))`.
@@ -225,6 +225,7 @@ export function buildErrorIndex(errors: GraphQLError[]): FleetErrorIndex {
  *
  * @param signal - The deriving signal (e.g. `'ci'`, `'issues'`, `'pullRequests'`).
  * @param alias - The repo's chunk alias (e.g. `'r2'`).
+ * @param nameWithOwner - The repo's `owner/name` string (e.g. `'acme/api'`).
  * @param ownedFields - The signal-owned child fields under the alias to inspect.
  * @param errors - The chunk's path-scoped error index.
  * @returns `true` when the alias or an owned field (sub)path errored.
@@ -232,6 +233,7 @@ export function buildErrorIndex(errors: GraphQLError[]): FleetErrorIndex {
 function reportRepoFieldError(
   signal: string,
   alias: string,
+  nameWithOwner: string,
   ownedFields: readonly string[],
   errors: FleetErrorIndex,
 ): boolean {
@@ -245,7 +247,9 @@ function reportRepoFieldError(
         path === alias || ownedPrefixes.some((pre) => path === pre || path.startsWith(`${pre}.`)),
     )
     .sort();
-  console.warn(`fleet-query: ${signal} field error for ${alias} (${matched.join(', ')})`);
+  console.warn(
+    `fleet-query: ${signal} field error for ${nameWithOwner} (${alias}) — ${matched.join(', ')}`,
+  );
   return true;
 }
 
@@ -399,9 +403,10 @@ function ciRepoFragment(): string {
 function deriveCiSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): CiSignalSlice {
-  if (reportRepoFieldError('ci', alias, ['defaultBranchRef'], errors)) {
+  if (reportRepoFieldError('ci', alias, nameWithOwner, ['defaultBranchRef'], errors)) {
     return { status: 'error' };
   }
   // A null node WITHOUT a matching error is "no data", not a failure.
@@ -432,7 +437,10 @@ export const ciDeriver: SignalDeriver = {
   derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
     const out = new Map<string, SignalSlice>();
     for (const repo of ctx.repos) {
-      out.set(repo.nameWithOwner, deriveCiSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors));
+      out.set(
+        repo.nameWithOwner,
+        deriveCiSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
+      );
     }
     return out;
   },
@@ -502,9 +510,10 @@ function issuesRepoFragment(viewerLogin: string | null): string {
 function deriveIssuesSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): IssuesSignalSlice {
-  if (reportRepoFieldError('issues', alias, ['openIssues', 'myIssues'], errors)) {
+  if (reportRepoFieldError('issues', alias, nameWithOwner, ['openIssues', 'myIssues'], errors)) {
     return { status: 'error' };
   }
   if (!node || !node.openIssues) return issuesReadySlice(0);
@@ -522,7 +531,7 @@ export const issuesDeriver: SignalDeriver = {
     for (const repo of ctx.repos) {
       out.set(
         repo.nameWithOwner,
-        deriveIssuesSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors),
+        deriveIssuesSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
       );
     }
     return out;
@@ -573,9 +582,10 @@ function prRepoFragment(): string {
 function derivePrSlice(
   node: FleetRepoNode | null,
   alias: string,
+  nameWithOwner: string,
   errors: FleetErrorIndex,
 ): PullRequestsSignalSlice {
-  if (reportRepoFieldError('pullRequests', alias, ['pullRequests'], errors)) {
+  if (reportRepoFieldError('pullRequests', alias, nameWithOwner, ['pullRequests'], errors)) {
     return { status: 'error' };
   }
   if (!node?.pullRequests) return { status: 'ready', openCount: 0, externalCount: 0, score: 0 };
@@ -613,7 +623,10 @@ export const prDeriver: SignalDeriver = {
   derive(ctx: FleetChunkContext): Map<string, SignalSlice> {
     const out = new Map<string, SignalSlice>();
     for (const repo of ctx.repos) {
-      out.set(repo.nameWithOwner, derivePrSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), ctx.errors));
+      out.set(
+        repo.nameWithOwner,
+        derivePrSlice(ctx.nodeFor(repo), ctx.aliasFor(repo), repo.nameWithOwner, ctx.errors),
+      );
     }
     return out;
   },
