@@ -251,7 +251,7 @@ describe('useSavedViews', () => {
     });
 
     expect(outcome.ok).toBe(false);
-    expect(outcome.error).toBeTruthy();
+    expect(outcome.error).toBe('Could not delete this view. Check browser storage.');
     expect(result.current.views).toHaveLength(1);
     expect(persisted()?.views).toHaveLength(1);
   });
