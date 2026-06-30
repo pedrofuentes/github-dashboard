@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DECK_TILE_MIN_PX, loadDeckTileSize, saveDeckTileSize } from './deck-tile-size';
+import {
+  DECK_TILE_MIN_PX,
+  DECK_TILE_SIZE_KEY,
+  loadDeckTileSize,
+  saveDeckTileSize,
+} from './deck-tile-size';
 import type { DeckTileSize } from './deck-tile-size';
-
-const DECK_TILE_SIZE_KEY = 'fleet:deck-tile-size';
 
 describe('DECK_TILE_MIN_PX', () => {
   const ORDER: readonly DeckTileSize[] = ['x-small', 'small', 'medium', 'large'];
@@ -24,6 +27,10 @@ describe('DECK_TILE_MIN_PX', () => {
     // The pre-existing deck rendered six keys per row at the ~960px container
     // width; medium reproduces that, so it stays the default.
     expect(DECK_TILE_MIN_PX.medium).toBe(152);
+  });
+
+  it('pins small at 128px (one step below medium)', () => {
+    expect(DECK_TILE_MIN_PX.small).toBe(128);
   });
 });
 

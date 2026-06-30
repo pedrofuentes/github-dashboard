@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest';
 import type { AccentTone } from '../../components/tiles/types';
 import type { RepoSignalData } from '../../types/fleet';
 import { parseColorTokens } from '../css-tokens';
-import { BOARD_KEY_ACCENT_VAR, boardKeySpec, formatCount } from './board-key-spec';
+import {
+  BOARD_KEY_ACCENT_VAR,
+  boardKeyAccentVar,
+  boardKeySpec,
+  formatCount,
+} from './board-key-spec';
 
 describe('formatCount (SD design-spec §4.1)', () => {
   it('returns values below 1000 unchanged', () => {
@@ -45,6 +50,12 @@ describe('formatCount (SD design-spec §4.1)', () => {
     // 999999 / 1000 = 999.999 → toFixed(1) = "1000.0" → "1000k" (spec artifact, locked).
     expect(formatCount(999_999)).toBe('1000k');
   });
+
+  it('returns "0" for NaN and Infinity inputs (defensive guard, #485)', () => {
+    expect(formatCount(NaN)).toBe('0');
+    expect(formatCount(Infinity)).toBe('0');
+    expect(formatCount(-Infinity)).toBe('0');
+  });
 });
 
 describe('BOARD_KEY_ACCENT_VAR', () => {
@@ -76,6 +87,21 @@ describe('BOARD_KEY_ACCENT_VAR', () => {
       expect(light[name], `${name} missing from :root`).toBeDefined();
       expect(dark[name], `${name} missing from .dark`).toBeDefined();
     }
+  });
+
+  // Removed: runtime fallback test moved to boardKeyAccentVar function tests
+});
+
+describe('boardKeyAccentVar (defensive wrapper, #482)', () => {
+  it('returns the var reference for valid tones', () => {
+    const result = boardKeyAccentVar('success');
+    expect(result).toBe('var(--color-success)');
+  });
+
+  it('returns neutral fallback for undefined keys', () => {
+    const invalidKey = 'nonexistent' as AccentTone;
+    const result = boardKeyAccentVar(invalidKey);
+    expect(result).toBe('var(--color-neutral)');
   });
 });
 
@@ -301,6 +327,19 @@ describe('boardKeySpec — security grade → accent', () => {
       srLabel: 'No security-alert access for this repository (token scope or feature disabled)',
     });
   });
+
+  it('rejects invalid grades by returning neutral and not echoing the invalid value into line2 (#484)', () => {
+    const data: RepoSignalData = {
+      security: { status: 'ready', grade: 'X' as NonNullable<RepoSignalData['security']>['grade'] },
+    };
+    const spec = boardKeySpec('security', data);
+    expect(spec.accent).toBe('neutral');
+    expect(spec.line2).not.toBe('X');
+    expect(spec.line2).toBe('n/a');
+    expect(spec.srLabel).toBe(
+      'No security-alert access for this repository (token scope or feature disabled)',
+    );
+  });
 });
 
 describe('boardKeySpec — security no-access key explains missing-scope reason', () => {
@@ -312,7 +351,7 @@ describe('boardKeySpec — security no-access key explains missing-scope reason'
     );
   });
 
-  it('sets srLabel when ready with a grade but still no counts (no-access by counts check)', () => {
+  it('does NOT set srLabel when ready with a grade (grade is authoritative access signal)', () => {
     const data: RepoSignalData = { security: { status: 'ready', grade: 'A' } };
     // grade is the authoritative access signal: if grade is present the feeds
     // were accessible, regardless of counts — no srLabel for a graded key.

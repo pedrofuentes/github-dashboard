@@ -124,10 +124,12 @@ describe('SavedViewsMenu', () => {
     renderMenu({ onCreate });
 
     await user.click(screen.getByRole('button', { name: /saved views/i }));
-    await user.type(screen.getByLabelText(/name this view/i), 'x');
+    const input = screen.getByLabelText(/name this view/i);
+    await user.type(input, 'x');
     await user.click(screen.getByRole('button', { name: /^save current as view$/i }));
 
     expect(await screen.findByText('Name is required.')).toBeInTheDocument();
+    expect(input).toHaveValue('x');
   });
 
   it('does not call onCreate for a blank name and shows feedback', async () => {
