@@ -130,20 +130,21 @@ export function CustomizePanel({
     });
   }
 
-  const summary = signalVisibilitySummary(layout);
+  const summary = useMemo(() => signalVisibilitySummary(layout), [layout]);
   // Changes never grow the array so show/hide can't exceed the cap; the guard
   // exists for any future "add tile" path and feeds the status region (AC-5).
   const atCapacity = layout.length >= MAX_TILES;
 
   // Power-user escape hatch: a repo search keeps targeted per-repo overrides
   // available without re-introducing the ~300-checkbox default grind.
+  const allGrouped = useMemo(() => groupTilesByRepo(layout), [layout]);
   const matchingRepos = useMemo(() => {
     const query = repoQuery.trim().toLowerCase();
     if (query === '') return [] as Array<[string, DashboardTile[]]>;
-    return Array.from(groupTilesByRepo(layout)).filter(([repo]) =>
+    return Array.from(allGrouped).filter(([repo]) =>
       repo.toLowerCase().includes(query),
     );
-  }, [layout, repoQuery]);
+  }, [allGrouped, repoQuery]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
