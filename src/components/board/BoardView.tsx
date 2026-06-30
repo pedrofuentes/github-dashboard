@@ -351,6 +351,26 @@ export function BoardView({
     });
   };
 
+  /**
+   * Plain deck-block render: a wrapping container of repo rows, each a fixed-column
+   * grid of its visible signal keys. Used for the non-reorderable states: when dnd
+   * is inactive (!dndActive) or when repo rows aren't sortable (!rowsReorderable).
+   */
+  const renderPlainDeckBlocks = (): ReactElement => (
+    <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
+      {visibleKeysByRepo.map(({ repo, signals }) => (
+        <div
+          key={repo.nameWithOwner}
+          data-repo-row={repo.nameWithOwner}
+          className={GRID_CLASS}
+          style={rowStyleFor(signals.length)}
+        >
+          {renderRepoCells(repo, signals)}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
       <p role="status" aria-live="polite" className="text-sm text-text-muted">
@@ -415,33 +435,11 @@ export function BoardView({
                   </div>
                 </SortableContext>
               ) : (
-                <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
-                  {visibleKeysByRepo.map(({ repo, signals }) => (
-                    <div
-                      key={repo.nameWithOwner}
-                      data-repo-row={repo.nameWithOwner}
-                      className={GRID_CLASS}
-                      style={rowStyleFor(signals.length)}
-                    >
-                      {renderRepoCells(repo, signals)}
-                    </div>
-                  ))}
-                </div>
+                renderPlainDeckBlocks()
               )}
             </DndContext>
           ) : (
-            <div data-testid="deck-blocks" className={BLOCKS_CLASS}>
-              {visibleKeysByRepo.map(({ repo, signals }) => (
-                <div
-                  key={repo.nameWithOwner}
-                  data-repo-row={repo.nameWithOwner}
-                  className={GRID_CLASS}
-                  style={rowStyleFor(signals.length)}
-                >
-                  {renderRepoCells(repo, signals)}
-                </div>
-              ))}
-            </div>
+            renderPlainDeckBlocks()
           )}
         </div>
       )}
