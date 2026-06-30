@@ -12,6 +12,7 @@ import {
   updateSavedView,
   findSavedView,
   createSavedViewsStore,
+  validateSavedViewName,
   MAX_SAVED_VIEWS,
   MAX_VIEW_NAME_LENGTH,
   STORAGE_KEY_V1,
@@ -26,6 +27,53 @@ function expectState<T>(state: T | null): T {
   }
   return state;
 }
+
+describe('validateSavedViewName', () => {
+  it('rejects empty string', () => {
+    expect(validateSavedViewName('')).toBe('Enter a name for this view.');
+  });
+
+  it('rejects whitespace-only string', () => {
+    expect(validateSavedViewName('   ')).toBe('Enter a name for this view.');
+  });
+
+  it('rejects name over MAX_VIEW_NAME_LENGTH', () => {
+    const longName = 'a'.repeat(MAX_VIEW_NAME_LENGTH + 1);
+    expect(validateSavedViewName(longName)).toBe(
+      `Name must be ${MAX_VIEW_NAME_LENGTH} characters or fewer.`,
+    );
+  });
+
+  it('accepts a valid name', () => {
+    expect(validateSavedViewName('My view')).toBeNull();
+  });
+
+  it('rejects names containing control characters (U+0000–U+001F)', () => {
+    expect(validateSavedViewName('View\x00Name')).not.toBeNull(); // NULL
+    expect(validateSavedViewName('View\x01Name')).not.toBeNull(); // SOH
+    expect(validateSavedViewName('View\x0AName')).not.toBeNull(); // LF
+    expect(validateSavedViewName('View\x0DName')).not.toBeNull(); // CR
+    expect(validateSavedViewName('View\x1FName')).not.toBeNull(); // US
+  });
+
+  it('rejects names containing DEL control character (U+007F)', () => {
+    expect(validateSavedViewName('View\x7FName')).not.toBeNull();
+  });
+
+  it('rejects names containing bidi override characters', () => {
+    expect(validateSavedViewName('View\u202EName')).not.toBeNull(); // RIGHT-TO-LEFT OVERRIDE
+    expect(validateSavedViewName('View\u202DName')).not.toBeNull(); // LEFT-TO-RIGHT OVERRIDE
+    expect(validateSavedViewName('View\u2066Name')).not.toBeNull(); // LEFT-TO-RIGHT ISOLATE
+    expect(validateSavedViewName('View\u2067Name')).not.toBeNull(); // RIGHT-TO-LEFT ISOLATE
+  });
+
+  it('rejects names containing zero-width characters', () => {
+    expect(validateSavedViewName('View\u200BName')).not.toBeNull(); // ZERO WIDTH SPACE
+    expect(validateSavedViewName('View\u200CName')).not.toBeNull(); // ZERO WIDTH NON-JOINER
+    expect(validateSavedViewName('View\u200DName')).not.toBeNull(); // ZERO WIDTH JOINER
+    expect(validateSavedViewName('View\uFEFFName')).not.toBeNull(); // ZERO WIDTH NO-BREAK SPACE
+  });
+});
 
 describe('SavedView schema validation', () => {
   it('accepts a valid SavedView', () => {
