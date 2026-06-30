@@ -22,6 +22,9 @@ const tile = (repo: string, signal: DashboardTile['signal'], visible: boolean): 
   h: 2,
   visible,
 });
+
+// Shared fixture for the single-tile / single-repo primitives. Reused across
+// tests; the functions are pure (never mutate) so no per-test deep-clone needed.
 const layout: DashboardTile[] = [
   tile('octo/a', 'ci', true),
   tile('octo/a', 'security', true),
@@ -86,6 +89,7 @@ describe('groupTilesByRepo', () => {
 
 // Rule-based transforms (the "d1" pure visibility layer) — operate across ALL
 // repos at once so the customize UI can shape the board without per-tile clicks.
+// Shared fixture like `layout` above; functions are pure so no per-test cloning.
 const ruleLayout: DashboardTile[] = [
   tile('octo/a', 'ci', true),
   tile('octo/a', 'security', false),
@@ -101,7 +105,9 @@ describe('applyVisibilityRule', () => {
   });
   it('is immutable: never mutates input, new objects for changed tiles, identity for unchanged', () => {
     const next = applyVisibilityRule(ruleLayout, (t) => t.signal === 'security', true);
-    expect(ruleLayout[1].visible).toBe(false); // input untouched
+    // Input untouched — ruleLayout[1] (octo/a:security) still false after calling the transform.
+    expect(ruleLayout[1].visible).toBe(false);
+    expect(ruleLayout[0].visible).toBe(true); // octo/a:ci unchanged
     expect(next[1]).not.toBe(ruleLayout[1]); // changed tile is a fresh object
     expect(next[0]).toBe(ruleLayout[0]); // unchanged tile keeps identity
     expect(next).toHaveLength(ruleLayout.length);
@@ -146,7 +152,10 @@ describe('showOnlySignals', () => {
   });
   it('is immutable: input untouched and unchanged tiles keep identity', () => {
     const next = showOnlySignals(ruleLayout, new Set<TileSignalType>(['ci']));
-    expect(ruleLayout[3].visible).toBe(true); // input untouched
+    // Input fixture still in its original state after the transform.
+    expect(ruleLayout[0].visible).toBe(true); // octo/a:ci
+    expect(ruleLayout[1].visible).toBe(false); // octo/a:security
+    expect(ruleLayout[3].visible).toBe(true); // octo/b:security
     expect(next[0]).toBe(ruleLayout[0]); // octo/a:ci already visible → same reference
   });
 });

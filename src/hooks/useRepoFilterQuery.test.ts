@@ -125,12 +125,19 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     expect(result.current.isActive).toBe(true);
     expect(readStored()?.facets.health).toEqual(['warning']);
     expect([...result.current.derivedSelected]).toHaveLength(0);
+
+    // Positive-hit case: 'broken' matches all 3 test repos
+    act(() => result.current.toggleHealth('warning')); // clear
+    act(() => result.current.toggleHealth('broken'));
+    expect(result.current.query.facets.health).toEqual(['broken']);
+    expect([...result.current.derivedSelected]).toHaveLength(3);
   });
 
   it('toggleCi filters by CI conclusion', () => {
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleCi('failure'));
     expect(result.current.query.facets.ci).toEqual(['failure']);
+    expect(readStored()?.facets.ci).toEqual(['failure']);
     expect([...result.current.derivedSelected]).toEqual(['octo/a']);
   });
 
@@ -138,6 +145,7 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleSecurityGrade('F'));
     expect(result.current.query.facets.security.grades).toEqual(['F']);
+    expect(readStored()?.facets.security.grades).toEqual(['F']);
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
   });
 
@@ -145,15 +153,18 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.setSecurityMaxGrade('C'));
     expect(result.current.query.facets.security.maxGrade).toBe('C');
+    expect(readStored()?.facets.security.maxGrade).toBe('C');
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
     act(() => result.current.setSecurityMaxGrade(undefined));
     expect(result.current.query.facets.security.maxGrade).toBeUndefined();
+    expect(readStored()?.facets.security.maxGrade).toBeUndefined();
   });
 
   it('toggleSecuritySeverity filters by severity presence', () => {
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleSecuritySeverity('critical'));
     expect(result.current.query.facets.security.severities).toEqual(['critical']);
+    expect(readStored()?.facets.security.severities).toEqual(['critical']);
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
   });
 
@@ -161,6 +172,7 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.togglePullRequests('open'));
     expect(result.current.query.facets.pullRequests).toEqual(['open']);
+    expect(readStored()?.facets.pullRequests).toEqual(['open']);
     expect([...result.current.derivedSelected]).toEqual(['octo/a']);
   });
 
@@ -168,15 +180,18 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleReviewsAwaitingMe());
     expect(result.current.query.facets.reviews).toEqual(['awaiting-me']);
+    expect(readStored()?.facets.reviews).toEqual(['awaiting-me']);
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
     act(() => result.current.toggleReviewsAwaitingMe());
     expect(result.current.query.facets.reviews).toEqual([]);
+    expect(readStored()?.facets.reviews).toEqual([]);
   });
 
   it('toggleIssues filters by issue options', () => {
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleIssues('over-threshold'));
     expect(result.current.query.facets.issues).toEqual(['over-threshold']);
+    expect(readStored()?.facets.issues).toEqual(['over-threshold']);
     expect([...result.current.derivedSelected]).toEqual(['octo/b']);
   });
 
@@ -184,6 +199,7 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleStale('any'));
     expect(result.current.query.facets.stale).toEqual(['any']);
+    expect(readStored()?.facets.stale).toEqual(['any']);
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
   });
 
@@ -191,6 +207,7 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     const { result } = renderHook(() => useRepoFilterQuery(fleet, getRowData));
     act(() => result.current.toggleVisibility('private'));
     expect(result.current.query.facets.visibility).toEqual(['private']);
+    expect(readStored()?.facets.visibility).toEqual(['private']);
     expect([...result.current.derivedSelected]).toEqual(['acme/c']);
   });
 
@@ -207,8 +224,10 @@ describe('updaters change the query, persist, and recompute derivedSelected', ()
     act(() => result.current.setRepoSelection({ mode: 'include', names: [] }));
     act(() => result.current.toggleRepoPin('octo/a'));
     expect(result.current.query.repoSelection.names).toEqual(['octo/a']);
+    expect(readStored()?.repoSelection.names).toEqual(['octo/a']);
     act(() => result.current.toggleRepoPin('octo/a'));
     expect(result.current.query.repoSelection.names).toEqual([]);
+    expect(readStored()?.repoSelection.names).toEqual([]);
   });
 });
 
