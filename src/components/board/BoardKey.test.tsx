@@ -422,6 +422,33 @@ describe('BoardKey — error retry', () => {
     rerender(<BoardKey repo={makeRepo()} signal="issues" data={{ issues: { status: 'error' } }} />);
     expect(part(container, 'retry-hint')).toBeNull();
   });
+
+  it('turns an errored key with onActivate-only into a drill-down button (#508)', async () => {
+    // Errored BoardKey with onActivate but NO onRetry: the key becomes a button
+    // that calls onActivate (drill-down-on-error), not a retry affordance.
+    // Not reachable via BoardView (always threads onRetry), but valid for the
+    // component contract.
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    const repo = makeRepo();
+    render(
+      <BoardKey
+        repo={repo}
+        signal="issues"
+        data={{ issues: { status: 'error' } }}
+        onActivate={onActivate}
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button).toBeInTheDocument();
+    expect(part(document.body, 'retry-hint')).toBeNull();
+
+    await user.click(button);
+
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(onActivate).toHaveBeenCalledWith(repo);
+  });
 });
 
 describe('BoardKey — data-* seams', () => {

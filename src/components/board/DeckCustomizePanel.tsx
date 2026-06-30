@@ -1,6 +1,6 @@
 /**
- * DeckCustomizePanel — an accessible modal dialog for tailoring which keys the
- * Deck ({@link BoardView}) shows, using the same RULE-BASED controls as
+ * DeckCustomizePanel — an accessible non-modal drawer for tailoring which keys
+ * the Deck ({@link BoardView}) shows, using the same RULE-BASED controls as
  * {@link CustomizePanel} but for the Deck's visibility-only, `Set`-based model
  * (no display aliases): global per-signal toggles (show/hide a signal across
  * ALL repos), bulk Show all / Hide all / Show only…, and — for targeted work —
