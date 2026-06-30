@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { AppFooter } from './components/AppFooter';
@@ -21,8 +21,8 @@ import { SecurityAccessNotice } from './components/SecurityAccessNotice';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { ShortcutsHelpOverlay } from './components/ShortcutsHelpOverlay';
 import { TokenInput } from './components/TokenInput';
-import { UpdateAvailableToast } from './components/UpdateAvailableToast';
 import { TriageView } from './components/TriageView';
+import { UpdateAvailableToast } from './components/UpdateAvailableToast';
 import { AuthProvider } from './hooks/AuthProvider';
 import { FleetUiStateProvider } from './hooks/FleetUiStateProvider';
 import { useAliases } from './hooks/useAliases';
@@ -52,7 +52,7 @@ import type { VersionedStore } from './lib/versioned-storage';
 import { buildViewPresets } from './lib/view-presets';
 import type { FleetView } from './lib/view-preference';
 import type { TileSignalType } from './types/dashboard';
-import type { Repo, RepoSignalData, SignalStatus } from './types/fleet';
+import type { GetRowData, Repo, RepoSignalData, SignalStatus } from './types/fleet';
 
 export function App(): ReactElement {
   return (
@@ -220,7 +220,21 @@ interface FleetPanelProps {
   onOpenSettings: () => void;
 }
 
-function FleetPanel({
+// Lazily stream each repo's security slice so hasNoSecurityAccess can early-exit
+// without first materializing a transient per-render array of every slice (#576).
+function* securitySlices(
+  repos: readonly Repo[],
+  getRowData: GetRowData,
+): Generator<RepoSignalData['security']> {
+  for (const repo of repos) {
+    yield getRowData(repo).security;
+  }
+}
+
+// Memoized so a Shell re-render (e.g. toggling the Settings overlay) does not
+// reconcile the whole authenticated panel: every prop below is a primitive or a
+// stable callback, so the default shallow comparison is correct (#425).
+const FleetPanel = memo(function FleetPanel({
   token,
   viewerLogin,
   view,
@@ -302,7 +316,7 @@ function FleetPanel({
     [repos, filter.isActive, filter.derivedSelected],
   );
   const securityNoAccess = useMemo(
-    () => hasNoSecurityAccess(repos.map((repo) => getRowData(repo).security)),
+    () => hasNoSecurityAccess(securitySlices(repos, getRowData)),
     [repos, getRowData],
   );
 
@@ -402,6 +416,31 @@ function FleetPanel({
   const handleDeckShowOnly = useCallback(
     (keep: Set<TileSignalType>) => deckShowOnly(repoNames, DECK_SIGNALS, keep),
     [deckShowOnly, repoNames],
+  );
+  // Defence-in-depth for the Deck reorder pair: a move mutator must degrade to a
+  // no-op (the order simply isn't changed) rather than tear the board down if it
+  // ever throws — e.g. a future drag source emitting an out-of-range index. The
+  // persistence callee already uses safeSet, so this only guards the mutator
+  // call. Both directions are wrapped symmetrically (#668).
+  const handleDeckMoveRepo = useCallback(
+    (from: number, to: number) => {
+      try {
+        deckMoveRepo(from, to);
+      } catch (error) {
+        console.warn('[deck] repo reorder failed; ignoring move', error);
+      }
+    },
+    [deckMoveRepo],
+  );
+  const handleDeckMoveSignal = useCallback(
+    (from: number, to: number) => {
+      try {
+        deckMoveSignal(from, to);
+      } catch (error) {
+        console.warn('[deck] signal reorder failed; ignoring move', error);
+      }
+    },
+    [deckMoveSignal],
   );
 
   // Applying a saved view (or built-in preset) atomically restores its repo
@@ -580,7 +619,7 @@ function FleetPanel({
             size={deckTileSize}
             repoOrder={deckRepoOrder}
             signalOrder={deckSignalOrder}
-            onMoveRepo={deckMoveRepo}
+            onMoveRepo={handleDeckMoveRepo}
             onRemoveRepo={handleDeckRemoveRepo}
           />
         </div>
@@ -596,7 +635,7 @@ function FleetPanel({
             onReset={deck.reset}
             onResetOrder={deckResetOrder}
             signalOrder={deckSignalOrder}
-            onMoveSignal={deckMoveSignal}
+            onMoveSignal={handleDeckMoveSignal}
             onClose={handleCloseDeckCustomize}
           />
         ) : null}
@@ -682,7 +721,7 @@ function FleetPanel({
       )}
     </FleetUiStateProvider>
   );
-}
+});
 
 interface CustomizeLayoutToggleProps {
   editing: boolean;
