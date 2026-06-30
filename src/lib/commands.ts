@@ -75,6 +75,13 @@ export function buildCommandRegistry(handlers: CommandRegistryHandlers): Command
       run: () => handlers.navigate('dashboard'),
     },
     {
+      id: 'nav-deck',
+      label: 'Go to Deck',
+      group: 'Navigation',
+      keywords: ['deck', 'view', 'switch', 'keys', 'stream', 'signals'],
+      run: () => handlers.navigate('deck'),
+    },
+    {
       id: 'open-settings',
       label: 'Open Settings',
       group: 'Settings',

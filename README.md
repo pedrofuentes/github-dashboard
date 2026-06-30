@@ -97,6 +97,15 @@ The **Inbox** is the third view on the **Grid / Dashboard / Inbox** toggle — a
 - **Filters** — narrow by repository, by kind, to unread-only, or reveal dismissed items; the filters compose entirely client-side.
 - **No new access required** — the Inbox is a pure view over the data the dashboard **already fetches**: it adds **no new token permission, no new API request**, and **never writes back to GitHub** (your PAT stays read-only). It meets WCAG 2.1 AA in both themes, encoding every item with an icon and text — never colour alone.
 
+## Deck view
+
+The **Deck** is a Stream Deck–style signal board — one key per repository × signal — reachable from the view switcher or the `g d` keyboard shortcut and selectable as the default view.
+
+- **Repo × signal matrix.** Each repository occupies one row, with its six signal keys (CI, Security, Reviews, Pull Requests, Issues, Stale) laid out as columns in a consistent order. Every key mirrors the same status vocabulary as the other views (icon + text, never colour alone) and opens the signal's GitHub page in a new tab on click or keyboard activation.
+- **Four tile sizes.** A toolbar control scales all keys between **X-Small**, **Small**, **Medium**, and **Large**. Medium reproduces the original layout; X-Small packs the most repositories per row; Large suits wall displays or full-window mode. Your size choice is remembered across sessions.
+- **Drag-to-reorder rows and columns.** In **Customize** mode, each repository row gains a drag grip for pointer or keyboard reorder. Signal-column order is also reorderable (fleet-wide, via the Customize drawer). Reordered positions are persisted. Row reorder is disabled while a repository filter is active — a filtered subset can't safely rewrite the full-fleet order; column reorder stays available at all times.
+- **Add / remove via Customize.** The **Customize** side drawer lets you show or hide individual repository rows and signal columns — hide a signal across every repo at once, or toggle per-repo rows. A **Reset order** button restores the factory row and column order, and a **Show all** / **Hide all** shortcut is available for bulk changes.
+
 ## Appearance
 
 github-dashboard ships in **light** and **dark** themes. A segmented **Theme**

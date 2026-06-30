@@ -206,8 +206,8 @@ function buildCiRuns(entry: FleetEntry): unknown {
             display_title: `CI for ${entry.name}`,
             run_number: 42,
             html_url,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            created_at: '2026-06-15T10:30:00Z',
+            updated_at: '2026-06-15T10:30:00Z',
           },
         ],
       };
@@ -225,8 +225,8 @@ function buildCiRuns(entry: FleetEntry): unknown {
             display_title: `CI for ${entry.name}`,
             run_number: 42,
             html_url,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            created_at: '2026-06-15T10:30:00Z',
+            updated_at: '2026-06-15T10:30:00Z',
           },
         ],
       };
@@ -244,8 +244,8 @@ function buildCiRuns(entry: FleetEntry): unknown {
             display_title: `CI for ${entry.name}`,
             run_number: 42,
             html_url,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            created_at: '2026-06-15T10:30:00Z',
+            updated_at: '2026-06-15T10:30:00Z',
           },
         ],
       };
@@ -263,8 +263,8 @@ function buildCiRuns(entry: FleetEntry): unknown {
             display_title: `CI for ${entry.name}`,
             run_number: 42,
             html_url,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            created_at: '2026-06-15T10:30:00Z',
+            updated_at: '2026-06-15T10:30:00Z',
           },
         ],
       };

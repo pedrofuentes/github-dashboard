@@ -89,6 +89,14 @@ describe('IssuesTileBody — triage escalation (DESIGN-TILES §4.5)', () => {
     );
   });
 
+  it('guards overThreshold: when openCount is 0, renders neutral (no false-positive warning)', () => {
+    // The guard `openCount > 0 && issues.overThreshold === true` prevents
+    // warning tone when the slice is technically over threshold but zero-open.
+    const { container } = renderBody({ status: 'ready', openCount: 0, overThreshold: true });
+    expect(container.querySelector('[data-state="empty"]')).not.toBeNull();
+    expect(container.querySelector('[data-tone="warning"]')).toBeNull();
+  });
+
   it('uses singular "issue" phrasing for a single open issue', () => {
     const { getAllByText } = renderBody({ status: 'ready', openCount: 1 }, 'expanded');
     expect(getAllByText(/1 open issue\b/i).length).toBeGreaterThan(0);
