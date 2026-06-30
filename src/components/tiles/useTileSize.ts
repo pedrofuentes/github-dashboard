@@ -112,10 +112,13 @@ function warnResizeObserverUnavailable(): void {
  * for the lifetime of the module, which makes the warning observable in
  * production but order-dependent under test (only the first RO-absent render
  * warns). Test setup calls this to reset the guard between cases so the degraded
- * path can be exercised deterministically in isolation (#359). Not used by app
- * code — the once-only behaviour is the intended runtime contract.
+ * path can be exercised deterministically in isolation (#359).
+ *
+ * The `ForTesting` suffix marks this as a test-only seam: it exists solely to
+ * make the warn-once guard resettable from tests and is never called by app
+ * code — the once-only behaviour is the intended runtime contract (#365 🟢#1).
  */
-export function resetTileSizeWarnings(): void {
+export function resetTileSizeWarningsForTesting(): void {
   warnedResizeObserverUnavailable = false;
 }
 

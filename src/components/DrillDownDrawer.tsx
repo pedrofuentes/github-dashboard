@@ -132,9 +132,14 @@ export function DrillDownDrawer({ repo, data, onClose }: DrillDownDrawerProps) {
   // unexpected value falls back to the neutral "No runs" label instead of
   // indexing to `undefined` (rendering "Conclusion: undefined") — the same
   // unguarded `CONCLUSION[...]` lookup fixed for CiTileBody in #185 (#205).
+  // `Object.hasOwn` (not the `in` operator) keeps the guard to the enum's own
+  // keys, so an inherited Object.prototype member ("toString", "constructor", …)
+  // cannot resolve to a prototype method and render as the label (#365 🟢#4),
+  // matching the CiTileBody hardening (#204).
   const ciConclusion = ci?.conclusion ?? 'none';
-  const ciConclusionLabel =
-    ciConclusion in CONCLUSION_LABEL ? CONCLUSION_LABEL[ciConclusion] : CONCLUSION_LABEL.none;
+  const ciConclusionLabel = Object.hasOwn(CONCLUSION_LABEL, ciConclusion)
+    ? CONCLUSION_LABEL[ciConclusion]
+    : CONCLUSION_LABEL.none;
 
   const security = data.security;
   const securityCounts = security?.counts;
