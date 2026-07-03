@@ -67,13 +67,17 @@
 
 ## 9. Authorization — tiers (defaults from the template `docs/KICKOFF.md` + `MISSION.md` §9; project specifics below)
 The agent sorts every gated action into `auto` · `auto-with-audit` · `time-boxed` · `human-required` · `never` and acts per tier. For this project:
+- **Autonomy profile:** standard — the tier table as written (this app holds a user's GitHub token, so no `max-autonomy`; profiles shift defaults only, never the `human-required` floor or `never`).
 - **Default time-box (auto-proceed window):** 24h.
+- **Roadmap exhaustion:** stop (default) — no auto-extended maintenance milestones; propose and wait.
 - **Risk tolerance:** conservative — the app holds a user's GitHub token, so borderline actions sit at `human-required`.
 - **Production release gate:** human-required — *you* flip on GitHub Pages / activate the production deploy for each release; staging/preview is `auto`.
 - **`time-boxed` (auto-proceed after 24h):** the next milestone *within `ROADMAP.md`*; a **built-UI design review** — the agent posts screenshots to a `DECISION:` issue and proceeds if you don't object.
 - **`auto` (pre-authorized, no asking):** add the §3 stack deps (React, Vite, TypeScript, Tailwind, Vitest, Playwright, Zod, ESLint/Prettier, React Testing Library) + reasonable transitive tooling; **author** CI/CD workflow files (tests, lint/typecheck, Sentinel Method B, the Pages deploy pipeline) + the Vite base-path/SPA-fallback config; configure branch protection; routine **reversible** architecture consistent with this brief.
 - **`human-required` (sign-off first):** auth / token-storage / privacy design (no auth/token-persistence code before sign-off); adding any backend / server / proxy or non-GitHub runtime origin (incl. for device-flow); heavy/unusual deps beyond §3; any `.github/workflows/**` edit or a harness-integrity PR (Sentinel config/prompt, `AGENTS.md`, branch protection, scanner config); a first-time-contributor PR.
-- **`never`:** commit a PAT or any secret; send user code/data to a non-GitHub origin; weaken/bypass Sentinel, tests, branch protection, or the scanners (branch protection is tighten-only); force-push / rewrite `main`; delete branches/releases/tags/data.
+- **`never`:** commit a PAT or any secret; send user code/data to a non-GitHub origin; weaken/bypass Sentinel, tests, branch protection, or the scanners (branch protection is tighten-only); force-push / rewrite `main`; delete branches/releases/tags/data; self-modify the autonomy dial (these §9/§10 tiers, budgets, caps, the kill switch, or watchdog config — only the cofounder turns it).
 
 ## 10. Resource governance (concurrency & cost)
-- **Max concurrent workers / worktrees:** 4 · **per-watchdog-tick spawn cap:** 3 · **per-milestone cost budget:** no hard cap (small project) — queue at the caps, finish in-flight work first.
+- **Max concurrent workers / worktrees:** 4 · **per-watchdog-tick spawn cap:** 3 · **max recursion depth:** 3 (Lead = 1) · **max spawn-tree size per milestone:** 30 (every level and channel combined).
+- **Max Actions-minutes per day:** 240 (Tier-2 ticks + CI, via `gh api` workflow-run durations) · **max auto-proceeded `time-boxed` gates per milestone:** 5 · **max consecutive auto-proceeded milestones with zero cofounder interaction:** 2 · **dead-man switch:** 7 days with zero verified cofounder activity → security-maintenance-only + Tier-2 cron disabled.
+- **Per-milestone cost budget:** no hard cap (small project) — queue at the caps, finish in-flight work first.
