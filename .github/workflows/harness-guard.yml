@@ -1,0 +1,95 @@
+# Harness-integrity guard (autonomous-kickoff template v2.7.0+).
+#
+# Mechanism-enforced hold on PRs that touch the review harness / CI / scanners.
+# Runs from BASE-branch config via `pull_request_target` (a PR cannot weaken its
+# own reviewer) and NEVER checks out or executes PR code — it inspects the PR
+# purely as data through the API. A PR whose diff touches a protected path fails
+# this required check unless it carries a `decision:approved` label whose
+# `labeled`-event actor is the cofounder. The agent never applies that label.
+#
+# No third-party actions are used, so there is nothing to SHA-pin here.
+name: harness-guard
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: harness-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  harness-guard:
+    name: harness-guard
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      COFOUNDER: pedrofuentes
+    steps:
+      - name: Enforce harness-integrity hold on protected paths
+        run: |
+          set -euo pipefail
+
+          # Protected paths: the review harness, CI, and scanner config.
+          is_protected() {
+            local f="$1"
+            case "$f" in
+              AGENTS.md|*/AGENTS.md) return 0 ;;
+              docs/SENTINEL.md) return 0 ;;
+              .github/workflows/*) return 0 ;;
+              .github/dependabot.yml|.github/dependabot.yaml) return 0 ;;
+              .github/codeql/*) return 0 ;;
+            esac
+            return 1
+          }
+
+          echo "Fetching changed files for ${REPO}#${PR}..."
+          FILES_RAW=$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" --jq '.[].filename') \
+            || { echo "::error::Failed to fetch PR files — failing closed."; exit 1; }
+          mapfile -t FILES <<< "$FILES_RAW"
+
+          HITS=()
+          for f in "${FILES[@]}"; do
+            if is_protected "$f"; then HITS+=("$f"); fi
+          done
+
+          if [ ${#HITS[@]} -eq 0 ]; then
+            echo "No protected paths touched — harness-guard PASS."
+            exit 0
+          fi
+
+          echo "::group::Protected paths touched by this PR"
+          printf '  %s\n' "${HITS[@]}"
+          echo "::endgroup::"
+
+          # A protected-path PR is human-required: it must carry a
+          # `decision:approved` label ADDED by the cofounder.
+          HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR}/labels" \
+            --jq 'any(.[]; .name == "decision:approved")') \
+            || { echo "::error::Failed to fetch PR labels — failing closed."; exit 1; }
+
+          if [ "$HAS_LABEL" != "true" ]; then
+            echo "::error::Harness-integrity hold — this PR touches protected paths and has no 'decision:approved' label. A cofounder must review and apply it."
+            exit 1
+          fi
+
+          # Verify the MOST RECENT `labeled` event for `decision:approved`
+          # was performed by the cofounder (labels are forgeable by any writer;
+          # the event actor is authoritative under a distinct agent identity).
+          ACTOR=$(gh api --paginate "repos/${REPO}/issues/${PR}/events" \
+            --jq '[.[] | select(.event == "labeled" and .label.name == "decision:approved")] | last | .actor.login // ""') \
+            || { echo "::error::Failed to fetch PR events — failing closed."; exit 1; }
+
+          if [ "$ACTOR" != "$COFOUNDER" ]; then
+            echo "::error::'decision:approved' was applied by '${ACTOR:-unknown}', not the cofounder ('${COFOUNDER}'). Harness-integrity hold stands."
+            exit 1
+          fi
+
+          echo "Protected paths approved by cofounder '${COFOUNDER}' — harness-guard PASS."
