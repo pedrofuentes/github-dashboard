@@ -4,7 +4,7 @@ name: Sentinel Backlog Hygiene
 # is gone at HEAD. It NEVER closes and NEVER adjudicates sentinel:security —
 # deeper re-validation (positive evidence, cross-file migration) is the human §3 sweep.
 on:
-  schedule: [{ cron: '0 6 * * 1' }]   # weekly, Mondays 06:00 UTC
+  schedule: [{ cron: '0 6 * * 1' }] # weekly, Mondays 06:00 UTC
   workflow_dispatch:
 permissions:
   contents: read
