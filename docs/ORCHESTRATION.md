@@ -40,7 +40,7 @@ Sub-agents may spawn their **own** sub-agents (an engineer spins up a test-data 
 **Probe every spawn channel, up front (in Phase 0).** Don't assume — measure. The built-in subagent tool is only **one** way to spawn; probe **each channel** the runtime offers, keep each probe cheap and time-boxed, fail safe per probe (a failed or timed-out probe means that channel is absent), and record the results as a **capability matrix** in `PLAN.md`:
 
 - **(a) Built-in subagent tool** — the level-1 check (spawn one trivial sub-agent that returns a token) and the nested check (instruct *that* sub-agent to spawn its own trivial sub-agent and report back).
-- **(b) Headless agent CLI from the shell** — launch a non-interactive agent run as a shell process (e.g. a `claude -p`-style one-shot, or an agent-SDK script) that returns a token. A headless child is a **fresh, fully-capable process that can itself spawn again** — so this channel provides true recursion even where the built-in channel is depth-limited.
+- **(b) Headless agent CLI from the shell** — launch a non-interactive agent run as a shell process (e.g. a `claude -p`- or `copilot -p`-style one-shot from whatever agent CLI is installed, or an agent-SDK script) that returns a token. A headless child is a **fresh, fully-capable process that can itself spawn again** — so this channel provides true recursion even where the built-in channel is depth-limited.
 - **(c) Agent continuation** — can a live sub-agent be re-messaged to continue with its context intact (vs one-shot returns only)?
 - **(d) Background / parallel execution** — can spawns run concurrently in the background?
 
