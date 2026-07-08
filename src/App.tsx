@@ -46,6 +46,7 @@ import { addCommandRecent, createCommandRecentsStore } from './lib/command-recen
 import { buildCommandRegistry } from './lib/commands';
 import { DECK_SIGNALS } from './lib/deck-visibility';
 import { loadDefaultView, saveDefaultView } from './lib/default-view-preference';
+import { applyUpdateAndReload } from './lib/pwa-update';
 import type { SavedView } from './lib/saved-views';
 import { hasNoSecurityAccess } from './lib/security-access';
 import type { VersionedStore } from './lib/versioned-storage';
@@ -100,7 +101,11 @@ function Shell(): ReactElement {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <UpdateAvailableToast updateAvailable={updateAvailable} deployedSha={deployedSha} />
+      <UpdateAvailableToast
+        updateAvailable={updateAvailable}
+        deployedSha={deployedSha}
+        onReload={() => void applyUpdateAndReload()}
+      />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-surface focus:px-4 focus:py-2 focus:font-medium focus:text-text focus:shadow-lg focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-focus"

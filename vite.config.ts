@@ -44,10 +44,11 @@ export default defineConfig({
     // Installable PWA + offline app shell. Icons are pre-generated into `public/`
     // (`npm run generate-pwa-assets`), so the build needs no image toolchain.
     VitePWA({
-      // Silent background update. The in-app `useUpdateAvailable` banner (which
-      // polls version.json) tells the user to reload; on reload the freshly
-      // installed SW serves the new assets.
-      registerType: 'autoUpdate',
+      // Prompt, not autoUpdate: the app owns the update UX via the version.json
+      // banner (useUpdateAvailable) with an explicit Reload button, so the SW
+      // must NOT silently reload the page. The new worker installs and waits;
+      // applyUpdateAndReload() activates it (SKIP_WAITING) and reloads.
+      registerType: 'prompt',
       // The strict CSP (`script-src 'self'`, no inline) forbids an injected inline
       // registration snippet — we call registerSW() from the bundle in main.tsx.
       injectRegister: false,
@@ -87,6 +88,9 @@ export default defineConfig({
         // Single same-origin sw.js (no importScripts) — cleanest under the CSP.
         inlineWorkboxRuntime: true,
         cleanupOutdatedCaches: true,
+        // Take control of the page as soon as the freshly activated worker is
+        // ready, so applyUpdateAndReload()'s reload is served from the new cache.
+        clientsClaim: true,
       },
     }),
   ],
