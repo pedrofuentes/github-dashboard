@@ -18,7 +18,7 @@ first.
   appears in the header where the browser offers a native prompt (Chrome/Edge/
   Android), and an **Install app** section in **Settings** documents how to install
   on every browser (including iOS Safari's Share → Add to Home Screen). Built with
-  `vite-plugin-pwa` (web manifest + Workbox service worker). (#731)
+  `vite-plugin-pwa` (web manifest + Workbox service worker). (#731, #734)
 - **Role design tokens** — new semantic surface/accent role tokens
   (`--color-surface-overlay`, `--color-surface-hover`, `--color-surface-selected`,
   `--color-selection`, `--color-attention`) defined and verified in both light and
