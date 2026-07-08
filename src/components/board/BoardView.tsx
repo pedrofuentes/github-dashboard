@@ -377,7 +377,9 @@ export function BoardView({
 
   return (
     <section aria-label="Repository board" className="flex flex-col gap-3">
-      <p role="status" aria-live="polite" className="text-sm text-text-muted">
+      {/* Centered so the count sits above the centered block group (mx-auto /
+          justify-center) rather than orphaning to the full-bleed left edge. */}
+      <p role="status" aria-live="polite" className="text-center text-sm text-text-muted">
         {statusMessage}
       </p>
 
