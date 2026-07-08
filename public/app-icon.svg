@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GitHub Dashboard">
+  <!-- App background: GitHub-dark (#0d1117). Full-bleed square; the OS rounds
+       "any" icons and the maskable variant adds its own safe-zone padding. -->
+  <rect width="512" height="512" fill="#0d1117" />
+  <!-- Deck motif: a 2x2 grid of rounded signal tiles, each in a GitHub-dark
+       accent tone. Kept within the central ~47% so it survives the maskable
+       circular crop. -->
+  <g>
+    <rect x="136" y="136" width="108" height="108" rx="22" fill="#58a6ff" />
+    <rect x="268" y="136" width="108" height="108" rx="22" fill="#3fb950" />
+    <rect x="136" y="268" width="108" height="108" rx="22" fill="#bc8cff" />
+    <rect x="268" y="268" width="108" height="108" rx="22" fill="#d29922" />
+  </g>
+</svg>

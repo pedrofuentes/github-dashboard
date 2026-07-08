@@ -15,6 +15,12 @@
       content="default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' https://*.githubusercontent.com data:; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://api.github.com https://github.com https://*.githubusercontent.com; form-action 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- PWA: the manifest <link> is injected at build by vite-plugin-pwa; the
+         theme-color and icon links below are not, so they're declared here. Paths
+         are base-absolute (GitHub Pages serves the app under /github-dashboard/). -->
+    <meta name="theme-color" content="#0d1117" />
+    <link rel="icon" href="/github-dashboard/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/github-dashboard/apple-touch-icon-180x180.png" />
     <title>github-dashboard</title>
   </head>
   <body>
