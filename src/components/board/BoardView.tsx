@@ -50,7 +50,8 @@ import { SortableRepoRow } from './SortableRepoRow';
  * `repeat(N, minmax(0, <size>px))` column grid, where N is the repo's non-hidden
  * key count and `<size>` is the {@link DeckTileSize} minimum width from
  * {@link DECK_TILE_MIN_PX}. The inline `grid-template-columns` sets the per-size
- * minimum; the `gap-3` matches the block-to-block spacing.
+ * minimum; the tight `gap-3` keeps a repo's own tiles reading as one group,
+ * deliberately narrower than the wider block-to-block gap in {@link BLOCKS_CLASS}.
  */
 const GRID_CLASS = 'grid gap-3';
 
@@ -59,9 +60,12 @@ const GRID_CLASS = 'grid gap-3';
  * tiles), and blocks pack left-to-right and wrap, so several repos share a line
  * when they fit (filling full-window width). Leftover line width stays a gap —
  * tiles never stretch beyond their chosen size. `items-start` keeps blocks
- * top-aligned regardless of per-block height.
+ * top-aligned regardless of per-block height. The `gap-8` here is wider than the
+ * intra-block `gap-3` on purpose: every block is a distinct repo, so the larger
+ * gutter is the cue that marks where one repo ends and the next begins — both
+ * side-by-side on a line and stacked when the line wraps.
  */
-const BLOCKS_CLASS = 'mx-auto flex w-full flex-wrap items-start justify-center gap-3';
+const BLOCKS_CLASS = 'mx-auto flex w-full flex-wrap items-start justify-center gap-8';
 
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
