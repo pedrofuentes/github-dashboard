@@ -121,6 +121,23 @@ describe('SettingsOverlay', () => {
     expect(within(group).getByRole('radio', { name: /name only/i })).toBeInTheDocument();
   });
 
+  it('surfaces an Install app section with manual install steps (even unauthenticated)', () => {
+    render(
+      <SettingsOverlay
+        user={null}
+        onForget={vi.fn()}
+        defaultView="triage"
+        onDefaultViewChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /install app/i })).toBeInTheDocument();
+    // No native prompt is captured in jsdom, so the manual how-to is shown.
+    expect(within(dialog).getByText(/add to home screen/i)).toBeInTheDocument();
+  });
+
   it('shows the authenticated identity and a Forget token action', async () => {
     const onForget = vi.fn();
     const user = userEvent.setup();

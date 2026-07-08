@@ -21,6 +21,7 @@ import { DefaultViewToggle } from './DefaultViewToggle';
 import { DensityToggle } from './DensityToggle';
 import { RepoOwnerToggle } from './RepoOwnerToggle';
 import { ThemeToggle } from './ThemeToggle';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 import type { FleetView } from '../lib/view-preference';
 import type { AuthUser } from '../types/auth';
 
@@ -62,6 +63,8 @@ export function SettingsOverlay({
   const titleId = useId();
   const appearanceLabelId = useId();
   const accountLabelId = useId();
+  const installLabelId = useId();
+  const { canInstall, installed, promptInstall } = useInstallPrompt();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -150,6 +153,42 @@ export function SettingsOverlay({
               <span className="text-sm font-medium text-text">Repository names</span>
               <RepoOwnerToggle />
             </div>
+          </section>
+
+          <section
+            aria-labelledby={installLabelId}
+            className="flex flex-col gap-3 border-t border-border pt-4"
+          >
+            <h3
+              id={installLabelId}
+              className="text-xs font-semibold uppercase tracking-wide text-text-muted"
+            >
+              Install app
+            </h3>
+            {installed ? (
+              <p className="text-sm text-text-muted">This app is installed on your device.</p>
+            ) : (
+              <>
+                <p className="text-sm text-text-muted">
+                  Install github-dashboard for a full-screen, offline-capable app.
+                </p>
+                {canInstall ? (
+                  <button
+                    type="button"
+                    onClick={() => void promptInstall()}
+                    className="w-fit rounded border border-border-strong px-3 py-1 text-sm font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    Install
+                  </button>
+                ) : null}
+                <p className="text-sm text-text-muted">
+                  If there's no Install button, use your browser: on iPhone/iPad tap{' '}
+                  <strong className="font-medium text-text">Share → Add to Home Screen</strong>; on
+                  desktop use the install icon in the address bar (Chrome/Edge) or{' '}
+                  <strong className="font-medium text-text">File → Add to Dock</strong> (Safari).
+                </p>
+              </>
+            )}
           </section>
 
           {user !== null ? (

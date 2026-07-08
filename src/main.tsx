@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 
 import { App } from './App';
+// Side-effect import: registers the beforeinstallprompt/appinstalled listeners at
+// startup so the (early, one-shot) install prompt is captured before React mounts.
+import './lib/install-prompt';
 import { applyTheme, loadThemePreference, resolveTheme } from './lib/theme-preference';
 import './index.css';
 
