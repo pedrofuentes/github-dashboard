@@ -12,6 +12,13 @@ first.
 
 ### Added
 
+- **Installable PWA + offline app shell** — github-dashboard can now be installed
+  to your home screen or desktop and opens offline (the app shell is cached; live
+  GitHub data still needs a connection and your token). An **Install** button
+  appears in the header where the browser offers a native prompt (Chrome/Edge/
+  Android), and an **Install app** section in **Settings** documents how to install
+  on every browser (including iOS Safari's Share → Add to Home Screen). Built with
+  `vite-plugin-pwa` (web manifest + Workbox service worker). (#731)
 - **Role design tokens** — new semantic surface/accent role tokens
   (`--color-surface-overlay`, `--color-surface-hover`, `--color-surface-selected`,
   `--color-selection`, `--color-attention`) defined and verified in both light and
@@ -48,6 +55,10 @@ first.
 
 ### Fixed
 
+- **Update prompt reliably applies the update on reload.** Clicking **Reload** on
+  the "new version available" prompt now forces a service-worker update check and
+  activates the freshly deployed worker before reloading, so the app actually
+  swaps to the new build instead of re-serving the cached one. (#733)
 - **Deck Security key explains the `n/a` no-access state.** When a token lacks
   the required scope or the security feature is disabled, the Security key now
   includes the reason ("no access — token scope or feature disabled") in its

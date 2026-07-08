@@ -22,7 +22,7 @@
 
 If you maintain a lot of GitHub repositories, the things that need your attention are scattered across dozens of tabs: a red workflow here, a security alert there, a pull request waiting on _your_ review somewhere else. **github-dashboard** pulls all of it onto one screen so you can see — across your whole fleet — **what's broken, what's waiting on you, and what's risky**, without clicking through repo after repo.
 
-It's a **private, zero-install, client-only** single-page app. Your token and your data stay in your browser; the only thing it ever talks to is GitHub.
+It's a **private, client-only** single-page app — nothing to install to start using it, though you can optionally **[install it as an app](#install-as-an-app)** for a full-screen, offline-capable experience. Your token and your data stay in your browser; the only thing it ever talks to is GitHub.
 
 - **Who it's for:** maintainers who juggle many repositories and want one place to triage them.
 - **What it costs:** nothing — it's a static web app served from GitHub Pages.
@@ -169,7 +169,18 @@ Security grades require access to Dependabot and code-scanning alert feeds. Fine
 3. **Paste it in** and choose whether to remember it — the default keeps it in memory only.
 4. **Watch your fleet** populate with live signals, and click any repo for the drill-down.
 
-No install, no sign-up, no backend.
+No sign-up, no backend, and nothing to install to get going — though you can add it to your device as an app (below).
+
+## Install as an app
+
+github-dashboard is a **Progressive Web App (PWA)**: you can install it to your home screen or desktop and it opens in its own window. Once installed, the app **shell loads offline** (the interface itself is cached) — live GitHub data still needs a connection and your token.
+
+- **Chrome / Edge (desktop & Android):** click the **Install** button in the app header, or use the install icon in the browser's address bar.
+- **iPhone / iPad (Safari):** tap **Share → Add to Home Screen**.
+- **Safari (macOS):** **File → Add to Dock**.
+- **Firefox (Android):** menu **→ Install**.
+
+You can also find an **Install app** section (with these steps) under **Settings** at any time.
 
 ## Run locally
 
@@ -196,6 +207,7 @@ npm run dev   # start the Vite dev server, then open the printed localhost URL
 | `npm run typecheck`     | Type-check with the TypeScript compiler only.          |
 | `npm run typecheck:test` | Type-check the test files (`tsconfig.vitest.json`).   |
 | `npm run format`        | Format the codebase with Prettier.                     |
+| `npm run generate-pwa-assets` | Regenerate the PWA icon set from `public/app-icon.svg`. |
 
 ## Tech stack
 
@@ -208,7 +220,7 @@ npm run dev   # start the Vite dev server, then open the printed localhost URL
 
 ## Deployment
 
-Hosted on **GitHub Pages** and deployed by the [Deploy to GitHub Pages](.github/workflows/deploy.yml) Actions workflow on every push to `main` (and via manual dispatch). The output is a static SPA with a `404.html` fallback for client-side routing, served under the Vite base path `/github-dashboard/`. Live at **[pedrofuent.es/github-dashboard](https://pedrofuent.es/github-dashboard/)**.
+Hosted on **GitHub Pages** and deployed by the [Deploy to GitHub Pages](.github/workflows/deploy.yml) Actions workflow on every push to `main` (and via manual dispatch). The output is a static SPA with a `404.html` fallback for client-side routing, served under the Vite base path `/github-dashboard/`. A [web manifest](https://web.dev/articles/add-manifest) makes it **installable**, and a [Workbox](https://developer.chrome.com/docs/workbox) service worker (via `vite-plugin-pwa`) precaches the app shell so it **opens offline**; `version.json` stays network-only so the in-app update prompt always sees fresh deploys. Live at **[pedrofuent.es/github-dashboard](https://pedrofuent.es/github-dashboard/)**.
 
 ## Contributing
 

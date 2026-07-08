@@ -302,6 +302,15 @@ detect when a new deploy has replaced the running build:
 
 **Operational constraint:** `version.json` must be served with a no-cache or short-TTL response header, and the Vite base path must be stable — if either changes, the poll URL (`${BASE_URL}version.json`) will silently 404 and update detection will stop working.
 
+### 12.2 Progressive Web App (installable + offline shell)
+
+The app ships as an installable PWA via **`vite-plugin-pwa`** (config in `vite.config.ts`):
+
+- **Web manifest** (name "GitHub Dashboard", `standalone`, dark `#0d1117`, icons generated from `public/app-icon.svg` by `npm run generate-pwa-assets`) makes it installable. An in-app **Install** affordance is driven by `src/lib/install-prompt.ts` + `useInstallPrompt` (captures `beforeinstallprompt`, detects standalone); the header button and the Settings "Install app" section consume it.
+- **Workbox service worker** (`generateSW`, `registerType: 'prompt'`, `clientsClaim`, `inlineWorkboxRuntime` for a single same-origin `sw.js` under the strict CSP) **precaches the app shell** so the interface loads offline. Registered from the bundle in `main.tsx` (no inline script — CSP `script-src 'self'`).
+- **`version.json` is deliberately excluded from precache** (`globIgnores` + a `NetworkOnly` runtime route), so the deploy-detection contract above keeps seeing fresh deploys through the service worker.
+- **Applying an update:** the prompt's Reload calls `applyUpdateAndReload` (`src/lib/pwa-update.ts`), which forces a SW update check, activates the waiting worker via a `SKIP_WAITING` message, and reloads once it controls the page — a bare `location.reload()` would re-serve the cached shell.
+
 ## 13. Code patterns
 
 The conventions AGENTS.md §Code Style points to. (Illustrative — application code
