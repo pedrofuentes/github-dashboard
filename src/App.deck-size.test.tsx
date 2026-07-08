@@ -99,6 +99,31 @@ describe('App — Deck tile-size wiring', () => {
     expect(document.getElementById('main-content')?.className).toContain('max-w-5xl');
   });
 
+  it('keeps the full-bleed Deck toolbar in a centered max-w-5xl column (aligned with the header)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await authenticateOnDeck(user, [repo('octo/a')]);
+
+    // On the uncapped Deck, main is full-bleed — so the toolbar must live in its
+    // own max-w-5xl wrapper (not main) to stay aligned with the header column
+    // instead of orphaning to the window's left edge.
+    const group = screen.getByRole('group', { name: /view mode/i });
+    const main = document.getElementById('main-content');
+    expect(main?.className).not.toContain('max-w-5xl');
+    const capped = group.closest('.max-w-5xl');
+    expect(capped).not.toBeNull();
+    expect(capped).not.toBe(main);
+
+    // On a capped view (Boards) there is no extra wrapper: the toolbar's only
+    // max-w-5xl ancestor is main itself.
+    await user.click(screen.getByRole('button', { name: /boards/i }));
+    await screen.findByRole('region', { name: /dashboard/i });
+    const cappedMain = document.getElementById('main-content');
+    expect(screen.getByRole('group', { name: /view mode/i }).closest('.max-w-5xl')).toBe(
+      cappedMain,
+    );
+  });
+
   it('resizes the live Deck grid when a new size is chosen', async () => {
     const user = userEvent.setup();
     render(<App />);

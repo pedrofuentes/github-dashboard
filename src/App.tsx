@@ -689,34 +689,48 @@ const FleetPanel = memo(function FleetPanel({
         </>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
-            <FacetedRepoFilter repos={repos} filter={filter} />
-            {view === 'dashboard' ? (
-              <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
-            ) : null}
-            {view === 'deck' ? (
-              <CustomizeLayoutToggle
-                editing={deckEditing}
-                onToggle={handleToggleDeckEditing}
-                idleLabel="Customize tiles"
+          {/*
+            The Deck view lets its tiles span the full window (main is max-w-none),
+            but the toolbar + banners must stay in the same centered max-w-5xl
+            column as the header — otherwise they orphan to the window's left edge
+            while everything else is centered. On every other view main is already
+            max-w-5xl, so the wrapper collapses (display:contents) and the controls
+            sit directly in the flex column exactly as before.
+          */}
+          <div
+            className={
+              view === 'deck' ? 'mx-auto flex w-full max-w-5xl flex-col gap-4 px-6' : 'contents'
+            }
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <ViewToggle view={view} onChange={onViewChange} unreadCount={inbox.unreadCount} />
+              <FacetedRepoFilter repos={repos} filter={filter} />
+              {view === 'dashboard' ? (
+                <CustomizeLayoutToggle editing={editing} onToggle={handleToggleEditing} />
+              ) : null}
+              {view === 'deck' ? (
+                <CustomizeLayoutToggle
+                  editing={deckEditing}
+                  onToggle={handleToggleDeckEditing}
+                  idleLabel="Customize tiles"
+                />
+              ) : null}
+              {view === 'deck' ? <DeckSizeControl /> : null}
+              <FullWindowButton ref={fullWindowButtonRef} onActivate={enterFullWindow} />
+              <SavedViewsMenu
+                views={saved.views}
+                presets={presets}
+                currentFilter={filter.query}
+                currentView={view}
+                onApply={handleApplySavedView}
+                onCreate={saved.create}
+                onRename={saved.rename}
+                onRemove={saved.remove}
               />
-            ) : null}
-            {view === 'deck' ? <DeckSizeControl /> : null}
-            <FullWindowButton ref={fullWindowButtonRef} onActivate={enterFullWindow} />
-            <SavedViewsMenu
-              views={saved.views}
-              presets={presets}
-              currentFilter={filter.query}
-              currentView={view}
-              onApply={handleApplySavedView}
-              onCreate={saved.create}
-              onRename={saved.rename}
-              onRemove={saved.remove}
-            />
+            </div>
+            <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
+            <SecurityAccessNotice show={securityNoAccess} />
           </div>
-          <FleetLoadingBanner loading={fleet.loading} ready={fleet.ready} total={fleet.total} />
-          <SecurityAccessNotice show={securityNoAccess} />
           {viewSurface}
           {sharedOverlays}
         </div>
