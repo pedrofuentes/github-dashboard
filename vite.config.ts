@@ -24,12 +24,31 @@ const sha = resolveBuildSha();
 // GitHub Pages serves this project under /github-dashboard/.
 export default defineConfig({
   base: '/github-dashboard/',
+  // Bind the dev server to all interfaces (0.0.0.0) so it's reachable from other
+  // devices on the LAN (phones, other machines), not just localhost. Vite prints
+  // the Network: URL to use. Equivalent to running `vite --host`.
+  server: {
+    host: true,
+  },
   define: {
     __BUILD_SHA__: JSON.stringify(sha),
     __BUILD_TIME__: JSON.stringify(builtAt),
   },
   plugins: [
     react(),
+    // Dev only: strip the strict CSP <meta> from index.html while serving. Vite's
+    // dev server injects CSS as inline <style> tags and @vitejs/plugin-react adds
+    // an inline Fast-Refresh preamble — both are blocked by `style-src 'self'` /
+    // `script-src 'self'`, which leaves the dev page unstyled and breaks HMR. The
+    // production build keeps the meta untouched (this plugin never runs at build),
+    // so the deployed app's hardened CSP is unchanged.
+    {
+      name: 'strip-csp-in-dev',
+      apply: 'serve',
+      transformIndexHtml(html) {
+        return html.replace(/\s*<meta\s+http-equiv="Content-Security-Policy"[\s\S]*?\/>/, '');
+      },
+    },
     {
       name: 'emit-version-json',
       apply: 'build',
