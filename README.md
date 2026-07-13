@@ -4,13 +4,13 @@
 
 **Fleet health for all your GitHub repositories — at a glance.**
 
-### [▶ Use it now → pedrofuent.es/github-dashboard](https://pedrofuent.es/github-dashboard/)
+### [▶ Use it now → pf.run/github-dashboard](https://pf.run/github-dashboard/)
 
 [![CI](https://github.com/pedrofuentes/github-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/pedrofuentes/github-dashboard/actions/workflows/ci.yml)
 [![Deploy to GitHub Pages](https://github.com/pedrofuentes/github-dashboard/actions/workflows/deploy.yml/badge.svg)](https://github.com/pedrofuentes/github-dashboard/actions/workflows/deploy.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-<a href="https://pedrofuent.es/github-dashboard/">
+<a href="https://pf.run/github-dashboard/">
   <img src="docs/screenshots/fleet-grid.png" alt="Fleet overview grid: one row per repository with columns for CI, security grade, review requests, open pull requests, open issues and stale items across eight repositories" width="920">
 </a>
 
@@ -164,7 +164,7 @@ Security grades require access to Dependabot and code-scanning alert feeds. Fine
 
 ## Quick start
 
-1. **Open the app:** **[pedrofuent.es/github-dashboard](https://pedrofuent.es/github-dashboard/)**
+1. **Open the app:** **[pf.run/github-dashboard](https://pf.run/github-dashboard/)**
 2. **Create a token:** generate a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) with the [read-only permissions listed above](#required-token-permissions). _(A classic token with the `repo` scope also works.)_
 3. **Paste it in** and choose whether to remember it — the default keeps it in memory only.
 4. **Watch your fleet** populate with live signals, and click any repo for the drill-down.
@@ -220,7 +220,7 @@ npm run dev   # start the Vite dev server, then open the printed localhost URL
 
 ## Deployment
 
-Hosted on **GitHub Pages** and deployed by the [Deploy to GitHub Pages](.github/workflows/deploy.yml) Actions workflow on every push to `main` (and via manual dispatch). The output is a static SPA with a `404.html` fallback for client-side routing, served under the Vite base path `/github-dashboard/`. A [web manifest](https://web.dev/articles/add-manifest) makes it **installable**, and a [Workbox](https://developer.chrome.com/docs/workbox) service worker (via `vite-plugin-pwa`) precaches the app shell so it **opens offline**; `version.json` stays network-only so the in-app update prompt always sees fresh deploys. Live at **[pedrofuent.es/github-dashboard](https://pedrofuent.es/github-dashboard/)**.
+Hosted on **GitHub Pages** and deployed by the [Deploy to GitHub Pages](.github/workflows/deploy.yml) Actions workflow on every push to `main` (and via manual dispatch). The output is a static SPA with a `404.html` fallback for client-side routing, served under the Vite base path `/github-dashboard/`. A [web manifest](https://web.dev/articles/add-manifest) makes it **installable**, and a [Workbox](https://developer.chrome.com/docs/workbox) service worker (via `vite-plugin-pwa`) precaches the app shell so it **opens offline**; `version.json` stays network-only so the in-app update prompt always sees fresh deploys. Live at **[pf.run/github-dashboard](https://pf.run/github-dashboard/)**.
 
 ## Contributing
 
