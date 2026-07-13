@@ -70,6 +70,9 @@ const BLOCKS_CLASS = 'mx-auto flex w-full flex-wrap items-start justify-center g
 /** Shared, referentially-stable "nothing hidden" default (keeps memo deps stable). */
 const EMPTY_HIDDEN: Set<string> = new Set();
 
+/** Shared, referentially-stable "no aliases" default (keeps callers/tests simple). */
+const EMPTY_ALIASES: Record<string, string> = {};
+
 /** Focus-token ring shared with the app's other affordances. */
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
@@ -160,6 +163,12 @@ export interface BoardViewProps {
    * this with the row's repo. Add the row back via the Customize panel.
    */
   onRemoveRepo?: (repo: Repo) => void;
+  /**
+   * Per-repo display aliases (`nameWithOwner` → alias). When a repo has an alias
+   * its keys show it in place of the `owner/name` label (see {@link BoardKey}).
+   * Omitted ⇒ every key shows its default label.
+   */
+  aliases?: Record<string, string>;
 }
 
 export function BoardView({
@@ -180,6 +189,7 @@ export function BoardView({
   onMoveRepo,
   onMoveSignal,
   onRemoveRepo,
+  aliases = EMPTY_ALIASES,
 }: BoardViewProps): ReactElement {
   // Presentational narrowing: `undefined` keeps the whole fleet; any defined Set
   // keeps only the repos it names (an empty Set matches nothing ⇒ 0 repos).
@@ -335,6 +345,7 @@ export function BoardView({
           href={signalDeepLinkUrl(repo, signal, data)}
           onActivate={onRepoActivate}
           onRetry={onRetrySignal !== undefined ? () => onRetrySignal(repo, signal) : onRetry}
+          alias={aliases[repo.nameWithOwner]}
         />
       );
       return editing && onToggleKey ? (

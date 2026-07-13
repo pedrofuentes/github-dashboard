@@ -651,6 +651,7 @@ const FleetPanel = memo(function FleetPanel({
             signalOrder={deckSignalOrder}
             onMoveRepo={handleDeckMoveRepo}
             onRemoveRepo={handleDeckRemoveRepo}
+            aliases={aliases.aliases}
           />
         </div>
         {deckEditing ? (
@@ -662,6 +663,9 @@ const FleetPanel = memo(function FleetPanel({
             onSetRepo={handleDeckSetRepo}
             onSetAll={handleDeckSetAll}
             onShowOnly={handleDeckShowOnly}
+            aliases={aliases.aliases}
+            onSetAlias={aliases.setAlias}
+            onClearAlias={aliases.clearAlias}
             onReset={deck.reset}
             onResetOrder={deckResetOrder}
             signalOrder={deckSignalOrder}

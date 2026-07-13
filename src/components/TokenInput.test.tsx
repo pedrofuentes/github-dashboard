@@ -78,6 +78,36 @@ describe('TokenInput', () => {
     expect(screen.getByText(/security grade/i)).toHaveTextContent(/security shows n\/a/i);
   });
 
+  it('presents the setup steps BEFORE the token field (people skim top-down)', () => {
+    renderWithAuth();
+
+    // The intro heading and the create-token CTA both anchor "the instructions";
+    // each must precede the input in DOM order so the guidance is read first.
+    const heading = screen.getByRole('heading', { name: /connect your github account/i });
+    const cta = screen.getByRole('link', { name: /token/i });
+    const field = tokenField();
+
+    expect(heading.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cta.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('lays out the guidance as three ordered steps ending in "paste it below"', () => {
+    renderWithAuth();
+
+    const steps = Array.from(document.querySelectorAll('ol > li'));
+    expect(steps).toHaveLength(3);
+    expect(steps[0]).toHaveTextContent(/create a fine-grained/i);
+    expect(steps[2]).toHaveTextContent(/paste it below/i);
+  });
+
+  it('surfaces the create-token link as a prominent CTA to the PAT page', () => {
+    renderWithAuth();
+
+    const cta = screen.getByRole('link', { name: /create token on github/i });
+    expect(cta.getAttribute('href')).toBe('https://github.com/settings/personal-access-tokens/new');
+    expect(cta).toHaveAttribute('target', '_blank');
+  });
+
   it('shows an alert and does not call signIn when the token is empty', async () => {
     const value = renderWithAuth();
     const user = userEvent.setup();
