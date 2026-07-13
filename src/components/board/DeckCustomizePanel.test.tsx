@@ -27,6 +27,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
   const onReset = vi.fn();
   const onResetOrder = vi.fn();
   const onMoveSignal = vi.fn();
+  const onSetAlias = vi.fn();
+  const onClearAlias = vi.fn();
   const onClose = vi.fn();
   const props = {
     repos,
@@ -36,6 +38,9 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
     onSetRepo,
     onSetAll,
     onShowOnly,
+    aliases: {},
+    onSetAlias,
+    onClearAlias,
     onReset,
     onResetOrder,
     signalOrder: DECK_SIGNALS,
@@ -51,6 +56,8 @@ function setup(overrides: Partial<React.ComponentProps<typeof DeckCustomizePanel
     onSetRepo,
     onSetAll,
     onShowOnly,
+    onSetAlias,
+    onClearAlias,
     onReset,
     onResetOrder,
     onMoveSignal,
@@ -77,6 +84,9 @@ function Harness(overrides: Partial<React.ComponentProps<typeof DeckCustomizePan
           onSetRepo={vi.fn()}
           onSetAll={vi.fn()}
           onShowOnly={vi.fn()}
+          aliases={{}}
+          onSetAlias={vi.fn()}
+          onClearAlias={vi.fn()}
           onReset={vi.fn()}
           onResetOrder={vi.fn()}
           signalOrder={DECK_SIGNALS}
@@ -204,6 +214,31 @@ describe('DeckCustomizePanel', () => {
     await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
     expect(screen.getByRole('button', { name: /keys for octo\/a/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /keys for octo\/b/i })).toBeNull();
+  });
+
+  it('sets an alias through onSetAlias (per-repo override surfaced by search)', async () => {
+    const props = setup();
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
+    const input = screen.getByRole('textbox', { name: /alias for octo\/a/i });
+    await userEvent.type(input, 'Alpha');
+    await userEvent.tab(); // commit on blur
+    expect(props.onSetAlias).toHaveBeenCalledWith('octo/a', 'Alpha');
+  });
+
+  it('clears the alias when a whitespace-only value is committed on blur', async () => {
+    const props = setup();
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
+    const input = screen.getByRole('textbox', { name: /alias for octo\/a/i });
+    await userEvent.type(input, '   ');
+    await userEvent.tab(); // commit on blur
+    expect(props.onClearAlias).toHaveBeenCalledWith('octo/a');
+    expect(props.onSetAlias).not.toHaveBeenCalled();
+  });
+
+  it('shows an existing alias as the input value', async () => {
+    setup({ aliases: { 'octo/a': 'Alpha' } });
+    await userEvent.type(screen.getByRole('textbox', { name: /search repositories/i }), 'octo/a');
+    expect(screen.getByRole('textbox', { name: /alias for octo\/a/i })).toHaveValue('Alpha');
   });
 
   it('invokes onReset when the reset button is clicked', async () => {

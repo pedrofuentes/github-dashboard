@@ -87,6 +87,26 @@ describe('BoardView — grid composition', () => {
     expect(keys(container)).toHaveLength(2 * 6);
   });
 
+  it('labels an aliased repo with its alias on every key (others unchanged)', () => {
+    const { container } = render(
+      <BoardView
+        repos={[repoA, repoB]}
+        getRowData={getRowData}
+        aliases={{ [repoA.nameWithOwner]: 'Alpha' }}
+      />,
+    );
+
+    const labelsFor = (repo: Repo) =>
+      Array.from(
+        container.querySelectorAll<HTMLElement>(
+          `[data-repo-row="${repo.nameWithOwner}"] [data-part="line1"]`,
+        ),
+      ).map((el) => el.textContent);
+
+    expect(new Set(labelsFor(repoA))).toEqual(new Set(['Alpha']));
+    expect(new Set(labelsFor(repoB))).toEqual(new Set([repoB.nameWithOwner]));
+  });
+
   it('renders the six signal keys in the fixed order and omits activity', () => {
     const { container } = render(<BoardView repos={[repoA]} getRowData={getRowData} />);
 

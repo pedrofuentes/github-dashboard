@@ -1,11 +1,11 @@
 /**
  * DeckCustomizePanel — an accessible non-modal drawer for tailoring which keys
  * the Deck ({@link BoardView}) shows, using the same RULE-BASED controls as
- * {@link CustomizePanel} but for the Deck's visibility-only, `Set`-based model
- * (no display aliases): global per-signal toggles (show/hide a signal across
- * ALL repos), bulk Show all / Hide all / Show only…, and — for targeted work —
- * a repo search surfacing per-repo row toggles and per-(repo, signal) overrides,
- * plus a reset.
+ * {@link CustomizePanel} over the Deck's `Set`-based visibility model: global
+ * per-signal toggles (show/hide a signal across ALL repos), bulk Show all /
+ * Hide all / Show only…, and — for targeted work — a repo search surfacing
+ * per-repo row toggles, per-(repo, signal) overrides, and a per-repo display
+ * alias input (like {@link CustomizePanel}), plus a reset.
  *
  * It is a *controlled, presentational* component: the parent owns the hidden
  * `Set<string>` (and its persistence) and passes granular callbacks, so the
@@ -18,8 +18,9 @@
  * moves inside on open and returns to the opener on unmount.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { FocusEvent, KeyboardEvent } from 'react';
 
+import { ALIAS_MAX_LENGTH } from '../../lib/alias-preference';
 import {
   DECK_SIGNALS,
   isHidden,
@@ -46,6 +47,12 @@ export interface DeckCustomizePanelProps {
   onSetAll: (hide: boolean) => void;
   /** Keeps only the `keep` signals visible, hiding every other signal. */
   onShowOnly: (keep: Set<TileSignalType>) => void;
+  /** Per-repo display aliases (`nameWithOwner` → alias); parent-owned. */
+  aliases: Record<string, string>;
+  /** Sets (or, when blank, clears) the alias for one repo. */
+  onSetAlias: (repo: string, alias: string) => void;
+  /** Clears the alias for one repo. */
+  onClearAlias: (repo: string) => void;
   /** Restores the default (all-visible) Deck. */
   onReset: () => void;
   /** Restores the default repo-row and signal-column order. */
@@ -72,6 +79,9 @@ export function DeckCustomizePanel({
   onSetRepo,
   onSetAll,
   onShowOnly,
+  aliases,
+  onSetAlias,
+  onClearAlias,
   onReset,
   onResetOrder,
   signalOrder,
@@ -108,6 +118,17 @@ export function DeckCustomizePanel({
       else next.add(signal);
       return next;
     });
+  }
+
+  // Commit on blur: a non-empty (trimmed) value sets the alias, an empty one
+  // clears it. Trimming/clamping is also enforced by the parent's alias module.
+  function handleAliasBlur(repo: string, event: FocusEvent<HTMLInputElement>) {
+    const trimmed = event.target.value.trim();
+    if (trimmed === '') {
+      onClearAlias(repo);
+    } else {
+      onSetAlias(repo, trimmed);
+    }
   }
 
   // Global signal rules consider EVERY repo (the toggle spans the whole Deck).
@@ -253,13 +274,14 @@ export function DeckCustomizePanel({
               className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             />
             <p id={`${titleId}-repo-search-hint`} className="text-xs text-text-muted">
-              Search a repository to reveal and override its keys.
+              Search a repository to override its keys or set a display alias.
             </p>
           </div>
 
           {repoSummaries.map(({ repo, shown, total }) => {
             const state = visibilityState(shown, total);
             const allShown = state === 'all';
+            const aliasInputId = `${titleId}-alias-${repo}`;
             return (
               <div key={repo} data-repo={repo} className="flex flex-col gap-2 px-1">
                 <div className="flex items-center gap-3">
@@ -293,6 +315,20 @@ export function DeckCustomizePanel({
                       </label>
                     );
                   })}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor={aliasInputId} className="text-xs font-medium text-text-muted">
+                    {`Alias for ${repo}`}
+                  </label>
+                  <input
+                    id={aliasInputId}
+                    type="text"
+                    maxLength={ALIAS_MAX_LENGTH}
+                    defaultValue={aliases[repo] ?? ''}
+                    placeholder={repo}
+                    onBlur={(event) => handleAliasBlur(repo, event)}
+                    className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  />
                 </div>
               </div>
             );

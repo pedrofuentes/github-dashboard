@@ -119,6 +119,48 @@ describe('BoardKey — repo label honors the owner setting', () => {
     expect(part(container, 'line1')?.textContent).toBe('hello-world');
   });
 
+  it('shows the alias in place of the owner/name label when one is set', () => {
+    const { container } = render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'ready' } }}
+        alias="Hello"
+      />,
+    );
+
+    expect(part(container, 'line1')?.textContent).toBe('Hello');
+  });
+
+  it('lets the alias override even the owner-hidden label', () => {
+    localStorage.setItem(REPO_OWNER_KEY, 'hide');
+    const { container } = render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'ready' } }}
+        alias="Hello"
+      />,
+    );
+
+    expect(part(container, 'line1')?.textContent).toBe('Hello');
+  });
+
+  it('keeps the FULL nameWithOwner in the accessible name even when aliased', () => {
+    render(
+      <BoardKey
+        repo={makeRepo()}
+        signal="issues"
+        data={{ issues: { status: 'ready', openCount: 12 } }}
+        alias="Hello"
+        onActivate={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button.getAttribute('aria-label') ?? '').toContain('octo/hello-world');
+  });
+
   it('keeps the FULL nameWithOwner + signal + value in the accessible name even when hidden', () => {
     localStorage.setItem(REPO_OWNER_KEY, 'hide');
     render(

@@ -22,10 +22,11 @@
  * adding a "Retry" affordance — and `empty` an explicit `n/a`; all token-only
  * and uniform across both layouts.
  *
- * Accessibility: the repo label line honours the owner show/hide setting (it can
- * render the bare repo name), but the key's accessible name ALWAYS carries the
- * full `repo.nameWithOwner` + the signal + the value/status, so a screen-reader
- * user keeps full context even when the owner is visually hidden. The whole key
+ * Accessibility: the repo label line honours the display `alias` (when set) and
+ * otherwise the owner show/hide setting (it can render the bare repo name), but
+ * the key's accessible name ALWAYS carries the full `repo.nameWithOwner` + the
+ * signal + the value/status, so a screen-reader user keeps full context even
+ * when the label is aliased or the owner is visually hidden. The whole key
  * is a `<button>` (native Enter/Space + the `focus`-token ring) when it can act
  * on a press — a retryable `error` (press ⇒ `onRetry`, labelled "Retry {signal}
  * for {repo}") or a drill-down (`onActivate`, press ⇒ activate); otherwise it is
@@ -68,6 +69,12 @@ export interface BoardKeyProps {
    * place. Ignored in every non-error state.
    */
   onRetry?: () => void;
+  /**
+   * Optional per-repo display alias (Phase 3 setting). When set it replaces the
+   * visible repo label (mirroring {@link TileFrame}); the accessible name still
+   * carries the full `repo.nameWithOwner` so identity is never lost.
+   */
+  alias?: string;
 }
 
 /** Shared root box — the rounded Stream Deck square (sdgh-design-spec §2.1). */
@@ -180,11 +187,14 @@ export function BoardKey({
   onActivate,
   onRetry,
   href,
+  alias,
 }: BoardKeyProps): ReactElement {
   const { display } = useRepoOwner();
   const spec = boardKeySpec(signal, data, activity);
   const accentVar = BOARD_KEY_ACCENT_VAR[spec.accent];
-  const repoLabel = formatRepoLabel(repo, display);
+  // An alias fully overrides the visible label (owner setting included), just
+  // like TileFrame; the accessible name below keeps the full nameWithOwner.
+  const repoLabel = alias ?? formatRepoLabel(repo, display);
 
   // A failed signal is recoverable in place: when `onRetry` is wired the error
   // key's press re-fetches instead of navigating. Otherwise a deep-link `href`
