@@ -38,7 +38,7 @@ The architecture is governed by six foundational ADRs (full text in
 | **ADR-003** | Auth & token storage *(signed off, issue #3)* | Read-only fine-grained PAT (7 permissions); in-memory default + opt-in `sessionStorage`/`localStorage` + "Forget token"; device flow deferred (CORS). |
 | **ADR-004** | Privacy & network boundary | GitHub-owned origins only; strict CSP (`connect-src` GitHub-only); fonts/assets bundled locally; verified by a Playwright network test. |
 | **ADR-005** | State management | React Context + hooks + `useReducer` + ported coordinators; **no extra state library**. |
-| **ADR-006** | Deploy / distribution | GitHub Pages via Actions; Vite `base: '/github-dashboard/'`; `404.html` SPA fallback; custom domain `pedrofuent.es`. |
+| **ADR-006** | Deploy / distribution | GitHub Pages via Actions; Vite `base: '/github-dashboard/'`; `404.html` SPA fallback; custom domain `pf.run`. |
 
 ## 3. Project structure
 
@@ -273,9 +273,9 @@ Target scale 50 repos @ 5-min polling measures **≈1,200 req/hr without ETags**
 - Vite **`base: '/github-dashboard/'`** so assets resolve under the project path.
 - **SPA fallback:** copy `index.html` → `404.html` so deep links resolve
   client-side.
-- Pages is **enabled** on the **custom domain `pedrofuent.es`** with
+- Pages is **enabled** on the **custom domain `pf.run`** with
   **`https_enforced: true`** (HTTPS certificate approved); live URL
-  **`https://pedrofuent.es/github-dashboard/`**. The PAT-entry app MUST be
+  **`https://pf.run/github-dashboard/`**. The PAT-entry app MUST be
   served **only over HTTPS** so the page and its strict CSP cannot be tampered
   with in transit — otherwise an on-path attacker could rewrite the HTML/JS or
   CSP and exfiltrate the pasted read-only token (ADR-004; `PRD.md` risk R5).

@@ -31,7 +31,7 @@ Plus the seven MVP features (§5), the full quality gate (§7), and process inte
 - [x] **Live URL returns 200.**
 
   ```console
-  $ curl -sS -I https://pedrofuent.es/github-dashboard/
+  $ curl -sS -I https://pf.run/github-dashboard/
   HTTP/2 200
   server: GitHub.com
   content-type: text/html; charset=utf-8
@@ -41,9 +41,9 @@ Plus the seven MVP features (§5), the full quality gate (§7), and process inte
   PAT is pasted into this page, so it must only ever be served over TLS — ADR-006).
 
   ```console
-  $ curl -sS -I http://pedrofuent.es/github-dashboard/
+  $ curl -sS -I http://pf.run/github-dashboard/
   HTTP/1.1 301 Moved Permanently
-  Location: https://pedrofuent.es/github-dashboard/
+  Location: https://pf.run/github-dashboard/
   ```
 
 - [x] **Loads without errors** — the deployed bundle is exercised end-to-end by the
@@ -51,7 +51,7 @@ Plus the seven MVP features (§5), the full quality gate (§7), and process inte
   privacy/a11y specs, all green against the production build (§3, §7).
 - [x] **Deploy pipeline** — [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
   builds, adds the `404.html` SPA fallback, and publishes to Pages on every push to
-  `main` (Vite `base: '/github-dashboard/'`). Custom domain `pedrofuent.es`,
+  `main` (Vite `base: '/github-dashboard/'`). Custom domain `pf.run`,
   `https_enforced: true` (ADR-006, DECISION issue #1).
 
 ## 2. PAT path end-to-end; device flow deferred with sign-off
@@ -136,7 +136,7 @@ The 5,000 req/hr budget is held well below ceiling (ADR-002: 50 repos @ 5-min po
 
 - [x] **README** ([`README.md`](../README.md)) — fleet-grid and drill-down **screenshots**
   (`docs/screenshots/*.png`), a one-click **"use it now"** link
-  (`https://pedrofuent.es/github-dashboard/`), feature table, privacy section, quick start.
+  (`https://pf.run/github-dashboard/`), feature table, privacy section, quick start.
 - [x] **LICENSE** ([`LICENSE`](../LICENSE)) — **MIT** © 2026 Pedro Fuentes.
 - [x] **CONTRIBUTING** ([`CONTRIBUTING.md`](../CONTRIBUTING.md)) — development workflow,
   coding standards, test-and-review process.
