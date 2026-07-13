@@ -125,7 +125,7 @@ export function TokenInput(): ReactElement {
       >
         <div>
           <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-text">
-            Personal access token
+            GitHub personal access token
           </label>
           <input
             id={inputId}
