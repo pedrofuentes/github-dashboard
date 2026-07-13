@@ -74,15 +74,58 @@ export function TokenInput(): ReactElement {
 
   return (
     <div className="mx-auto max-w-md">
+      <h2 className="text-lg font-semibold text-text">Connect your GitHub account</h2>
+      <p className="mt-1 text-sm text-text-muted">
+        You&rsquo;ll need a GitHub token so the dashboard can read your repositories. It takes about
+        a minute — just follow these steps.
+      </p>
+
+      {/* Instructions come BEFORE the form: people skim top-down, so the "how" has
+          to be the first thing they see, not a footnote under the input. */}
+      <ol
+        id={helpId}
+        className="mt-5 list-decimal space-y-4 pl-5 text-sm text-text marker:text-text-muted"
+      >
+        <li>
+          <p className="font-medium text-text">Create a fine-grained, read-only token on GitHub.</p>
+          <a
+            href={PAT_CREATE_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-2 inline-flex w-fit items-center gap-1 rounded border border-border-strong px-3 py-1.5 font-medium text-text hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Create token on GitHub <span aria-hidden="true">↗</span>
+          </a>
+        </li>
+        <li>
+          <p className="font-medium text-text">
+            Grant these <strong>read-only</strong> repository permissions:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-text-muted">
+            {READ_ONLY_PERMISSIONS.map((permission) => (
+              <li key={permission}>{permission}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-text-muted">
+            Those two alert permissions unlock the Security grade; classic PAT users need{' '}
+            <code className="font-mono text-text">security_events</code>, otherwise Security shows
+            n/a.
+          </p>
+        </li>
+        <li>
+          <p className="font-medium text-text">Paste it below and connect.</p>
+        </li>
+      </ol>
+
       <form
         onSubmit={(event) => void handleSubmit(event)}
         aria-busy={isAuthenticating}
         noValidate
-        className="space-y-4"
+        className="mt-6 space-y-4"
       >
         <div>
-          <label htmlFor={inputId} className="sr-only">
-            GitHub personal access token
+          <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-text">
+            Personal access token
           </label>
           <input
             id={inputId}
@@ -136,33 +179,6 @@ export function TokenInput(): ReactElement {
           {message}
         </p>
       </form>
-
-      <div id={helpId} className="mt-6 text-sm text-text-muted">
-        <p>
-          Paste a{' '}
-          <a
-            href={PAT_CREATE_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="rounded font-medium text-text underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            fine-grained personal access token
-          </a>{' '}
-          granting these <strong>read-only</strong> repository permissions:
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          {READ_ONLY_PERMISSIONS.map((permission) => (
-            <li key={permission}>
-              {permission} <span className="text-text-muted">(read-only)</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2">
-          Those two alert permissions unlock the Security grade; classic PAT users need{' '}
-          <code className="font-mono text-text">security_events</code>, otherwise Security shows
-          n/a.
-        </p>
-      </div>
     </div>
   );
 }
