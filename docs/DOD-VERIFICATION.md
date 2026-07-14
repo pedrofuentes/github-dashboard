@@ -143,7 +143,7 @@ The 5,000 req/hr budget is held well below ceiling (ADR-002: 50 repos @ 5-min po
 
 ## 7. Full quality gate — green
 
-Run in the release worktree after `npm ci` (Node 20):
+Run in the release worktree after `npm ci` (Node 24):
 
 | Gate command | Result |
 |---|---|

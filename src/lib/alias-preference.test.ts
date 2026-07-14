@@ -91,7 +91,7 @@ describe('setAlias under a failing write', () => {
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('quota exceeded');
     });
-    // Assert via VALUE (not a spy count — Node-20 jsdom storage is spy-hostile):
+    // Assert via VALUE (not a spy count — jsdom storage is spy-hostile):
     // the in-memory result is still returned, and because the write was swallowed
     // a subsequent read sees nothing persisted.
     let next: Record<string, string> | undefined;

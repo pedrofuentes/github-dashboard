@@ -86,7 +86,7 @@ describe('DashboardView onLayoutChange wiring', () => {
     // Spy the persistence boundary (set up BEFORE render so the hook's debounced
     // `saveDashboardLayout` reference resolves to the spy). Asserting the boundary
     // is robust to platform differences in how `localStorage.setItem` is wrapped
-    // under the memory shim used on Node 20 CI (see #122, LEARNINGS.md).
+    // under the memory shim used in CI (see #122, LEARNINGS.md).
     const saveSpy = vi.spyOn(await import('../lib/dashboard-layout'), 'saveDashboardLayout');
     const { unmount } = render(
       <DashboardView
@@ -103,8 +103,8 @@ describe('DashboardView onLayoutChange wiring', () => {
 
     // Unmount runs the hook's effect cleanup → `persist.flush()`, writing the
     // single pending debounced change. Await effects + microtasks so the flush
-    // settles deterministically under Node 20's async cleanup on CI as well as
-    // on newer local runtimes — never assert a synchronous spy count (see #122).
+    // settles deterministically under the runtime's async cleanup, on CI as well
+    // as on local runtimes — never assert a synchronous spy count (see #122).
     await act(async () => {
       unmount();
     });
