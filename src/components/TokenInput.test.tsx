@@ -104,8 +104,45 @@ describe('TokenInput', () => {
     renderWithAuth();
 
     const cta = screen.getByRole('link', { name: /create token on github/i });
-    expect(cta.getAttribute('href')).toBe('https://github.com/settings/personal-access-tokens/new');
+    const href = cta.getAttribute('href') ?? '';
+    expect(href).toContain('https://github.com/settings/personal-access-tokens/new?');
     expect(cta).toHaveAttribute('target', '_blank');
+  });
+
+  it('pre-fills the PAT page with name, 90-day expiry, and the seven permission slugs', () => {
+    renderWithAuth();
+
+    const href = screen.getByRole('link', { name: /create token on github/i }).getAttribute('href');
+    const params = new URL(href ?? '').searchParams;
+
+    expect(params.get('name')).toBe('GitHub Dashboard (read-only)');
+    expect(params.get('description')).toBeTruthy();
+    expect(params.get('expires_in')).toBe('90');
+
+    // The exact slugs GitHub's form reads — two intentionally differ from their UI label
+    // (Code scanning alerts → security_events, Dependabot alerts → vulnerability_alerts).
+    // A regression to the label-based slugs is silently ignored by GitHub, so guard it here.
+    for (const slug of [
+      'actions',
+      'security_events',
+      'contents',
+      'vulnerability_alerts',
+      'issues',
+      'metadata',
+      'pull_requests',
+    ]) {
+      expect(params.get(slug)).toBe('read');
+    }
+    expect(href).not.toContain('code_scanning_alerts');
+    expect(href).not.toContain('dependabot_alerts');
+  });
+
+  it("spells out that expiry is 90 days (editable) and the owner/repos are the user's choice", () => {
+    renderWithAuth();
+
+    expect(screen.getByText(/90-day expiry/i)).toBeInTheDocument();
+    expect(screen.getByText(/regenerate the token and reconnect/i)).toBeInTheDocument();
+    expect(screen.getByText(/resource owner/i)).toBeInTheDocument();
   });
 
   it('shows an alert and does not call signIn when the token is empty', async () => {

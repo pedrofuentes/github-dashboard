@@ -28,18 +28,44 @@ const PERSISTENCE_OPTIONS: PersistenceOption[] = [
   },
 ];
 
-/** The seven read-only fine-grained PAT permissions to grant (ADR-003 / research-api §3). */
+/**
+ * The seven read-only fine-grained PAT permissions to grant (ADR-003 / research-api §3).
+ *
+ * `slug` is GitHub's URL-parameter key for each permission — used to pre-select it on the
+ * token-creation page (see `buildPatCreateUrl`). Two slugs deliberately differ from their
+ * display label because GitHub's form still uses the older REST property names: "Code
+ * scanning alerts" is `security_events` and "Dependabot alerts" is `vulnerability_alerts`.
+ * The label-based slugs (`code_scanning_alerts` / `dependabot_alerts`) are silently ignored.
+ */
 const READ_ONLY_PERMISSIONS = [
-  'Actions',
-  'Code scanning alerts',
-  'Contents',
-  'Dependabot alerts',
-  'Issues',
-  'Metadata',
-  'Pull requests',
-];
+  { label: 'Actions', slug: 'actions' },
+  { label: 'Code scanning alerts', slug: 'security_events' },
+  { label: 'Contents', slug: 'contents' },
+  { label: 'Dependabot alerts', slug: 'vulnerability_alerts' },
+  { label: 'Issues', slug: 'issues' },
+  { label: 'Metadata', slug: 'metadata' },
+  { label: 'Pull requests', slug: 'pull_requests' },
+] as const;
 
-const PAT_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new';
+/**
+ * Deep-links to GitHub's fine-grained PAT page with the required permissions, a recognizable
+ * name/description, and a 90-day expiry pre-filled via URL parameters, so the user only has
+ * to pick a resource owner + repositories and click "Generate token". `target_name` (owner)
+ * is intentionally omitted — it pre-fills visually but doesn't bind the token to that owner.
+ */
+function buildPatCreateUrl(): string {
+  const params = new URLSearchParams({
+    name: 'GitHub Dashboard (read-only)',
+    description: 'Read-only access for the GitHub Dashboard fleet view.',
+    expires_in: '90',
+  });
+  for (const { slug } of READ_ONLY_PERMISSIONS) {
+    params.set(slug, 'read');
+  }
+  return `https://github.com/settings/personal-access-tokens/new?${params.toString()}`;
+}
+
+const PAT_CREATE_URL = buildPatCreateUrl();
 
 /**
  * Accessible entry form for a fine-grained, read-only Personal Access Token.
@@ -96,14 +122,23 @@ export function TokenInput(): ReactElement {
           >
             Create token on GitHub <span aria-hidden="true">↗</span>
           </a>
+          <p className="mt-2 text-text-muted">
+            The link sets a <strong className="text-text">90-day expiry</strong> — change it if you
+            like, but once it lapses you&rsquo;ll need to regenerate the token and reconnect. You
+            choose the <strong className="text-text">Resource owner</strong> (your account or an
+            org) and which repositories the token can read.
+          </p>
         </li>
         <li>
           <p className="font-medium text-text">
-            Grant these <strong>read-only</strong> repository permissions:
+            Confirm these <strong>read-only</strong> repository permissions:
+          </p>
+          <p className="mt-1 text-text-muted">
+            We&rsquo;ve pre-selected them for you — just check they show:
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-text-muted">
-            {READ_ONLY_PERMISSIONS.map((permission) => (
-              <li key={permission}>{permission}</li>
+            {READ_ONLY_PERMISSIONS.map(({ label }) => (
+              <li key={label}>{label}</li>
             ))}
           </ul>
           <p className="mt-2 text-text-muted">
