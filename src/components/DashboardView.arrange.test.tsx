@@ -17,7 +17,7 @@ import type { GetRowData, Repo } from '../types/fleet';
  * unfiltered drag/keyboard still persisting, every arrange affordance disabled
  * while filtered, and the keyboard neighbour search ignoring projected-out
  * tiles). The assertions read the persisted VALUES (never spy counts), which is
- * the robust shape under Node 20's localStorage shim (see LEARNINGS.md).
+ * the robust shape under the test localStorage shim (see LEARNINGS.md).
  *
  * react-grid-layout never fires `onLayoutChange` from a real pointer drag in
  * jsdom (it reports a 0px container), so we stub the grid with a mock that

@@ -266,7 +266,7 @@ describe('DashboardView — keyboard reorder & resize', () => {
     await user.click(screen.getByRole('button', { name: /move ci · octo\/a right/i }));
 
     // setLayout persists (debounced). Assert the stored value, not a spy count,
-    // so the assertion is robust under Node 20's localStorage shim (see #122).
+    // so the assertion is robust under the test localStorage shim (see #122).
     await vi.waitFor(() => {
       const raw = localStorage.getItem('fleet:dashboard-view:v2');
       expect(raw).not.toBeNull();
