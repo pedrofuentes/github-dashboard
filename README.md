@@ -165,7 +165,7 @@ Security grades require access to Dependabot and code-scanning alert feeds. Fine
 ## Quick start
 
 1. **Open the app:** **[pf.run/github-dashboard](https://pf.run/github-dashboard/)**
-2. **Create a token:** generate a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) with the [read-only permissions listed above](#required-token-permissions). _(A classic token with the `repo` scope also works.)_
+2. **Create a token:** generate a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new?name=GitHub+Dashboard+%28read-only%29&description=Read-only+access+for+the+GitHub+Dashboard+fleet+view.&expires_in=90&actions=read&security_events=read&contents=read&vulnerability_alerts=read&issues=read&metadata=read&pull_requests=read) — the link pre-selects the [read-only permissions listed above](#required-token-permissions) and a 90-day expiry; you just pick the resource owner and repositories. _(A classic token with the `repo` scope also works.)_
 3. **Paste it in** and choose whether to remember it — the default keeps it in memory only.
 4. **Watch your fleet** populate with live signals, and click any repo for the drill-down.
 
