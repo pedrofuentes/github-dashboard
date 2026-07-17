@@ -58,7 +58,23 @@ describe('validateToken', () => {
 
     const result = await validateToken('ghp_bad');
 
-    expect(result).toEqual({ ok: false, error: 'Invalid or expired token' });
+    expect(result).toEqual({ ok: false, error: 'Invalid or expired token', kind: 'auth' });
+  });
+
+  it('classifies each failure kind (network/auth/server/other)', async () => {
+    stubFetch(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    expect(await validateToken('ghp_x')).toMatchObject({ ok: false, kind: 'network' });
+
+    stubFetch(async () => new Response('', { status: 401 }));
+    expect(await validateToken('ghp_x')).toMatchObject({ ok: false, kind: 'auth' });
+
+    stubFetch(async () => new Response('', { status: 503 }));
+    expect(await validateToken('ghp_x')).toMatchObject({ ok: false, kind: 'server' });
+
+    stubFetch(async () => new Response('{ not json', { status: 200 }));
+    expect(await validateToken('ghp_x')).toMatchObject({ ok: false, kind: 'other' });
   });
 
   it('maps other non-ok statuses to a friendly, retryable error', async () => {

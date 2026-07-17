@@ -34,7 +34,13 @@ beforeEach(() => {
   localStorage.clear();
   mockValidate.mockReset();
   mockUseRepos.mockReset();
-  mockUseRepos.mockReturnValue({ status: 'success', repos: [], error: null, reload: vi.fn() });
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos: [],
+    error: null,
+    statusHint: false,
+    reload: vi.fn(),
+  });
   mockUseRepoSignals.mockReset();
   mockUseRepoSignals.mockReturnValue({ getRowData });
 });
@@ -51,6 +57,7 @@ async function openDashboard(user: ReturnType<typeof userEvent.setup>): Promise<
     status: 'success',
     repos: [repo('octo/hello-world')],
     error: null,
+    statusHint: false,
     reload: vi.fn(),
   });
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');

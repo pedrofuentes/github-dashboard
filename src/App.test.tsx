@@ -95,6 +95,7 @@ beforeEach(() => {
     status: 'success',
     repos: [],
     error: null,
+    statusHint: false,
     reload: vi.fn(),
   });
   mockUseRepoSignals.mockReset();
@@ -230,6 +231,7 @@ describe('App', () => {
       status: 'success',
       repos: [repo('octo/hello-world'), repo('octo/secret', true)],
       error: null,
+      statusHint: false,
       reload: vi.fn(),
     });
     const user = userEvent.setup();
@@ -262,6 +264,7 @@ describe('App', () => {
       status: 'success',
       repos: [repo('octo/hello-world')],
       error: null,
+      statusHint: false,
       reload: vi.fn(),
     });
     const user = userEvent.setup();
@@ -294,7 +297,13 @@ describe('App', () => {
     repos: Repo[],
   ): Promise<void> {
     mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
-    mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
+    mockUseRepos.mockReturnValue({
+      status: 'success',
+      repos,
+      error: null,
+      statusHint: false,
+      reload: vi.fn(),
+    });
     await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
     await user.click(screen.getByRole('button', { name: /connect/i }));
     await screen.findByRole('group', { name: /view mode/i });
@@ -464,6 +473,7 @@ describe('App', () => {
       status: 'loading',
       repos: [],
       error: null,
+      statusHint: false,
       reload: vi.fn(),
     });
     const user = userEvent.setup();
@@ -482,6 +492,7 @@ describe('App', () => {
       status: 'error',
       repos: [],
       error: 'Could not load your repositories.',
+      statusHint: false,
       reload,
     });
     const user = userEvent.setup();

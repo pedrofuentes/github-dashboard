@@ -324,6 +324,31 @@ describe('DashboardView', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the GitHub status hint in the error alert only when statusHint is set', () => {
+    const { rerender } = render(
+      <DashboardView
+        repos={[]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        error="Could not load your dashboard."
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('link', { name: /check github status/i })).toBeNull();
+
+    rerender(
+      <DashboardView
+        repos={[]}
+        getRowData={emptyData}
+        onRepoActivate={vi.fn()}
+        error="Could not load your dashboard."
+        statusHint
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('link', { name: /check github status/i })).toBeInTheDocument();
+  });
+
   it('colors the fleet-load error alert with dark-safe semantic failure tokens', () => {
     render(
       <DashboardView

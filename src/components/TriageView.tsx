@@ -35,6 +35,7 @@ import {
   type TriageBand,
 } from '../lib/triage-groups';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
+import { GitHubStatusHint } from './GitHubStatusHint';
 import { CiCell } from './columns/CiCell';
 import { IssuesCell } from './columns/IssuesCell';
 import { PullRequestsCell } from './columns/PullRequestsCell';
@@ -58,6 +59,8 @@ export interface TriageViewProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the bands. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /** Retry handler for the error state. */
   onRetry?: () => void;
 }
@@ -211,6 +214,7 @@ export function TriageView({
   onRepoActivate,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
 }: TriageViewProps) {
   const model = useMemo(() => buildTriageModel(repos, getRowData), [repos, getRowData]);
@@ -224,6 +228,7 @@ export function TriageView({
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

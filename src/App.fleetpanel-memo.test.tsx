@@ -46,7 +46,13 @@ beforeEach(() => {
   localStorage.clear();
   mockValidate.mockReset();
   mockUseRepos.mockReset();
-  mockUseRepos.mockReturnValue({ status: 'success', repos: [], error: null, reload: vi.fn() });
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos: [],
+    error: null,
+    statusHint: false,
+    reload: vi.fn(),
+  });
   mockUseRepoSignals.mockReset();
   mockUseRepoSignals.mockReturnValue({ getRowData });
 });
@@ -63,7 +69,13 @@ async function authenticate(
   repos: Repo[],
 ): Promise<void> {
   mockValidate.mockResolvedValue({ ok: true, login: 'octocat', avatarUrl: undefined });
-  mockUseRepos.mockReturnValue({ status: 'success', repos, error: null, reload: vi.fn() });
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos,
+    error: null,
+    statusHint: false,
+    reload: vi.fn(),
+  });
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');
   await user.click(screen.getByRole('button', { name: /connect/i }));
   await screen.findByRole('group', { name: /view mode/i });

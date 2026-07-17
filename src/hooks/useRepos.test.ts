@@ -1,12 +1,18 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchUserRepos, type DataSourceItem } from '../api/github';
+import {
+  fetchUserRepos,
+  GitHubApiError,
+  GitHubErrorCode,
+  type DataSourceItem,
+} from '../api/github';
 import { interpretRepoItems, useRepos } from './useRepos';
 
-vi.mock('../api/github', () => ({
-  fetchUserRepos: vi.fn(),
-}));
+vi.mock('../api/github', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/github')>();
+  return { ...actual, fetchUserRepos: vi.fn() };
+});
 
 const mockFetchUserRepos = vi.mocked(fetchUserRepos);
 
@@ -35,13 +41,43 @@ describe('interpretRepoItems', () => {
   it('treats a "no repositories" placeholder as an empty (not error) result', () => {
     expect(
       interpretRepoItems([{ label: 'No repositories found', value: '', disabled: true }]),
-    ).toEqual({ repos: [], error: null });
+    ).toEqual({ repos: [], error: null, statusHint: false });
   });
 
   it('surfaces a warning item as an error message', () => {
     expect(
       interpretRepoItems([{ label: '⚠ Invalid or expired token', value: '', disabled: true }]),
-    ).toEqual({ repos: [], error: '⚠ Invalid or expired token' });
+    ).toEqual({ repos: [], error: '⚠ Invalid or expired token', statusHint: false });
+  });
+
+  it('flags an outage-shaped warning (auth/network/server) for the status hint', () => {
+    expect(
+      interpretRepoItems([
+        { label: '⚠ Invalid or expired token', value: 'auth_error', disabled: true },
+      ]).statusHint,
+    ).toBe(true);
+    expect(
+      interpretRepoItems([
+        { label: '⚠ Network error — check connection', value: 'network_error', disabled: true },
+      ]).statusHint,
+    ).toBe(true);
+    expect(
+      interpretRepoItems([
+        { label: '⚠ GitHub API error (500)', value: 'server_error', disabled: true },
+      ]).statusHint,
+    ).toBe(true);
+  });
+
+  it('does not flag rate-limit or parse warnings for the status hint', () => {
+    expect(
+      interpretRepoItems([{ label: '⚠ Rate limited', value: 'rate_limited', disabled: true }])
+        .statusHint,
+    ).toBe(false);
+    expect(
+      interpretRepoItems([
+        { label: '⚠ Invalid response from GitHub', value: 'parse-error', disabled: true },
+      ]).statusHint,
+    ).toBe(false);
   });
 
   it('ignores disabled items when real repos are present', () => {
@@ -93,6 +129,45 @@ describe('useRepos', () => {
       expect(result.current.status).toBe('error');
     });
     expect(result.current.error).toBeTruthy();
+  });
+
+  it('sets statusHint for an outage-shaped datasource warning', async () => {
+    mockFetchUserRepos.mockResolvedValue([
+      { label: '⚠ Invalid or expired token', value: GitHubErrorCode.AUTH_ERROR, disabled: true },
+    ]);
+
+    const { result } = renderHook(() => useRepos('ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('error');
+    });
+    expect(result.current.statusHint).toBe(true);
+  });
+
+  it('sets statusHint when the fetch rejects with an outage-shaped GitHubApiError', async () => {
+    mockFetchUserRepos.mockRejectedValue(
+      new GitHubApiError('Access denied', 403, undefined, undefined, GitHubErrorCode.ACCESS_DENIED),
+    );
+
+    const { result } = renderHook(() => useRepos('ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('error');
+    });
+    expect(result.current.statusHint).toBe(true);
+  });
+
+  it('leaves statusHint false for a rate-limit rejection', async () => {
+    mockFetchUserRepos.mockRejectedValue(
+      new GitHubApiError('Rate limited', 429, undefined, 60, GitHubErrorCode.RATE_LIMITED),
+    );
+
+    const { result } = renderHook(() => useRepos('ghp_token'));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('error');
+    });
+    expect(result.current.statusHint).toBe(false);
   });
 
   it('refetches when reload is called', async () => {

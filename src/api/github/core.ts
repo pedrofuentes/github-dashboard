@@ -380,6 +380,28 @@ export function handleApiError(
 }
 
 /**
+ * Error codes that can be symptoms of a GitHub-side incident rather than a user
+ * problem. During a real outage GitHub can spuriously reject a valid token
+ * (401), deny access (403), fail requests (5xx), or appear unreachable
+ * (network/timeout). Rate limiting and not-found are genuine, non-outage
+ * conditions and are deliberately excluded.
+ *
+ * Single source of truth for whether a githubstatus.com hint should be shown.
+ */
+const OUTAGE_CODES: ReadonlySet<GitHubErrorCode> = new Set([
+  GitHubErrorCode.NETWORK_ERROR,
+  GitHubErrorCode.TIMEOUT,
+  GitHubErrorCode.AUTH_ERROR,
+  GitHubErrorCode.ACCESS_DENIED,
+  GitHubErrorCode.SERVER_ERROR,
+]);
+
+/** True when `code` is outage-shaped — see {@link OUTAGE_CODES}. */
+export function isOutageCode(code?: GitHubErrorCode): boolean {
+  return code !== undefined && OUTAGE_CODES.has(code);
+}
+
+/**
  * Maps an error to a user-facing label for button display.
  * Uses structured GitHubErrorCode when available, falls back to message matching.
  */

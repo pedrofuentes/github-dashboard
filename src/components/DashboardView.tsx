@@ -40,6 +40,7 @@ import { isAllHidden } from '../lib/tile-visibility';
 import type { DashboardTile } from '../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
 import { FleetSummaryTile } from './FleetSummaryTile';
+import { GitHubStatusHint } from './GitHubStatusHint';
 import { SignalTile } from './SignalTile';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
@@ -92,6 +93,8 @@ export interface DashboardViewProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the tiles. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /** Retry handler for the error state. */
   onRetry?: () => void;
 }
@@ -124,6 +127,7 @@ export function DashboardView({
   aliases,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
 }: DashboardViewProps): ReactElement {
   // A narrowing repo filter is active whenever a Set is provided — including an
@@ -376,6 +380,7 @@ export function DashboardView({
         >
           <p className="font-medium">Couldn’t load your dashboard.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

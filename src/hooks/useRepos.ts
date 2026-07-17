@@ -10,7 +10,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { fetchUserRepos, type DataSourceItem } from '../api/github';
+import {
+  GitHubApiError,
+  fetchUserRepos,
+  isOutageCode,
+  type DataSourceItem,
+  type GitHubErrorCode,
+} from '../api/github';
 import type { Repo } from '../types/fleet';
 
 /** Loading lifecycle for the repo fetch. */
@@ -21,6 +27,12 @@ export interface UseReposResult {
   status: ReposStatus;
   repos: Repo[];
   error: string | null;
+  /**
+   * True when `error` is outage-shaped (connectivity/timeout/auth/access-denied/
+   * server) — a GitHub-side incident the user should be pointed to
+   * githubstatus.com for. False for rate-limit/not-found/malformed responses.
+   */
+  statusHint: boolean;
   reload: () => void;
 }
 
@@ -43,13 +55,16 @@ function parseRepo(item: DataSourceItem): Repo {
 export function interpretRepoItems(items: DataSourceItem[]): {
   repos: Repo[];
   error: string | null;
+  statusHint: boolean;
 } {
   const real = items.filter((item) => item.disabled !== true && item.value !== '');
   if (real.length > 0) {
-    return { repos: real.map(parseRepo), error: null };
+    return { repos: real.map(parseRepo), error: null, statusHint: false };
   }
   const warning = items.find((item) => item.label.startsWith('⚠'));
-  return { repos: [], error: warning ? warning.label : null };
+  // `fetchUserRepos` stashes the GitHubErrorCode in the warning item's `value`.
+  const statusHint = warning ? isOutageCode(warning.value as GitHubErrorCode) : false;
+  return { repos: [], error: warning ? warning.label : null, statusHint };
 }
 
 /**
@@ -61,6 +76,7 @@ export function useRepos(token: string | null): UseReposResult {
   const [status, setStatus] = useState<ReposStatus>(token ? 'loading' : 'success');
   const [repos, setRepos] = useState<Repo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [statusHint, setStatusHint] = useState(false);
   const [reloadIndex, setReloadIndex] = useState(0);
   const generationRef = useRef(0);
 
@@ -75,11 +91,13 @@ export function useRepos(token: string | null): UseReposResult {
       setStatus('success');
       setRepos([]);
       setError(null);
+      setStatusHint(false);
       return;
     }
 
     setStatus('loading');
     setError(null);
+    setStatusHint(false);
 
     fetchUserRepos(token)
       .then((items) => {
@@ -90,11 +108,13 @@ export function useRepos(token: string | null): UseReposResult {
         if (result.error !== null) {
           setStatus('error');
           setError(result.error);
+          setStatusHint(result.statusHint);
           setRepos([]);
         } else {
           setStatus('success');
           setRepos(result.repos);
           setError(null);
+          setStatusHint(false);
         }
       })
       .catch((cause: unknown) => {
@@ -103,9 +123,10 @@ export function useRepos(token: string | null): UseReposResult {
         }
         setStatus('error');
         setError(cause instanceof Error ? cause.message : 'Failed to load repositories.');
+        setStatusHint(cause instanceof GitHubApiError && isOutageCode(cause.code));
         setRepos([]);
       });
   }, [token, reloadIndex]);
 
-  return { status, repos, error, reload };
+  return { status, repos, error, statusHint, reload };
 }

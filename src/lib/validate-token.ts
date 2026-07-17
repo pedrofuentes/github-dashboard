@@ -16,10 +16,19 @@ export interface ValidateTokenSuccess {
   avatarUrl?: string;
 }
 
+/**
+ * Classifies a validation failure so the UI can decide whether to surface a
+ * githubstatus.com hint. `network`/`auth`/`server` are outage-shaped (a real
+ * GitHub incident can produce any of them); `other` (malformed/unexpected
+ * response) is not.
+ */
+export type ValidateTokenFailureKind = 'network' | 'auth' | 'server' | 'other';
+
 /** A validation failure carrying a human-friendly, token-free message. */
 export interface ValidateTokenFailure {
   ok: false;
   error: string;
+  kind: ValidateTokenFailureKind;
 }
 
 export type ValidateTokenResult = ValidateTokenSuccess | ValidateTokenFailure;
@@ -100,17 +109,19 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
     return {
       ok: false,
       error: 'Network error — could not reach GitHub. Check your connection and try again.',
+      kind: 'network',
     };
   }
 
   if (response.status === 401) {
-    return { ok: false, error: 'Invalid or expired token' };
+    return { ok: false, error: 'Invalid or expired token', kind: 'auth' };
   }
 
   if (!response.ok) {
     return {
       ok: false,
       error: `Could not validate the token (HTTP ${String(response.status)}). Please try again.`,
+      kind: 'server',
     };
   }
 
@@ -118,13 +129,21 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
   try {
     body = await response.json();
   } catch {
-    return { ok: false, error: 'Unexpected response from GitHub. Please try again.' };
+    return {
+      ok: false,
+      error: 'Unexpected response from GitHub. Please try again.',
+      kind: 'other',
+    };
   }
 
   const login = readString(body, 'login');
   const avatarUrl = readString(body, 'avatar_url');
   if (login === null || avatarUrl === null) {
-    return { ok: false, error: 'Unexpected response from GitHub. Please try again.' };
+    return {
+      ok: false,
+      error: 'Unexpected response from GitHub. Please try again.',
+      kind: 'other',
+    };
   }
 
   return { ok: true, login, avatarUrl: sanitizeAvatarUrl(avatarUrl) };

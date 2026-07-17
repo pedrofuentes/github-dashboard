@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from 'react';
 
 import { useAuth } from '../hooks/useAuth';
 import type { PersistenceMode } from '../types/auth';
+import { GitHubStatusHint } from './GitHubStatusHint';
 
 interface PersistenceOption {
   value: PersistenceMode;
@@ -75,7 +76,7 @@ const PAT_CREATE_URL = buildPatCreateUrl();
  * privacy-first default in DECISION #3.
  */
 export function TokenInput(): ReactElement {
-  const { status, error, signIn } = useAuth();
+  const { status, error, errorKind, signIn } = useAuth();
   const [token, setTokenValue] = useState('');
   const [mode, setMode] = useState<PersistenceMode>('none');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -86,6 +87,13 @@ export function TokenInput(): ReactElement {
 
   const isAuthenticating = status === 'authenticating';
   const message = localError ?? (status === 'error' ? error : null);
+  // Only for a real GitHub-side failure (not the local empty-field guard, and
+  // not a malformed-response 'other'): an incident can spuriously reject a valid
+  // token or make GitHub look unreachable.
+  const showStatusHint =
+    localError === null &&
+    status === 'error' &&
+    (errorKind === 'network' || errorKind === 'auth' || errorKind === 'server');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -210,9 +218,12 @@ export function TokenInput(): ReactElement {
           {isAuthenticating ? 'Connecting…' : 'Connect to GitHub'}
         </button>
 
-        <p id={errorId} role="alert" className="min-h-[1.25rem] text-sm text-accent-failure">
-          {message}
-        </p>
+        <div role="alert" className="text-accent-failure">
+          <p id={errorId} className="min-h-[1.25rem] text-sm">
+            {message}
+          </p>
+          {showStatusHint ? <GitHubStatusHint /> : null}
+        </div>
       </form>
     </div>
   );

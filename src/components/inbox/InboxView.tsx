@@ -27,6 +27,7 @@ import type { ChangeEvent, ReactElement } from 'react';
 import type { UseInboxResult } from '../../hooks/useInbox';
 import type { Repo } from '../../types/fleet';
 import type { InboxKind } from '../../types/inbox';
+import { GitHubStatusHint } from '../GitHubStatusHint';
 import { InboxBulkBar } from './InboxBulkBar';
 import { InboxList } from './InboxList';
 import { KIND_LABELS } from './labels';
@@ -84,6 +85,8 @@ export interface InboxViewProps {
   loading?: boolean;
   /** Fleet fetch error message; renders an alert + retry instead of the inbox. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /** Retry handler for the error state. */
   onRetry?: () => void;
 }
@@ -94,6 +97,7 @@ export function InboxView({
   repoScope,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
 }: InboxViewProps): ReactElement {
   const { items, unreadCount, filters, setFilters, markRead, dismiss, restore } = inbox;
@@ -287,6 +291,7 @@ export function InboxView({
         >
           <p className="font-medium">Couldn’t load your inbox.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

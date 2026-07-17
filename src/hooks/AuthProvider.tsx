@@ -3,7 +3,13 @@ import type { ReactElement, ReactNode } from 'react';
 
 import { forgetToken, getToken, setToken } from '../lib/token-storage';
 import { validateToken } from '../lib/validate-token';
-import type { AuthContextValue, AuthStatus, AuthUser, PersistenceMode } from '../types/auth';
+import type {
+  AuthContextValue,
+  AuthErrorKind,
+  AuthStatus,
+  AuthUser,
+  PersistenceMode,
+} from '../types/auth';
 import { AuthContext } from './useAuth';
 
 interface AuthProviderProps {
@@ -24,6 +30,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<AuthErrorKind | null>(null);
 
   /**
    * Monotonic id stamped on every validation operation (sign-in, mount
@@ -37,6 +44,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
     const generation = (generationRef.current += 1);
     setStatus('authenticating');
     setError(null);
+    setErrorKind(null);
 
     const result = await validateToken(candidate);
     if (generation !== generationRef.current) {
@@ -48,6 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
       setUser(null);
       setStatus('error');
       setError(result.error);
+      setErrorKind(result.kind);
       return;
     }
 
@@ -56,6 +65,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
     setUser({ login: result.login, avatarUrl: result.avatarUrl });
     setStatus('authenticated');
     setError(null);
+    setErrorKind(null);
   }, []);
 
   const forget = useCallback((): void => {
@@ -65,6 +75,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
     setUser(null);
     setStatus('idle');
     setError(null);
+    setErrorKind(null);
   }, []);
 
   useEffect(() => {
@@ -95,8 +106,8 @@ export function AuthProvider({ children }: AuthProviderProps): ReactElement {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ token, user, status, error, signIn, forget }),
-    [token, user, status, error, signIn, forget],
+    () => ({ token, user, status, error, errorKind, signIn, forget }),
+    [token, user, status, error, errorKind, signIn, forget],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
