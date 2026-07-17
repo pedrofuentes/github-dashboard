@@ -16,6 +16,7 @@ import {
   fetchRepoBranches,
   fetchRepoEnvironments,
   validateTokenStatus,
+  GitHubErrorCode,
 } from './index';
 
 // ──────────────────────────────────────────────
@@ -148,7 +149,8 @@ describe('Datasource API', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0].label).toContain('Invalid or expired token');
-      expect(items[0].value).toBe('');
+      // The error code rides in `value` so useRepos can decide on a status hint.
+      expect(items[0].value).toBe(GitHubErrorCode.AUTH_ERROR);
       expect(items[0].disabled).toBe(true);
     });
 
@@ -162,6 +164,7 @@ describe('Datasource API', () => {
       expect(items).toHaveLength(1);
       expect(items[0].label).toContain('permission');
       expect(items[0].label).toContain('Metadata');
+      expect(items[0].value).toBe(GitHubErrorCode.ACCESS_DENIED);
       expect(items[0].disabled).toBe(true);
     });
 
@@ -175,6 +178,7 @@ describe('Datasource API', () => {
       expect(items).toHaveLength(1);
       expect(items[0].label).toContain('API error');
       expect(items[0].label).toContain('500');
+      expect(items[0].value).toBe(GitHubErrorCode.SERVER_ERROR);
       expect(items[0].disabled).toBe(true);
     });
 
@@ -188,6 +192,7 @@ describe('Datasource API', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0].label).toContain('Network error');
+      expect(items[0].value).toBe(GitHubErrorCode.NETWORK_ERROR);
       expect(items[0].disabled).toBe(true);
       vi.useRealTimers();
     });

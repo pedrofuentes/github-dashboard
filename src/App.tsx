@@ -269,7 +269,7 @@ const FleetPanel = memo(function FleetPanel({
   onViewChange,
   onOpenSettings,
 }: FleetPanelProps): ReactElement {
-  const { repos, status, error, reload } = useRepos(token);
+  const { repos, status, error, statusHint, reload } = useRepos(token);
   const {
     getRowData,
     retrySignal,
@@ -583,6 +583,7 @@ const FleetPanel = memo(function FleetPanel({
         onRepoActivate={handleRepoActivate}
         loading={viewLoading}
         error={status === 'error' ? error : null}
+        statusHint={status === 'error' ? statusHint : false}
         onRetry={reload}
       />
     ) : view === 'matrix' ? (
@@ -592,6 +593,7 @@ const FleetPanel = memo(function FleetPanel({
         onRepoActivate={handleRepoActivate}
         loading={viewLoading}
         error={status === 'error' ? error : null}
+        statusHint={status === 'error' ? statusHint : false}
         onRetry={reload}
       />
     ) : view === 'dashboard' ? (
@@ -608,6 +610,7 @@ const FleetPanel = memo(function FleetPanel({
           aliases={aliases.aliases}
           loading={viewLoading}
           error={status === 'error' ? error : null}
+          statusHint={status === 'error' ? statusHint : false}
           onRetry={reload}
         />
         {editing ? (
@@ -629,6 +632,7 @@ const FleetPanel = memo(function FleetPanel({
         repoScope={filter.isActive ? filter.derivedSelected : undefined}
         loading={viewLoading}
         error={status === 'error' ? error : null}
+        statusHint={status === 'error' ? statusHint : false}
         onRetry={reload}
       />
     ) : view === 'deck' ? (
@@ -640,6 +644,7 @@ const FleetPanel = memo(function FleetPanel({
             onRepoActivate={handleRepoActivate}
             loading={viewLoading}
             error={status === 'error' ? error : null}
+            statusHint={status === 'error' ? statusHint : false}
             onRetry={reload}
             onRetrySignal={retrySignal}
             repoFilter={filter.isActive ? filter.derivedSelected : undefined}
@@ -680,6 +685,7 @@ const FleetPanel = memo(function FleetPanel({
         getRowData={getRowData}
         loading={viewLoading}
         error={status === 'error' ? error : null}
+        statusHint={status === 'error' ? statusHint : false}
         onRetry={reload}
         onRepoActivate={handleRepoActivate}
       />

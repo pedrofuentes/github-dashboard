@@ -10,6 +10,14 @@ export type PersistenceMode = 'none' | 'session' | 'local';
 /** Lifecycle of the auth flow. */
 export type AuthStatus = 'idle' | 'authenticating' | 'authenticated' | 'error';
 
+/**
+ * Classification of the current auth `error`, mirrored from
+ * {@link ValidateTokenFailureKind}. `network`/`auth`/`server` are outage-shaped
+ * (a GitHub incident can produce them), so the sign-in surface shows a
+ * githubstatus.com hint; `other` and `null` do not.
+ */
+export type AuthErrorKind = 'network' | 'auth' | 'server' | 'other';
+
 /** Minimal GitHub identity captured from `GET /user`. */
 export interface AuthUser {
   login: string;
@@ -23,6 +31,8 @@ export interface AuthContextValue {
   user: AuthUser | null;
   status: AuthStatus;
   error: string | null;
+  /** Classification of `error` (or `null` when there is no error). */
+  errorKind: AuthErrorKind | null;
   signIn: (token: string, mode: PersistenceMode) => Promise<void>;
   forget: () => void;
 }

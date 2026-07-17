@@ -12,6 +12,7 @@ function renderWithAuth(overrides: Partial<AuthContextValue> = {}): AuthContextV
     user: null,
     status: 'idle',
     error: null,
+    errorKind: null,
     signIn: vi.fn().mockResolvedValue(undefined),
     forget: vi.fn(),
     ...overrides,
@@ -177,9 +178,38 @@ describe('TokenInput', () => {
   });
 
   it('renders authentication errors from context in an alert region', () => {
-    renderWithAuth({ status: 'error', error: 'Invalid or expired token' });
+    renderWithAuth({ status: 'error', error: 'Invalid or expired token', errorKind: 'auth' });
 
     expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired token');
+  });
+
+  it.each(['auth', 'network', 'server'] as const)(
+    'shows the GitHub status hint for the outage-shaped "%s" error',
+    (kind) => {
+      renderWithAuth({ status: 'error', error: 'GitHub said no', errorKind: kind });
+
+      expect(screen.getByRole('link', { name: /check github status/i })).toBeInTheDocument();
+    },
+  );
+
+  it('hides the GitHub status hint for the empty-field guard', async () => {
+    renderWithAuth();
+    const user = userEvent.setup();
+
+    await user.click(submitButton());
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/enter.*token/i);
+    expect(screen.queryByRole('link', { name: /check github status/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the GitHub status hint for a malformed-response error (kind "other")', () => {
+    renderWithAuth({
+      status: 'error',
+      error: 'Unexpected response from GitHub',
+      errorKind: 'other',
+    });
+
+    expect(screen.queryByRole('link', { name: /check github status/i })).not.toBeInTheDocument();
   });
 
   it('disables submission while authenticating', () => {

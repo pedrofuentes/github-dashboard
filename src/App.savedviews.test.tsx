@@ -48,7 +48,13 @@ beforeEach(() => {
   localStorage.setItem('fleet:default-view', 'grid');
   mockValidate.mockReset();
   mockUseRepos.mockReset();
-  mockUseRepos.mockReturnValue({ status: 'success', repos: [], error: null, reload: vi.fn() });
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos: [],
+    error: null,
+    statusHint: false,
+    reload: vi.fn(),
+  });
   mockUseRepoSignals.mockReset();
   mockUseRepoSignals.mockReturnValue({ getRowData });
 });
@@ -65,6 +71,7 @@ async function authenticate(user: ReturnType<typeof userEvent.setup>): Promise<v
     status: 'success',
     repos: [repo('octo/broken'), repo('octo/healthy')],
     error: null,
+    statusHint: false,
     reload: vi.fn(),
   });
   await user.type(screen.getByLabelText(/personal access token/i), 'ghp_valid');

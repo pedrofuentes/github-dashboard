@@ -42,6 +42,7 @@ import { signalDeepLinkUrl } from '../../lib/github-deep-link';
 import { SIGNAL_LABELS } from '../../lib/grid-keyboard';
 import type { TileSignalType } from '../../types/dashboard';
 import type { GetRowData, Repo } from '../../types/fleet';
+import { GitHubStatusHint } from '../GitHubStatusHint';
 import { BoardKey } from './BoardKey';
 import { SortableRepoRow } from './SortableRepoRow';
 
@@ -96,6 +97,8 @@ export interface BoardViewProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the board. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /**
    * Retry handler. Powers both the board-level error alert's Retry control and
    * the legacy key retry fallback.
@@ -177,6 +180,7 @@ export function BoardView({
   onRepoActivate,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
   onRetrySignal,
   repoFilter,
@@ -289,6 +293,7 @@ export function BoardView({
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

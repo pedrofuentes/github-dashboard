@@ -103,7 +103,7 @@ describe('AuthProvider', () => {
   });
 
   it('signIn failure surfaces an error and persists nothing', async () => {
-    mockValidate.mockResolvedValue({ ok: false, error: 'Invalid or expired token' });
+    mockValidate.mockResolvedValue({ ok: false, error: 'Invalid or expired token', kind: 'auth' });
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await act(async () => {
@@ -154,7 +154,7 @@ describe('AuthProvider', () => {
 
   it('silently forgets a remembered token that no longer validates on mount', async () => {
     setToken('ghp_expired', 'local');
-    mockValidate.mockResolvedValue({ ok: false, error: 'Invalid or expired token' });
+    mockValidate.mockResolvedValue({ ok: false, error: 'Invalid or expired token', kind: 'auth' });
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
@@ -191,7 +191,7 @@ describe('AuthProvider', () => {
     expect(getToken()).toBe('ghp_new');
 
     await act(async () => {
-      resolveStored({ ok: false, error: 'Invalid or expired token' });
+      resolveStored({ ok: false, error: 'Invalid or expired token', kind: 'auth' });
       await storedPending;
     });
 
@@ -221,7 +221,7 @@ describe('AuthProvider', () => {
     unmount();
 
     await act(async () => {
-      resolveStored({ ok: false, error: 'Invalid or expired token' });
+      resolveStored({ ok: false, error: 'Invalid or expired token', kind: 'auth' });
       await storedPending;
     });
 

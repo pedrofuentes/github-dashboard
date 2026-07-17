@@ -8,7 +8,14 @@
 
 import { z } from 'zod';
 
-import { GITHUB_API_BASE, buildHeaders, fetchWithRetry, parseRateLimitHeaders } from './core';
+import {
+  GITHUB_API_BASE,
+  GitHubApiError,
+  GitHubErrorCode,
+  buildHeaders,
+  fetchWithRetry,
+  parseRateLimitHeaders,
+} from './core';
 import {
   UserResponseSchema,
   UserRepoResponseSchema,
@@ -147,26 +154,54 @@ export async function fetchUserRepos(token?: string): Promise<DataSourceItem[]> 
     let response: Response;
     try {
       response = await fetchWithRetry(url, { headers }, 'fetchUserRepos');
-    } catch {
+    } catch (err) {
       if (allRepos.length > 0) break; // Return what we have so far
-      return [{ label: '⚠ Network error — check connection', value: '', disabled: true }];
+      // `value` carries the error code so useRepos can decide whether to show a
+      // githubstatus.com hint. fetchWithRetry only throws network/timeout errors
+      // (status codes come back as a response), so this is always outage-shaped.
+      const code =
+        err instanceof GitHubApiError && err.code ? err.code : GitHubErrorCode.NETWORK_ERROR;
+      return [{ label: '⚠ Network error — check connection', value: code, disabled: true }];
     }
 
     if (!response.ok) {
       if (allRepos.length > 0) break; // Return what we have so far
       if (response.status === 401) {
-        return [{ label: '⚠ Invalid or expired token', value: '', disabled: true }];
+        return [
+          {
+            label: '⚠ Invalid or expired token',
+            value: GitHubErrorCode.AUTH_ERROR,
+            disabled: true,
+          },
+        ];
       }
       if (response.status === 403) {
         return [
           {
             label: '⚠ Token lacks permission — enable Metadata read access',
-            value: '',
+            value: GitHubErrorCode.ACCESS_DENIED,
             disabled: true,
           },
         ];
       }
-      return [{ label: `⚠ GitHub API error (${response.status})`, value: '', disabled: true }];
+      // A persistent 429 that outlasted fetchWithRetry's backoff is genuine rate
+      // limiting, not an outage — tag it RATE_LIMITED so no status hint shows.
+      if (response.status === 429) {
+        return [
+          {
+            label: '⚠ GitHub API error (429)',
+            value: GitHubErrorCode.RATE_LIMITED,
+            disabled: true,
+          },
+        ];
+      }
+      return [
+        {
+          label: `⚠ GitHub API error (${response.status})`,
+          value: GitHubErrorCode.SERVER_ERROR,
+          disabled: true,
+        },
+      ];
     }
 
     let repos: Array<{ full_name: string; private: boolean; description: string | null }>;
@@ -174,7 +209,7 @@ export async function fetchUserRepos(token?: string): Promise<DataSourceItem[]> 
       repos = z.array(UserRepoResponseSchema).parse(await response.json());
     } catch {
       if (allRepos.length > 0) break;
-      return [{ label: '⚠ Invalid response from GitHub', value: '', disabled: true }];
+      return [{ label: '⚠ Invalid response from GitHub', value: 'parse-error', disabled: true }];
     }
 
     if (Array.isArray(repos)) {

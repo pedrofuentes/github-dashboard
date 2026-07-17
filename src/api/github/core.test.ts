@@ -16,6 +16,7 @@ import {
   GitHubApiError,
   GitHubErrorCode,
   handleApiError,
+  isOutageCode,
   type RateLimitInfo,
 } from './core';
 
@@ -606,5 +607,21 @@ describe('handleApiError — secondary rate limit (#495)', () => {
     }
     expect(caught).toBeInstanceOf(GitHubApiError);
     expect((caught as GitHubApiError).code).toBe(GitHubErrorCode.ACCESS_DENIED);
+  });
+});
+
+describe('isOutageCode', () => {
+  it('is true for outage-shaped codes (network/timeout/auth/access-denied/server)', () => {
+    expect(isOutageCode(GitHubErrorCode.NETWORK_ERROR)).toBe(true);
+    expect(isOutageCode(GitHubErrorCode.TIMEOUT)).toBe(true);
+    expect(isOutageCode(GitHubErrorCode.AUTH_ERROR)).toBe(true);
+    expect(isOutageCode(GitHubErrorCode.ACCESS_DENIED)).toBe(true);
+    expect(isOutageCode(GitHubErrorCode.SERVER_ERROR)).toBe(true);
+  });
+
+  it('is false for rate-limit, not-found, and an undefined code', () => {
+    expect(isOutageCode(GitHubErrorCode.RATE_LIMITED)).toBe(false);
+    expect(isOutageCode(GitHubErrorCode.NOT_FOUND)).toBe(false);
+    expect(isOutageCode(undefined)).toBe(false);
   });
 });

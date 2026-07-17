@@ -22,6 +22,7 @@ import {
 import { cn } from '../lib/cn';
 import type { FleetColumn, FleetSortState, GetRowData, Repo } from '../types/fleet';
 import { fleetColumns } from './columns';
+import { GitHubStatusHint } from './GitHubStatusHint';
 
 const SKELETON_ROWS = 6;
 
@@ -38,6 +39,8 @@ interface FleetGridProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the table. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /** Retry handler for the error state. */
   onRetry?: () => void;
   /** Drill-down hook (REC-8): when provided, each row anchor becomes a button. */
@@ -116,6 +119,7 @@ export function FleetGrid({
   getRowData = defaultGetRowData,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
   onRepoActivate,
 }: FleetGridProps) {
@@ -152,6 +156,7 @@ export function FleetGrid({
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

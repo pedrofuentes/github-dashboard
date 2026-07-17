@@ -36,7 +36,13 @@ beforeEach(() => {
   mockValidate.mockReset();
   mockUseRepos.mockReset();
   mockUseRepoSignals.mockReset();
-  mockUseRepos.mockReturnValue({ status: 'success', repos: REPOS, error: null, reload: vi.fn() });
+  mockUseRepos.mockReturnValue({
+    status: 'success',
+    repos: REPOS,
+    error: null,
+    statusHint: false,
+    reload: vi.fn(),
+  });
   mockUseRepoSignals.mockReturnValue({ getRowData });
 });
 

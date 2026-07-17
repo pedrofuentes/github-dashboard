@@ -29,6 +29,7 @@ import { buildMatrixModel } from '../lib/matrix-model';
 import type { RepoHealth } from '../lib/fleet-summary';
 import type { TileSignalType } from '../types/dashboard';
 import type { GetRowData, Repo, RepoSignalData } from '../types/fleet';
+import { GitHubStatusHint } from './GitHubStatusHint';
 import { CiCell } from './columns/CiCell';
 import { IssuesCell } from './columns/IssuesCell';
 import { PullRequestsCell } from './columns/PullRequestsCell';
@@ -58,6 +59,8 @@ interface FleetMatrixProps {
   loading?: boolean;
   /** Fetch error message; renders an alert + retry instead of the table. */
   error?: string | null;
+  /** When true, the error alert also links to GitHub's status page. */
+  statusHint?: boolean;
   /** Retry handler for the error state. */
   onRetry?: () => void;
 }
@@ -189,6 +192,7 @@ export function FleetMatrix({
   onRepoActivate,
   loading = false,
   error = null,
+  statusHint = false,
   onRetry,
 }: FleetMatrixProps) {
   const { density } = useDensity();
@@ -221,6 +225,7 @@ export function FleetMatrix({
         >
           <p className="font-medium">Couldn’t load your repositories.</p>
           <p className="mt-1 text-accent-failure">{error}</p>
+          {statusHint ? <GitHubStatusHint /> : null}
           {onRetry ? (
             <button
               type="button"

@@ -30,6 +30,7 @@ function authValue(token: string | null): AuthContextValue {
     user: null,
     status: token ? 'authenticated' : 'idle',
     error: null,
+    errorKind: null,
     signIn: vi.fn(),
     forget: vi.fn(),
   };
